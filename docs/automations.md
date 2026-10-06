@@ -215,3 +215,8 @@ past the first page. Convex clients can use `automationEventCatalog.page` or
 `automationEventCatalog.search` with native `paginationOpts`; the deprecated
 `automationEvents.catalog` returns only system events and the first 20 custom
 definitions.
+
+Catalog pages preserve Convex cursor and split metadata. Request at most 100
+custom definitions. An `endCursor` replay must supply `maximumRowsRead` (at most
+100); an optional `maximumBytesRead` is limited to 256 KiB. Pass the native
+`paginationOpts` through intact when continuing a page.

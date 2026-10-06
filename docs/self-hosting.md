@@ -676,7 +676,7 @@ from authorizing a team already over the 10,000 cap. Fresh installations should
 also run the migration runner before defining events.
 
 After the staged name index finishes backfilling, deploy the catalog activation
-commit `6eebb3a` and its dashboard/SDK/MCP follow-up. The activation removes
-`staged` and enables the paged catalog and dashboard name search. Keep the application
-and SDK/MCP deployment together: catalog responses now use the list envelope
-with `has_more` and `next_cursor`; existing event entry fields are preserved.
+commits `6eebb3a` and `f2bdf5e` together. The activation removes
+`staged` and enables the paged catalog and dashboard name search. Keep the
+application and SDK/MCP deployment together: catalog responses now use the list
+envelope with `has_more` and `next_cursor`; existing event entry fields are preserved.
