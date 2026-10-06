@@ -271,7 +271,6 @@ services:
     ports:
       - "${CALL_TURN_PORT:-3478}:${CALL_TURN_PORT:-3478}/udp"
       - "${CALL_TURN_PORT:-3478}:${CALL_TURN_PORT:-3478}/tcp"
-      - "${CALL_TURN_TLS_PORT:-5349}:${CALL_TURN_TLS_PORT:-5349}/tcp"
       - "${CALL_TURN_RELAY_RANGE:-20800-20999}:${CALL_TURN_RELAY_RANGE:-20800-20999}/udp"
     environment:
       CALL_TURN_PUBLIC_IP: ${CALL_TURN_PUBLIC_IP:-}

@@ -72,7 +72,6 @@ janus_range=${JANUS_RTP_RANGE:-20000-20199}
 fs_range=${FREESWITCH_RTP_RANGE:-20400-20799}
 turn=${OPENSEND_TURN:-}
 turn_port=${CALL_TURN_PORT:-3478}
-turn_tls_port=${CALL_TURN_TLS_PORT:-5349}
 turn_range=${CALL_TURN_RELAY_RANGE:-20800-20999}
 purge=0
 case ${1:-} in
@@ -336,19 +335,18 @@ if [ "$calling" = yes ]; then
     $1 == 0 || $1 == 10 || $1 == 127 || $1 >= 224 || ($1 == 172 && $2 >= 16 && $2 <= 31) || ($1 == 192 && $2 == 168) || ($1 == 169 && $2 == 254) || ($1 == 100 && $2 >= 64 && $2 <= 127) { exit 1 }'; then
     die 'Calling needs a public IPv4 address'
   fi
-  for pair in CALLING_WSS_PORT FREESWITCH_CERT_DIR JANUS_RTP_RANGE FREESWITCH_RTP_RANGE CALL_TURN_PORT CALL_TURN_TLS_PORT CALL_TURN_RELAY_RANGE; do
+  for pair in CALLING_WSS_PORT FREESWITCH_CERT_DIR JANUS_RTP_RANGE FREESWITCH_RTP_RANGE CALL_TURN_PORT CALL_TURN_RELAY_RANGE; do
     if has_env "$pair"; then
       value=$(get_env "$pair")
       case $pair in
         CALLING_WSS_PORT) wss_port=$value ;; FREESWITCH_CERT_DIR) cert_dir=$value ;;
         JANUS_RTP_RANGE) janus_range=$value ;; FREESWITCH_RTP_RANGE) fs_range=$value ;;
-        CALL_TURN_PORT) turn_port=$value ;; CALL_TURN_TLS_PORT) turn_tls_port=$value ;; CALL_TURN_RELAY_RANGE) turn_range=$value ;;
+        CALL_TURN_PORT) turn_port=$value ;; CALL_TURN_RELAY_RANGE) turn_range=$value ;;
       esac
     fi
   done
   valid_port CALLING_WSS_PORT "$wss_port"
   valid_port CALL_TURN_PORT "$turn_port"
-  valid_port CALL_TURN_TLS_PORT "$turn_tls_port"
   valid_range JANUS_RTP_RANGE "$janus_range"
   valid_range FREESWITCH_RTP_RANGE "$fs_range"
   valid_range CALL_TURN_RELAY_RANGE "$turn_range"
@@ -361,9 +359,6 @@ if [ "$calling" = yes ]; then
     }
   }'; then die 'Calling UDP ranges overlap each other or the private SIP range 20200-20399'; fi
   if [ "$turn" = yes ] && [ "$wss_port" = "$turn_port" ]; then die 'WSS and TURN TCP ports must differ'; fi
-  if [ "$turn" = yes ]; then
-    [ "$turn_tls_port" != "$turn_port" ] && [ "$turn_tls_port" != "$wss_port" ] || die 'TURN TLS, TURN and WSS TCP ports must differ'
-  fi
   if [ -n "$cert_dir" ]; then
     case $cert_dir in /*) ;; *) die '--calling-cert-dir must be an absolute path' ;; esac
   fi
@@ -581,7 +576,6 @@ if [ "$calling" = yes ]; then
   if [ "$turn" = yes ]; then
     put_env CALL_TURN_PUBLIC_IP "$calling_ip"
     put_env CALL_TURN_PORT "$turn_port"
-    put_env CALL_TURN_TLS_PORT "$turn_tls_port"
     put_env CALL_TURN_RELAY_RANGE "$turn_range"
     put_env CALL_TURN_URLS "turn:$calling_domain:$turn_port?transport=udp,turn:$calling_domain:$turn_port?transport=tcp"
     if [ -z "$(get_env CALL_TURN_SECRET 2>/dev/null || true)" ]; then

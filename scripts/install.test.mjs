@@ -409,7 +409,6 @@ test("invalid calling inputs fail before writing configuration", async (t) => {
     ["--janus-rtp-range", "20200-20399"],
     ["--turn-relay-range", "22000-22999"],
     ["--turn-port", "8443"],
-    ["--turn-port", "5349"],
     ["--calling-cert-dir", "relative"],
     ["--calling-domain", "bad/host"],
   ]) {
@@ -672,4 +671,18 @@ test("legacy TURN password migrates to a new REST secret, retained on upgrades",
   assert.equal(config.services.coturn.environment.CALL_TURN_PASSWORD, undefined)
   await f.run(["--upgrade", "--no-start", "--version", "itest-c"])
   assert.equal(f.settings().CALL_TURN_SECRET === env.CALL_TURN_SECRET, true)
+})
+
+test("plain TURN keeps custom port 5349 without reserving an inactive TLS listener", async (t) => {
+  const f = await fixture(t)
+  privateOutput(
+    await f.run(["--no-start", ...callingFlags, "--turn-port", "5349"]),
+    f.settings()
+  )
+  assert.equal(f.settings().CALL_TURN_PORT, "5349")
+  const ports = f.composeConfig().services.coturn.ports
+  assert.equal(
+    ports.filter((p) => p.target === 5349 && p.protocol === "tcp").length,
+    1
+  )
 })

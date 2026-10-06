@@ -203,10 +203,20 @@ otherwise the browser uses STUN only.
 To support networks that block UDP, provide a trusted certificate for the TURN
 hostname. Mount its directory with `CALL_TURN_CERT_DIR`, set container paths
 `CALL_TURN_CERT_FILE=/certs/turn.crt` and `CALL_TURN_KEY_FILE=/certs/turn.key`, and
-open **TCP 5349** (`CALL_TURN_TLS_PORT`). Add
-`turns:calling.example.com:5349?transport=tcp` to `CALL_TURN_URLS` in the saved
-`.env` and redeploy through the installer. The TLS listener port must differ from TURN and WSS ports; Compose reserves it
-even when TLS is disabled. Both files must be readable by coturn.
+open **TCP 5349** (`CALL_TURN_TLS_PORT`). Publish it with a local
+`compose.turn-tls.yaml` override:
+
+```yaml
+services:
+  coturn:
+    ports:
+      - "${CALL_TURN_TLS_PORT:-5349}:${CALL_TURN_TLS_PORT:-5349}/tcp"
+```
+
+Append `:compose.turn-tls.yaml` to the saved `.env`'s `COMPOSE_FILE`, add
+`turns:calling.example.com:5349?transport=tcp` to `CALL_TURN_URLS`, and redeploy
+through the installer. Choose a TLS port distinct from the plain TURN and WSS
+ports. Both certificate files must be readable by coturn.
 Without these files TLS is disabled; never advertise `turns:` for that listener.
 Restart coturn between calls after certificate renewal. Plain TCP TURN remains
 available on the regular listener.
