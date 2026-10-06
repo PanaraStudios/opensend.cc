@@ -108,6 +108,33 @@ const statusPayload = (id: string, status: string, extra = {}) =>
     ],
   })
 
+test("rebundled WhatsApp statuses emit each advancing milestone only once", async () => {
+  const f = await inboundFixture()
+  const message = await outbound(f, "wamid.rebundled")
+  for (const [status, observation] of [
+    ["delivered", 1],
+    ["delivered", 2],
+    ["read", 3],
+    ["delivered", 4],
+    ["read", 5],
+  ] as const)
+    await project(f, statusPayload("wamid.rebundled", status, { observation }))
+  const data = await rows(f)
+  expect(data.messages.find((row) => row._id === message._id)?.status).toBe(
+    "read"
+  )
+  expect(
+    data.timeline
+      .filter((row) => row.messageId === message._id)
+      .map((row) => row.type)
+  ).toEqual(["delivered", "read"])
+  expect(
+    data.events
+      .filter((row) => row.data.id === message._id)
+      .map((row) => row.type)
+  ).toEqual(["whatsapp.message.delivered", "whatsapp.message.read"])
+})
+
 test("missing, wrong and altered signatures refuse storage; raw bytes are capped", async () => {
   const f = await inboundFixture()
   for (const headers of [
@@ -212,9 +239,19 @@ test("a text creates phone-only audience, identity, conversation, timeline and b
     text: "Does it come in another color?",
     created_at: expect.any(String),
   })
-  expect(data.events.filter(event => event.type === "whatsapp.message.received")).toHaveLength(1)
-  expect(data.events.some(event => event.type === "custom:opensend:whatsapp.message.received")).toBe(false)
-  expect(event.data).toMatchObject({ contact_id: data.contacts[0]._id, contact: { id: data.contacts[0]._id }, message: { text: "Does it come in another color?" } })
+  expect(
+    data.events.filter((event) => event.type === "whatsapp.message.received")
+  ).toHaveLength(1)
+  expect(
+    data.events.some(
+      (event) => event.type === "custom:opensend:whatsapp.message.received"
+    )
+  ).toBe(false)
+  expect(event.data).toMatchObject({
+    contact_id: data.contacts[0]._id,
+    contact: { id: data.contacts[0]._id },
+    message: { text: "Does it come in another color?" },
+  })
   const count = await f.owner.client.query(api.contacts.list, {
     organizationId: f.owner.team,
     paginationOpts: { numItems: 10, cursor: null },
@@ -301,7 +338,7 @@ test("statuses never regress; failed is final and stores errors, pricing and con
   })
   const data = await rows(f)
   expect(data.timeline.filter((e) => e.messageId === message._id)).toHaveLength(
-    5
+    2
   )
   expect(
     JSON.parse(data.timeline.find((e) => e.type === "failed")!.details!)

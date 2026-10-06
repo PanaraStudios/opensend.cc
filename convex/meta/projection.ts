@@ -245,11 +245,9 @@ async function status(
   event: Doc<"metaWebhookEvents">
 ) {
   const { data, status: next, at } = item
-  if (
-    account.channel !== "whatsapp" &&
-    STATUS_RANK[next] <= STATUS_RANK[message.status]
-  )
-    return message
+  // Meta can rebundle the same observation under a new body hash. Only an
+  // advancing milestone may update evidence, metrics, or the customer outbox.
+  if (STATUS_RANK[next] <= STATUS_RANK[message.status]) return message
   const content = await ctx.db
     .query("channelMessageContents")
     .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
@@ -291,7 +289,7 @@ async function status(
     webhookEventId: event._id,
     details: JSON.stringify(data),
   })
-  // Every status stays on the timeline; customer events describe that observation.
+  // Customer events describe the advancing milestone.
   const payload = await hydratedChannelMessage(
     ctx,
     { ...current, status: next },
@@ -673,7 +671,6 @@ export const watermark = internalMutation({
       .order("desc")
       .paginate({ cursor: args.cursor, numItems: 100 })
     let pending = false
-    let stopped = false
     for (const message of page.page) {
       if (
         message.direction !== "outbound" ||
@@ -684,10 +681,8 @@ export const watermark = internalMutation({
       if (
         message.status !== "failed" &&
         STATUS_RANK[message.status] >= STATUS_RANK[args.next]
-      ) {
-        stopped = true
-        break
-      }
+      )
+        continue
       if (!message.externalId && message.status === "queued") {
         pending = true
         continue
@@ -719,7 +714,7 @@ export const watermark = internalMutation({
         ...args,
         attempt: (args.attempt ?? 0) + 1,
       })
-    else if (!stopped && !page.isDone)
+    else if (!page.isDone)
       await ctx.scheduler.runAfter(0, internal.meta.projection.watermark, {
         ...args,
         cursor: page.continueCursor,
