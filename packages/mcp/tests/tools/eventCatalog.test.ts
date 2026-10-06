@@ -8,7 +8,7 @@ it("lists and filters the shared catalog with nested contact note and call field
   try {
     const fetcher = vi.fn<typeof fetch>(async () =>
       Response.json({
-        object: "list",
+        object: "event_catalog",
         has_more: false,
         next_cursor: null,
         data: SYSTEM_EVENT_CATALOG,
@@ -67,7 +67,7 @@ it("forwards catalog page and search params and exposes continuation metadata", 
   try {
     const fetcher = vi.fn<typeof fetch>(async () =>
       Response.json({
-        object: "list",
+        object: "event_catalog",
         has_more: true,
         next_cursor: "next-page",
         data: [],
@@ -83,6 +83,7 @@ it("forwards catalog page and search params and exposes continuation metadata", 
       "https://api.opensend.test/events/catalog?limit=2&after=previous-page&search=invoice+paid"
     )
     expect(JSON.parse((result.content as { text: string }[])[1].text)).toEqual({
+      object: "event_catalog",
       has_more: true,
       next_cursor: "next-page",
     })
@@ -102,7 +103,7 @@ it("looks up a requested custom event through server search", async () => {
   try {
     const fetcher = vi.fn<typeof fetch>(async () =>
       Response.json({
-        object: "list",
+        object: "event_catalog",
         has_more: false,
         next_cursor: null,
         data: [{ name: "late.event", trigger: "late.event" }],

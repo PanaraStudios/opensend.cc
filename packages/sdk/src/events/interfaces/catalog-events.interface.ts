@@ -9,7 +9,7 @@ export interface CatalogEventsOptions {
   search?: string
 }
 export interface CatalogEventsResponseSuccess {
-  object: "list"
+  object: "event_catalog"
   has_more: boolean
   next_cursor: string | null
   data: CatalogEvent[]

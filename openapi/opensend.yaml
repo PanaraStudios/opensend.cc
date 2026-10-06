@@ -14798,7 +14798,7 @@ paths:
                 properties:
                   object:
                     type: string
-                    const: list
+                    const: event_catalog
                   has_more:
                     type: boolean
                   next_cursor:

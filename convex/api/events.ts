@@ -261,7 +261,7 @@ export function registerEventRoutes(http: HttpRouter) {
         throw invalid("The catalog supports forward pagination with `after`.")
       return {
         body: {
-          object: "list",
+          object: "event_catalog",
           ...(await ctx.runQuery(internal.api.events.catalog, {
             caller,
             limit,

@@ -106,7 +106,7 @@ References checked against the existing UI's scope:
 
 `GET /events/catalog` (scope `events:read`) returns a searchable page with
 labels, groups, descriptions and nested schemas. The response is
-`{object: "list", has_more, next_cursor, data}`. System events appear on the
+`{object: "event_catalog", has_more, next_cursor, data}`. System events appear on the
 first page, followed by custom definitions ordered by name. `limit` bounds
 custom definitions per page (default 20, maximum 100); the fixed system catalog
 is included in addition on the first page. `search` searches custom names and
@@ -196,7 +196,7 @@ the current path, and contact fields. The variable picker inserts at the cursor,
 shows type and example, and previews interpolation with sample values.
 
 SDK: `await opensend.events.catalog({limit, after, search})` returns the usual
-`{data, error, headers}` response; `data` contains the list envelope above.
+`{data, error, headers}` response; `data` contains the catalog envelope above.
 Trigger types include `SystemTriggerName`; SDK config uses `eventName` and `filters`.
 MCP: `list-event-catalog` accepts `limit`, `after`, and `search`, or `event` to
 search for one event's fields. It returns the event array and a second text

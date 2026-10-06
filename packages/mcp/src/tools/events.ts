@@ -148,6 +148,7 @@ export function addEventTools(server: McpServer, opensend: Opensend) {
           {
             type: "text",
             text: JSON.stringify({
+              object: response.data.object,
               has_more: response.data.has_more,
               next_cursor: response.data.next_cursor,
             }),

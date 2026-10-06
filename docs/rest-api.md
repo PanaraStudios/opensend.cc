@@ -38,7 +38,7 @@ Keys are stored as SHA-256 hashes; the token is shown once. Any team member can 
 | `GET /emails`, `GET /emails/{id}` | Sent-email metadata and, on retrieval, the HTML and plain text. Full access required. |
 | `PATCH /emails/{id}`, `POST /emails/{id}/cancel` | Reschedule with `scheduled_at`, or cancel a scheduled email. Full access required. Returns `{ "object": "email", "id" }`. |
 | `POST /events`, `GET /events`, `GET /events/{id}`, `PATCH /events/{id}`, `DELETE /events/{id}` | Custom event definitions, as Resend. `{id}` is the event's id or its name. Backed by the same rules as the dashboard's Events page. |
-| `GET /events/catalog` | Searchable catalog, scope `events:read`: `{object:"list", has_more, next_cursor, data}`. Optional `limit` (custom definitions per page, 1–100, default 20), `after` (previous `next_cursor`), `search`. System events are included on the first page; later pages contain custom definitions. Keep search unchanged when continuing. |
+| `GET /events/catalog` | Searchable catalog, scope `events:read`: `{object:"event_catalog", has_more, next_cursor, data}`. Optional `limit` (custom definitions per page, 1–100, default 20), `after` (previous `next_cursor`), `search`. System events are included on the first page; later pages contain custom definitions. Keep search unchanged when continuing. |
 | `POST /events/send` | Sends a custom event for one contact, as Resend: `event`, exactly one of `contact_id` or `email`, and an optional `payload` object. Answers 202 `{ "object": "event", "event" }`. |
 
 ## Deviations from Resend

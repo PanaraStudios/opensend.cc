@@ -173,7 +173,7 @@ test("12k legacy definitions page by name, search by name and retain selected sc
   ).rejects.toThrow("between 1 and 100")
 }, 60000)
 
-test("REST catalog exposes forward search pages and cap failures in the public shape", async () => {
+test("REST catalog keeps object event_catalog while adding forward search pages and cap failures", async () => {
   const f = await fixture()
   const org = f.owner.team
   await f.owner.client.mutation(api.automationEvents.ensure, {
@@ -195,9 +195,17 @@ test("REST catalog exposes forward search pages and cap failures in the public s
     })
   const first = await request("/events/catalog?limit=1")
   expect(first.status).toBe(200)
+  const defaultPage = await request("/events/catalog")
+  expect(await defaultPage.json()).toMatchObject({
+    object: "event_catalog",
+    data: expect.any(Array),
+    has_more: false,
+    next_cursor: null,
+  })
   const body = await first.json()
+  expect(body.object).toBe("event_catalog")
   expect(body).toMatchObject({
-    object: "list",
+    object: "event_catalog",
     has_more: true,
     next_cursor: expect.any(String),
   })
@@ -206,13 +214,13 @@ test("REST catalog exposes forward search pages and cap failures in the public s
     `/events/catalog?limit=1&after=${encodeURIComponent(body.next_cursor)}`
   )
   expect(await next.json()).toMatchObject({
-    object: "list",
+    object: "event_catalog",
     has_more: true,
     data: [{ name: "beta" }],
   })
   const searched = await request("/events/catalog?search=zeta")
   expect(await searched.json()).toMatchObject({
-    object: "list",
+    object: "event_catalog",
     has_more: false,
     next_cursor: null,
     data: [{ name: "zeta" }],
