@@ -97,13 +97,18 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
   assert.ok(
     !calls.some((call) => call.args[2]?.startsWith("BETTER_AUTH_SECRET="))
   )
-  assert.deepEqual(calls.at(-1).args, [
+  assert.deepEqual(calls.at(-2).args, [
     "deploy",
     "--yes",
     "--typecheck",
     "disable",
     "--codegen",
     "disable",
+  ])
+  assert.deepEqual(calls.at(-1).args, [
+    "run",
+    "migrations:initializeEventCounts",
+    "{}",
   ])
   for (const call of calls) {
     assert.equal(call.url, url)
@@ -152,13 +157,18 @@ test("cloud deploy skips readiness and selects only the deploy key", async (t) =
   assert.ok(
     calls.some((call) => call.args[2] === "SITE_URL=https://mail.example.test")
   )
-  assert.deepEqual(calls.at(-1).args, [
+  assert.deepEqual(calls.at(-2).args, [
     "deploy",
     "--yes",
     "--typecheck",
     "disable",
     "--codegen",
     "disable",
+  ])
+  assert.deepEqual(calls.at(-1).args, [
+    "run",
+    "migrations:initializeEventCounts",
+    "{}",
   ])
   for (const call of calls) {
     assert.equal(call.url, undefined)
@@ -216,4 +226,22 @@ test("rejects neither credential mode before calling the CLI", async (t) => {
     /CONVEX_SELF_HOSTED_ADMIN_KEY.*CONVEX_DEPLOY_KEY.*required/
   )
   assert.deepEqual(calls, [])
+})
+
+test("a failed automatic count backfill start fails the upgrade after deployment", async (t) => {
+  const f = await fixture(t)
+  const { code, stderr, calls } = await f.run([], {
+    CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+    CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:1",
+    CONVEX_DEPLOY_KEY: "fixture-cloud-credential",
+    FAIL_COMMAND: "run",
+  })
+  assert.equal(code, 1)
+  assert.match(stderr, /Convex run failed/)
+  assert.equal(calls.at(-2).args[0], "deploy")
+  assert.deepEqual(calls.at(-1).args, [
+    "run",
+    "migrations:initializeEventCounts",
+    "{}",
+  ])
 })

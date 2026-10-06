@@ -19,6 +19,11 @@ const backfill = <T extends CountedTable>(table: T) =>
   })
 
 export const countAutomationEvents = backfill("automationEvents")
+/** The one-shot migrate image starts this after deploying the functions.
+ * The component resumes bounded batches without delaying the app restart. */
+export const initializeEventCounts = migrations.runner(
+  internal.migrations.countAutomationEvents
+)
 export const countAutomations = backfill("automations")
 export const countAutomationRuns = backfill("automationRuns")
 export const countAutomationRunSteps = backfill("automationRunSteps")

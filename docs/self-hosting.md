@@ -662,21 +662,11 @@ mail archive.
 
 ### Custom event catalog upgrade (F8)
 
-For an existing large event table, deploy the staging commit `f1706f2` first.
-It mounts `automationEventCounts` and declares `automationEvents.search_name`
-as staged so the name search index backfills without blocking deployment.
-Run `pnpm backend run migrations:backfillCounts` and wait for
-`migrations:countAutomationEvents` to reach `success`. The migration processes
-bounded batches and can be resumed or rerun without double counting.
-
-Until that backfill finishes, new definitions for teams with existing events
-are refused with an initialization message; existing definitions, sends,
-updates and deletes remain available. This prevents an incomplete aggregate
-from authorizing a team already over the 10,000 cap. Fresh installations should
-also run the migration runner before defining events.
-
-After the staged name index finishes backfilling, deploy the catalog activation
-commits `6eebb3a` and `f2bdf5e` together. The activation removes
-`staged` and enables the paged catalog and dashboard name search. Keep the
-application and SDK/MCP deployment together: catalog responses now use the list
-envelope with `has_more` and `next_cursor`; existing event entry fields are preserved.
+Use the normal installer upgrade command. The migrate image deploys the name
+search index and automatically starts the resumable custom-event counter
+backfill in bounded batches. No manual migration or second deployment is needed.
+Existing teams may briefly see “Custom event counts are being initialized”
+when adding a definition; existing definitions, sends, updates and deletes
+remain available. New definitions are refused until the count is complete,
+then the 10,000-type cap applies. REST catalog responses keep
+`object: "event_catalog"` and `data`, adding `has_more` and `next_cursor`.

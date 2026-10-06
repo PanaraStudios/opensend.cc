@@ -42,7 +42,7 @@ export const insertAutomationEvent = async (
       .first()
     if (existing)
       throw invalid(
-        "Custom event counts are being initialized. Run migrations:backfillCounts before creating new event types."
+        "Custom event counts are being initialized. Try again in a moment."
       )
   }
   if (
