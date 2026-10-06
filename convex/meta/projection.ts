@@ -73,8 +73,11 @@ const accountByExternalId = async (
   (
     await ctx.db
       .query("channelAccounts")
-      .withIndex("by_channel_and_externalId", (q) =>
-        q.eq("channel", channel).eq("externalId", id)
+      .withIndex("by_channel_and_externalId_and_disconnectedAt", (q) =>
+        q
+          .eq("channel", channel)
+          .eq("externalId", id)
+          .eq("disconnectedAt", undefined)
       )
       .take(20)
   ).find(live) ?? null

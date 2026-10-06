@@ -93,8 +93,11 @@ export async function findChannelAccount(
         (
           await ctx.db
             .query("channelAccounts")
-            .withIndex("by_channel_and_externalId", (q) =>
-              q.eq("channel", channel).eq("externalId", from)
+            .withIndex("by_organizationId_and_channel_and_externalId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("channel", channel)
+                .eq("externalId", from)
             )
             .take(20)
         ).find((a) => a.organizationId === organizationId && live(a)) ?? null,

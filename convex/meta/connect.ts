@@ -232,13 +232,24 @@ async function upsertNumber(
   const { organizationId, number, now } = input
   const rows = await ctx.db
     .query("channelAccounts")
-    .withIndex("by_channel_and_externalId", (q) =>
-      q.eq("channel", "whatsapp").eq("externalId", number.externalId)
+    .withIndex("by_channel_and_externalId_and_disconnectedAt", (q) =>
+      q
+        .eq("channel", "whatsapp")
+        .eq("externalId", number.externalId)
+        .eq("disconnectedAt", undefined)
     )
     .take(20)
   if (rows.some((row) => row.organizationId !== organizationId && live(row)))
     throw new ConvexError(WABA_TAKEN)
-  const existing = rows.find((row) => row.organizationId === organizationId)
+  const existing = await ctx.db
+    .query("channelAccounts")
+    .withIndex("by_organizationId_and_channel_and_externalId", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("channel", "whatsapp")
+        .eq("externalId", number.externalId)
+    )
+    .first()
   const fields = {
     connectionId: input.connectionId,
     wabaId: input.wabaId,
@@ -354,8 +365,11 @@ async function pageRows(
 ) {
   return ctx.db
     .query("channelAccounts")
-    .withIndex("by_channel_and_externalId", (q) =>
-      q.eq("channel", channel).eq("externalId", externalId)
+    .withIndex("by_channel_and_externalId_and_disconnectedAt", (q) =>
+      q
+        .eq("channel", channel)
+        .eq("externalId", externalId)
+        .eq("disconnectedAt", undefined)
     )
     .take(20)
 }
@@ -438,9 +452,15 @@ export const storePages = internalMutation({
             })
         }
       }
-      const existing = (
-        await pageRows(ctx, account.channel, account.externalId)
-      ).find((row) => row.organizationId === args.organizationId)
+      const existing = await ctx.db
+        .query("channelAccounts")
+        .withIndex("by_organizationId_and_channel_and_externalId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("channel", account.channel)
+            .eq("externalId", account.externalId)
+        )
+        .first()
       const {
         tokenLast4: _last4,
         encryptedToken: _token,
