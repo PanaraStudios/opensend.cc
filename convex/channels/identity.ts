@@ -120,11 +120,20 @@ export async function upsertChannelThread(
     )
       await ctx.db.patch("channelContacts", identity._id, changes)
     channelContactId = identity._id
-    if (identity.contactId !== contactId)
+    if (identity.contactId !== contactId) {
       await ctx.scheduler.runAfter(0, internal.channels.identity.relinkCalls, {
         channelContactId,
         cursor: null,
       })
+      await ctx.scheduler.runAfter(
+        0,
+        internal.channels.identity.relinkThreads,
+        {
+          channelContactId,
+          cursor: null,
+        }
+      )
+    }
   } else
     channelContactId = await ctx.db.insert("channelContacts", {
       organizationId: account.organizationId,
@@ -408,7 +417,53 @@ export async function recordWhatsAppPhone(
     (!phoneOwner || phoneOwner._id === contact._id)
   )
     await patchContact(ctx, contact, { phone })
+  if (phoneOwner && phoneOwner._id !== identity.contactId)
+    await upsertChannelThread(ctx, account, {
+      externalId: phone.slice(1),
+      phone,
+      at: Date.now(),
+      preview: "",
+      direction: "outbound",
+      refreshThread: false,
+    })
 }
+
+/** A learned CRM link applies to every sending number's historical thread. */
+export const relinkThreads = internalMutation({
+  args: {
+    channelContactId: v.id("channelContacts"),
+    cursor: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const identity = await ctx.db.get("channelContacts", args.channelContactId)
+    if (!identity || identity.mergedIntoId) return null
+    const page = await ctx.db
+      .query("conversations")
+      .withIndex("by_channelContactId", (q) =>
+        q.eq("channelContactId", identity._id)
+      )
+      .paginate({ cursor: args.cursor, numItems: 100 })
+    for (const thread of page.page)
+      if (
+        thread.organizationId === identity.organizationId &&
+        thread.contactId !== identity.contactId
+      )
+        await patchRow(ctx, "conversations", thread._id, {
+          contactId: identity.contactId,
+        })
+    if (!page.isDone)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.channels.identity.relinkThreads,
+        {
+          ...args,
+          cursor: page.continueCursor,
+        }
+      )
+    return null
+  },
+})
 
 /** Resolve business aliases first, then pre-alias rows written by older webhooks. */
 export async function findWhatsAppUserIdentity(

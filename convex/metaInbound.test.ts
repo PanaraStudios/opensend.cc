@@ -2,7 +2,7 @@
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import { internal, api } from "./_generated/api"
 import type { Doc } from "./_generated/dataModel"
-import { insertRow } from "./counts"
+import { insertRow, patchRow } from "./counts"
 import { upsertContact } from "./audience"
 import {
   inboundFixture,
@@ -211,6 +211,90 @@ test.each(["unavailable channel", "interrupted worker"] as const)(
     expect(media.storageId).toBeUndefined()
   }
 )
+
+test("a send response links a BSUID's phone to the existing CRM contact across threads", async () => {
+  const f = await inboundFixture()
+  const known = await f.t.run((ctx) =>
+    upsertContact(
+      ctx,
+      f.owner.team,
+      { phone: `+${SENDER}`, firstName: "Known customer" },
+      { properties: [], segmentIds: [] }
+    )
+  )
+  const recipient = "business-user"
+  const links = await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    await patchRow(ctx, "channelAccounts", account._id, {
+      registeredAt: Date.now(),
+    })
+    const id = await createChannelMessage(
+      ctx,
+      {
+        channel: "whatsapp",
+        from: f.account,
+        body: {
+          recipient,
+          type: "template",
+          template: { name: "external_template", language: "en_US" },
+        },
+      },
+      { organizationId: f.owner.team, source: "api" }
+    )
+    const message = (await ctx.db.get("channelMessages", id))!
+    const second = await insertRow(ctx, "channelAccounts", {
+      organizationId: f.owner.team,
+      channel: "whatsapp",
+      connectionId: account.connectionId,
+      externalId: "second-number",
+      displayName: "Second number",
+      handle: "+15550783882",
+      status: "active",
+      throughputMps: 80,
+    })
+    const thread = await upsertChannelThread(
+      ctx,
+      (await ctx.db.get("channelAccounts", second))!,
+      {
+        externalId: recipient,
+        userId: recipient,
+        at: Date.now(),
+        direction: "outbound",
+        preview: "History",
+      }
+    )
+    await acceptChannelMessage(
+      ctx,
+      message,
+      "wamid.phone-learned",
+      Date.now(),
+      JSON.stringify({
+        contacts: [{ user_id: recipient, wa_id: SENDER }],
+      })
+    )
+    return { message, secondThread: thread.conversationId }
+  })
+  const immediate = await rows(f)
+  expect(
+    immediate.identities.find(
+      (row) => row._id === links.message.channelContactId
+    )?.contactId
+  ).toBe(known.id)
+  expect(
+    immediate.conversations.find(
+      (row) => row._id === links.message.conversationId
+    )?.contactId
+  ).toBe(known.id)
+  expect(
+    immediate.events.find((row) => row.type === "whatsapp.message.sent")?.data
+      .contact_id
+  ).toBe(known.id)
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("conversations", links.secondThread)))
+      ?.contactId
+  ).toBe(known.id)
+})
 
 test("missing, wrong and altered signatures refuse storage; raw bytes are capped", async () => {
   const f = await inboundFixture()
