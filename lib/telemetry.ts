@@ -50,6 +50,9 @@ export function telemetryEnabled(
 ) {
   return environment !== "0" && (preference ?? true)
 }
+export function callingEnabled(environment: string | undefined): boolean {
+  return ["1", "yes", "true"].includes(environment?.trim().toLowerCase() ?? "")
+}
 const SEMVER =
   /^\d+\.\d+\.\d+(?:-[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?(?:\+[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?$/
 

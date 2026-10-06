@@ -32,6 +32,7 @@ async function installed() {
 }
 test("POST contains only allowed anonymous fields, stable UUID and bands", async () => {
   vi.stubEnv("OPENSEND_VERSION", "v2.0.0-rc.1")
+  vi.stubEnv("OPENSEND_CALLING", "yes")
   const f = await installed()
   const fetchMock = vi
     .fn()
@@ -47,6 +48,7 @@ test("POST contains only allowed anonymous fields, stable UUID and bands", async
   const payload = JSON.parse(request.body)
   expect(payload).toEqual(preview)
   expect(payload.version).toBe("2.0.0-rc.1")
+  expect(payload.deployment.calling).toBe(true)
   expect(payload.installationId).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
   )

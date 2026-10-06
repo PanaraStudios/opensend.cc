@@ -18,6 +18,7 @@ import { CHANNELS, CHANNEL_MESSAGE_STATUSES } from "./tables/channels"
 import { literals } from "./counts"
 import {
   buildPayload,
+  callingEnabled,
   emptyUsage,
   telemetryEnabled,
   TELEMETRY_CAP,
@@ -449,7 +450,7 @@ async function gather(
       env.OPENSEND_ARCH === "amd64" || env.OPENSEND_ARCH === "arm64"
         ? env.OPENSEND_ARCH
         : "unknown",
-    calling: env.OPENSEND_CALLING === "1",
+    calling: callingEnabled(env.OPENSEND_CALLING),
   }
   return buildPayload({
     ...identity,

@@ -3,6 +3,7 @@ import test from "node:test"
 import {
   band,
   buildPayload,
+  callingEnabled,
   emptyUsage,
   normalizeTelemetryVersion,
   telemetryEnabled,
@@ -30,6 +31,14 @@ test("environment hard off overrides the default and preference", () => {
   assert.equal(telemetryEnabled(undefined), true)
   assert.equal(telemetryEnabled("1", false), false)
   assert.equal(telemetryEnabled("0", true), false)
+})
+test("calling accepts numeric, installer and boolean forms regardless of case or whitespace", () => {
+  for (const value of ["yes", "1", "true", "YES", " YeS ", " TRUE ", " 1 "])
+    assert.equal(callingEnabled(value), true, JSON.stringify(value))
+})
+test("calling is off for missing, empty, negative and unrecognized values", () => {
+  for (const value of ["no", "0", "", undefined, "false", "on", "2", " ", " NO "])
+    assert.equal(callingEnabled(value), false, JSON.stringify(value))
 })
 test("payload explicitly projects schema 1 and supports v1 zero defaults", () => {
   const counts = emptyUsage()
