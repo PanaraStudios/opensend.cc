@@ -51,6 +51,8 @@ export const metaTables = {
     /** The token's granted permissions; Meta lists a handful. */
     scopes: v.array(v.string()),
     status: metaConnectionStatusValue,
+    /** Fences disconnect continuations across reconnects. */
+    disconnectGeneration: v.optional(v.number()),
     checkedAt: v.optional(v.number()),
     error: v.optional(v.string()),
   })

@@ -719,21 +719,60 @@ export const markConnection = internalMutation({
 export const disconnect = mutation({
   args: { connectionId: v.id("metaConnections") },
   returns: v.null(),
-  handler: async (ctx, { connectionId }) => {
+  handler: async (ctx, { connectionId }): Promise<null> => {
     const connection = await ctx.db.get("metaConnections", connectionId)
     if (!connection || connection.status === "disconnected")
       throw new ConvexError("Connection not found")
     await requireTeam(ctx, connection.organizationId, "write")
-    const now = Date.now()
-    const accounts = await ctx.db
-      .query("channelAccounts")
-      .withIndex("by_connectionId", (q) => q.eq("connectionId", connectionId))
-      .take(500)
-    for (const account of accounts)
+    const generation = (connection.disconnectGeneration ?? 0) + 1
+    await ctx.db.patch("metaConnections", connectionId, {
+      status: "disconnected",
+      error: undefined,
+      disconnectGeneration: generation,
+    })
+    await ctx.runMutation(internal.meta.connect.disconnectBatch, {
+      connectionId,
+      generation,
+      at: Date.now(),
+      cursor: null,
+    })
+    return null
+  },
+})
+
+/** Historical Page/IG endpoints and WABAs can outgrow one transaction. */
+export const disconnectBatch = internalMutation({
+  args: {
+    connectionId: v.id("metaConnections"),
+    generation: v.number(),
+    at: v.number(),
+    cursor: v.union(v.string(), v.null()),
+    accountsDone: v.optional(v.boolean()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const { connectionId } = args
+    const connection = await ctx.db.get("metaConnections", connectionId)
+    // Reconnect, or a subsequent disconnect, invalidates an older cleanup.
+    if (
+      !connection ||
+      connection.status !== "disconnected" ||
+      connection.disconnectGeneration !== args.generation
+    )
+      return null
+    const accounts = args.accountsDone
+      ? { page: [], isDone: true, continueCursor: "" }
+      : await ctx.db
+          .query("channelAccounts")
+          .withIndex("by_connectionId", (q) =>
+            q.eq("connectionId", connectionId)
+          )
+          .paginate({ cursor: args.cursor, numItems: 100 })
+    for (const account of accounts.page)
       if (live(account))
         await patchRow(ctx, "channelAccounts", account._id, {
           status: "disconnected",
-          disconnectedAt: now,
+          disconnectedAt: args.at,
         })
     const wabas = await ctx.db
       .query("whatsappBusinessAccounts")
@@ -741,17 +780,15 @@ export const disconnect = mutation({
       .take(100)
     for (const waba of wabas)
       await ctx.db.delete("whatsappBusinessAccounts", waba._id)
-    await ctx.db.patch("metaConnections", connectionId, {
-      status: "disconnected",
-      error: undefined,
-    })
     if (wabas.length)
       await ctx.scheduler.runAfter(
         0,
         internal.meta.connectActions.unsubscribe,
         { connectionId, wabaIds: wabas.map((waba) => waba.wabaId) }
       )
-    const pages = accounts.filter((a) => a.channel === "messenger")
+    const pages = accounts.page.filter(
+      (a) => a.channel === "messenger" && live(a)
+    )
     if (pages.length)
       await ctx.scheduler.runAfter(
         0,
@@ -763,6 +800,12 @@ export const disconnect = mutation({
           })),
         }
       )
+    if (!accounts.isDone || wabas.length === 100)
+      await ctx.scheduler.runAfter(0, internal.meta.connect.disconnectBatch, {
+        ...args,
+        cursor: accounts.continueCursor,
+        accountsDone: accounts.isDone,
+      })
     return null
   },
 })
