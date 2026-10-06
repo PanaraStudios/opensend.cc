@@ -20,6 +20,7 @@ import { upsertChannelThread } from "./channels/identity"
 import { signedFileLink } from "./fileDownloads"
 import { limitedBody, BodyTooLarge } from "./ses/web"
 import * as metaApp from "./meta/app"
+import { hydratedChannelMessage } from "./channels/payload"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -294,6 +295,47 @@ test("a send response links a BSUID's phone to the existing CRM contact across t
     (await f.t.run((ctx) => ctx.db.get("conversations", links.secondThread)))
       ?.contactId
   ).toBe(known.id)
+})
+
+test("delayed old reactions cannot displace the latest observation from a bounded page", async () => {
+  const f = await inboundFixture()
+  await project(f, incoming("wamid.reaction-target"))
+  const payload = await f.t.run(async (ctx) => {
+    const target = (await ctx.db.query("channelMessages").first())!
+    for (let i = 0; i < 102; i++) {
+      const messageId = await ctx.db.insert("channelMessages", {
+        organizationId: target.organizationId,
+        channel: "whatsapp",
+        accountId: target.accountId,
+        conversationId: target.conversationId,
+        channelContactId: target.channelContactId,
+        direction: "inbound",
+        from: SENDER,
+        to: PHONE_ID,
+        type: "reaction",
+        status: "received",
+        preview: "[reaction]",
+        externalId: `wamid.reaction.${i}`,
+        reactionTargetExternalId: target.externalId,
+        observedAt: Date.now() - i * 1000,
+        generation: 1,
+        attempts: 0,
+      })
+      await ctx.db.insert("channelMessageContents", {
+        messageId,
+        payload: JSON.stringify({
+          reaction: {
+            message_id: target.externalId,
+            emoji: i === 0 ? "👍" : "❤️",
+          },
+        }),
+      })
+    }
+    return hydratedChannelMessage(ctx, target, Date.now())
+  })
+  expect(payload.reactions).toEqual([
+    expect.objectContaining({ emoji: "👍", external_id: "wamid.reaction.0" }),
+  ])
 })
 
 test("missing, wrong and altered signatures refuse storage; raw bytes are capped", async () => {

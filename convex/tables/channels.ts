@@ -343,6 +343,11 @@ export const channelTables = {
     .index("by_accountId_and_reactionTargetExternalId", [
       "accountId",
       "reactionTargetExternalId",
+    ])
+    .index("by_accountId_and_reactionTargetExternalId_and_observedAt", [
+      "accountId",
+      "reactionTargetExternalId",
+      "observedAt",
     ]),
   channelMediaUploads: defineTable({
     organizationId: v.string(),
