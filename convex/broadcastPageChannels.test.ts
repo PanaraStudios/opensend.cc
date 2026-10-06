@@ -163,6 +163,19 @@ for (const channel of PAGE_CHANNELS) {
       settled: true,
       failed: false,
     })
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get("broadcastRecipients", open._id)).toMatchObject({
+        displayMessageStatus: "queued",
+        displayIdentity: { channel, externalId: "101" },
+      })
+      const missing = page.page.find((r) => r.contactId === f.missing)!
+      expect(
+        await ctx.db.get("broadcastRecipients", missing._id)
+      ).toMatchObject({
+        displayMessageStatus: null,
+        displayIdentity: null,
+      })
+    })
     expect(skipReasonLabel("window_closed")).toBe("Messaging window closed")
     expect(skipReasonLabel("no_channel_identity")).toBe("No channel identity")
     await f.t.run(async (ctx) => {

@@ -1,6 +1,7 @@
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
 import { variableSources } from "./variables"
+import { channelTables, channelMessageStatusValue } from "./channels"
 
 export const broadcastChannel = v.union(
   v.literal("email"),
@@ -140,6 +141,25 @@ export const broadcastTables = {
     email: v.string(),
     emailId: v.optional(v.id("emails")),
     messageId: v.optional(v.id("channelMessages")),
+    /** Primary identity display at fan-out; null records a known absence.
+        Omitted on legacy rows, which hydrate the current primary identity. */
+    displayIdentity: v.optional(
+      v.union(
+        v.null(),
+        channelTables.channelContacts.validator.pick(
+          "channel",
+          "externalId",
+          "profileName",
+          "phone",
+          "username"
+        )
+      )
+    ),
+    /** Kept in step by the message writer; null means the message was removed.
+        Omitted on legacy rows, which look up their message. */
+    displayMessageStatus: v.optional(
+      v.union(v.null(), channelMessageStatusValue)
+    ),
     skipReason: v.optional(skipReasonValue),
     sent: v.optional(v.boolean()),
     settled: v.boolean(),

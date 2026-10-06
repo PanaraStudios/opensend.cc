@@ -555,6 +555,13 @@ export async function patchRow<T extends CountedTable>(
   const after = (await ctx.db.get(table, id))!
   for (const counter of COUNTED[table])
     await counter.replace(ctx, before!, after)
+  // The common writer covers delivery, receipts, skips and future status paths.
+  // Do this in the same transaction as the source message and its aggregates.
+  if (table === "channelMessages") {
+    const message = after as unknown as Doc<"channelMessages">
+    if (message.status !== (before as unknown as Doc<"channelMessages">).status)
+      await syncRecipientMessageStatus(ctx, message, message.status)
+  }
   return after
 }
 
@@ -566,6 +573,31 @@ export async function deleteRow<T extends CountedTable>(
   const doc = await ctx.db.get(table, id)
   await ctx.db.delete(table, id)
   if (doc) for (const counter of COUNTED[table]) await counter.delete(ctx, doc)
+  if (doc && table === "channelMessages")
+    await syncRecipientMessageStatus(
+      ctx,
+      doc as unknown as Doc<"channelMessages">,
+      null
+    )
+}
+
+async function syncRecipientMessageStatus(
+  ctx: MutationCtx,
+  message: Doc<"channelMessages">,
+  status: Doc<"channelMessages">["status"] | null
+) {
+  if (!message.broadcastId) return
+  const recipient = await ctx.db
+    .query("broadcastRecipients")
+    .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+    .unique()
+  if (
+    recipient?.organizationId === message.organizationId &&
+    recipient.displayMessageStatus !== status
+  )
+    await patchRow(ctx, "broadcastRecipients", recipient._id, {
+      displayMessageStatus: status,
+    })
 }
 
 /** Adds a row written before its counts existed; the backfill runs this. */

@@ -5,7 +5,11 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { draft, type BroadcastInput } from "./broadcasts"
 import { createEmail, validateSender, type ResolvedSender } from "./emails"
 import { defaultFromAddress } from "../lib/dashboard/format"
-import { findTopicChoice, listProperties } from "./audience"
+import {
+  findTopicChoice,
+  listProperties,
+  primaryContactIdentity,
+} from "./audience"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
 import { suppressedAmong } from "./suppressions"
 import { insertRow } from "./counts"
@@ -172,6 +176,8 @@ export async function sendEmailRecipient(
     contactId: contact._id,
     email,
     emailId,
+    displayIdentity: await primaryContactIdentity(ctx, contact),
+    displayMessageStatus: null,
     settled: false,
     failed: false,
   })

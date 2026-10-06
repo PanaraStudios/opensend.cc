@@ -340,6 +340,15 @@ test("broadcast pages enqueue once per phone contact, record all skip reasons an
       .filter(Boolean)
       .sort()
   ).toEqual(["marketing_opt_out", "no_phone", "topic_opt_out", "unsubscribed"])
+  for (const recipient of recipients) {
+    const stored = await f.t.run((ctx) =>
+      ctx.db.get("broadcastRecipients", recipient._id)
+    )
+    expect(stored?.displayIdentity).toBeDefined()
+    expect(stored?.displayMessageStatus).toBe(
+      recipient.messageId ? "queued" : null
+    )
+  }
   for (const recipient of recipients.filter((row) => row.messageId)) {
     const detail = await f.owner.client.query(api.messages.get, {
       id: recipient.messageId!,
