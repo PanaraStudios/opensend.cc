@@ -1,3 +1,4 @@
+import type { PostOptions } from '../common/interfaces';
 import { AutomationRuns } from '../automation-runs/automation-runs';
 import { buildPaginationQuery } from '../common/utils/build-pagination-query';
 import {
@@ -47,10 +48,12 @@ export class Automations {
 
   async create(
     payload: CreateAutomationOptions,
+    requestOptions: PostOptions = {},
   ): Promise<CreateAutomationResponse> {
     const data = await this.resend.post<CreateAutomationResponseSuccess>(
       '/automations',
       parseAutomationToApiOptions(payload),
+      requestOptions,
     );
 
     return data;
@@ -113,16 +116,26 @@ export class Automations {
     return data;
   }
 
-  async duplicate(id: string): Promise<DuplicateAutomationResponse> {
+  async duplicate(
+    id: string,
+    requestOptions: PostOptions = {},
+  ): Promise<DuplicateAutomationResponse> {
     const data = await this.resend.post<DuplicateAutomationResponseSuccess>(
       `/automations/${id}/duplicate`,
+      undefined,
+      requestOptions,
     );
     return data;
   }
 
-  async stop(id: string): Promise<StopAutomationResponse> {
+  async stop(
+    id: string,
+    requestOptions: PostOptions = {},
+  ): Promise<StopAutomationResponse> {
     const data = await this.resend.post<StopAutomationResponseSuccess>(
-      `/automations/${id}/stop`,
+      `/automations/${encodeURIComponent(id)}/stop`,
+      undefined,
+      requestOptions,
     );
     return data;
   }

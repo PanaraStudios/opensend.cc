@@ -10,6 +10,10 @@ export const ivrTables = {
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["organizationId"],
+    })
     .index("by_promptVoice_credentialId", ["promptVoice.credentialId"]),
   ivrPromptRenders: defineTable({
     organizationId: v.string(),

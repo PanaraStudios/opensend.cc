@@ -1,3 +1,4 @@
+import { channelPagination, channelPageCheck } from "./channelMessaging.js"
 import type { McpServer } from "@modelcontextprotocol/server"
 import type { Opensend } from "@opensendcc/sdk"
 import { z } from "zod"
@@ -22,6 +23,7 @@ const CREATE_TOPIC_TOOL = {
       .max(200)
       .optional()
       .describe("Topic description (max 200 characters)"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -30,7 +32,7 @@ const LIST_TOPICS_TOOL = {
   annotations: { readOnlyHint: true },
   description:
     "List all topics from Opensend. This tool is useful for getting topic IDs to use with other tools like send-email.",
-  inputSchema: {},
+  inputSchema: channelPagination,
 } as const
 
 const GET_TOPIC_TOOL = {
@@ -75,12 +77,15 @@ export function addTopicTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "create-topic",
     CREATE_TOPIC_TOOL,
-    async ({ name, defaultSubscription, description }) => {
-      const response = await opensend.topics.create({
-        name,
-        defaultSubscription,
-        description,
-      })
+    async ({ name, defaultSubscription, description, idempotencyKey }) => {
+      const response = await opensend.topics.create(
+        {
+          name,
+          defaultSubscription,
+          description,
+        },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
@@ -98,8 +103,11 @@ export function addTopicTools(server: McpServer, opensend: Opensend) {
     }
   )
 
-  server.registerTool("list-topics", LIST_TOPICS_TOOL, async (_args, _ctx) => {
-    const response = await opensend.topics.list()
+  server.registerTool("list-topics", LIST_TOPICS_TOOL, async (input) => {
+    channelPageCheck(input)
+    const response = await opensend.topics.list(
+      input as Parameters<typeof opensend.topics.list>[0]
+    )
 
     if (response.error) {
       throw new Error(
@@ -109,6 +117,7 @@ export function addTopicTools(server: McpServer, opensend: Opensend) {
 
     const topics = response.data.data
     return {
+      structuredContent: response.data,
       content: [
         {
           type: "text",

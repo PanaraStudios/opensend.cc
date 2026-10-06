@@ -1,3 +1,4 @@
+import type { PostOptions } from "../common/interfaces"
 import type { Opensend } from "../resend"
 import type { ChannelPage, ChannelRequestOptions } from "../channels/interfaces"
 import type { PaginationOptions } from "../common/interfaces/pagination-options.interface"
@@ -81,10 +82,15 @@ export class KnowledgeBases {
       `/knowledge-bases/${idPath(id)}`
     )
   }
-  search(id: string, input: { query: string; limit?: number }) {
+  search(
+    id: string,
+    input: { query: string; limit?: number },
+    requestOptions: PostOptions = {}
+  ) {
     return this.resend.post<{ data: KnowledgeMatch[] }>(
       `/knowledge-bases/${idPath(id)}/search`,
-      input
+      input,
+      requestOptions
     )
   }
 }
@@ -107,12 +113,16 @@ export class BotTools {
       `/bot-tools/${idPath(id)}`
     )
   }
-  test(id: string, input: Record<string, string | number | boolean>) {
+  test(
+    id: string,
+    input: Record<string, string | number | boolean>,
+    requestOptions: PostOptions = {}
+  ) {
     return this.resend.post<{
       ok: boolean
       result?: unknown
       error?: string
       latencyMs: number
-    }>(`/bot-tools/${idPath(id)}/test`, input)
+    }>(`/bot-tools/${idPath(id)}/test`, input, requestOptions)
   }
 }

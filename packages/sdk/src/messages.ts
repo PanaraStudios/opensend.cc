@@ -1,5 +1,5 @@
 import type { Opensend } from "./resend"
-import type { IdempotentRequest } from "./common/interfaces/idempotent-request.interface"
+import type { PostOptions } from "./common/interfaces/post-option.interface"
 
 export type MessageChannel = "email" | "whatsapp" | "messenger" | "instagram"
 export type MessageTemplate = (
@@ -89,8 +89,12 @@ export interface MessageList {
 }
 export class Messages {
   constructor(private readonly resend: Opensend) {}
-  send(payload: SendMessageOptions, options: IdempotentRequest = {}) {
+  send(payload: SendMessageOptions, options: PostOptions = {}) {
     return this.resend.post<{ id: string }>("/messages", payload, options)
+  }
+  /** Alias matching emails.create and the channel message clients. */
+  create(payload: SendMessageOptions, options: PostOptions = {}) {
+    return this.send(payload, options)
   }
   list(options: ListMessagesOptions = {}) {
     const query = new URLSearchParams()

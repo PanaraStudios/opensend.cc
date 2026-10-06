@@ -1,3 +1,4 @@
+import type { PostOptions } from '../common/interfaces';
 import { buildPaginationQuery } from '../common/utils/build-pagination-query';
 import type { Resend } from '../resend';
 import { Batch } from './batch/batch';
@@ -37,10 +38,14 @@ export class Suppressions {
     this.batch = new Batch(resend);
   }
 
-  async add(options: AddSuppressionOptions): Promise<AddSuppressionResponse> {
+  async add(
+    options: AddSuppressionOptions,
+    requestOptions: PostOptions = {},
+  ): Promise<AddSuppressionResponse> {
     return this.resend.post<AddSuppressionResponseSuccess>(
       '/suppressions',
       options,
+      requestOptions,
     );
   }
 

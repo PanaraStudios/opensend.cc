@@ -79,6 +79,7 @@ const CREATE_DOMAIN_TOOL = {
       })
       .optional()
       .describe("Domain capabilities configuration."),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -178,6 +179,7 @@ const VERIFY_DOMAIN_TOOL = {
     'Trigger domain verification in Opensend. This starts an asynchronous verification process that checks if the DNS records are correctly configured. The domain status will temporarily show as "pending" during verification.',
   inputSchema: {
     id: z.string().nonempty().describe("Domain ID"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -212,6 +214,7 @@ const CREATE_DOMAIN_CLAIM_TOOL = {
       .describe(
         'Custom subdomain for tracking links (e.g., "track" for track.example.com).'
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -237,6 +240,7 @@ const VERIFY_DOMAIN_CLAIM_TOOL = {
       .string()
       .nonempty()
       .describe("The placeholder Domain ID created by the claim"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -253,17 +257,21 @@ export function addDomainTools(server: McpServer, opensend: Opensend) {
       tls,
       trackingSubdomain,
       capabilities,
+      idempotencyKey,
     }) => {
-      const response = await opensend.domains.create({
-        name,
-        region,
-        customReturnPath,
-        openTracking,
-        clickTracking,
-        tls,
-        trackingSubdomain,
-        capabilities,
-      })
+      const response = await opensend.domains.create(
+        {
+          name,
+          region,
+          customReturnPath,
+          openTracking,
+          clickTracking,
+          tls,
+          trackingSubdomain,
+          capabilities,
+        },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
@@ -424,25 +432,29 @@ export function addDomainTools(server: McpServer, opensend: Opensend) {
     }
   })
 
-  server.registerTool("verify-domain", VERIFY_DOMAIN_TOOL, async ({ id }) => {
-    const response = await opensend.domains.verify(id)
+  server.registerTool(
+    "verify-domain",
+    VERIFY_DOMAIN_TOOL,
+    async ({ id, idempotencyKey }) => {
+      const response = await opensend.domains.verify(id, { idempotencyKey })
 
-    if (response.error) {
-      throw new Error(
-        `Failed to verify domain: ${JSON.stringify(response.error)}`
-      )
-    }
+      if (response.error) {
+        throw new Error(
+          `Failed to verify domain: ${JSON.stringify(response.error)}`
+        )
+      }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: "Domain verification started. The domain status will update once DNS records are verified.",
-        },
-        { type: "text", text: `ID: ${response.data.id}` },
-      ],
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Domain verification started. The domain status will update once DNS records are verified.",
+          },
+          { type: "text", text: `ID: ${response.data.id}` },
+        ],
+      }
     }
-  })
+  )
 
   server.registerTool(
     "create-domain-claim",
@@ -454,15 +466,19 @@ export function addDomainTools(server: McpServer, opensend: Opensend) {
       openTracking,
       clickTracking,
       trackingSubdomain,
+      idempotencyKey,
     }) => {
-      const response = await opensend.domains.claims.create({
-        name,
-        region,
-        customReturnPath,
-        openTracking,
-        clickTracking,
-        trackingSubdomain,
-      })
+      const response = await opensend.domains.claims.create(
+        {
+          name,
+          region,
+          customReturnPath,
+          openTracking,
+          clickTracking,
+          trackingSubdomain,
+        },
+        { idempotencyKey }
+      )
       if (response.error) {
         throw new Error(
           `Failed to create domain claim: ${JSON.stringify(response.error)}`
@@ -518,8 +534,10 @@ export function addDomainTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "verify-domain-claim",
     VERIFY_DOMAIN_CLAIM_TOOL,
-    async ({ id }) => {
-      const response = await opensend.domains.claims.verify(id)
+    async ({ id, idempotencyKey }) => {
+      const response = await opensend.domains.claims.verify(id, {
+        idempotencyKey,
+      })
       if (response.error) {
         throw new Error(
           `Failed to verify domain claim: ${JSON.stringify(response.error)}`

@@ -73,6 +73,61 @@ const fields = {
     .optional(),
 }
 export function addVoiceTools(server: McpServer, opensend: Opensend) {
+  server.registerTool(
+    "create-voice-provider",
+    {
+      title: "Create Voice Provider",
+      description:
+        "Store an encrypted provider credential for Gemini, Sarvam or ElevenLabs. The key is write-only; the response contains only the credential id.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      inputSchema: {
+        provider: fields.provider,
+        label: z.string().min(1),
+        key: z.string().min(1),
+        idempotencyKey: z.string().optional(),
+      },
+    },
+    async ({ idempotencyKey, ...input }) =>
+      channelOutput(
+        "Voice providers",
+        await opensend.voiceProviders.create(input, { idempotencyKey })
+      )
+  )
+  server.registerTool(
+    "list-voice-providers",
+    {
+      title: "List Voice Providers",
+      description:
+        "List provider credential metadata with limit and either after or before. Provider secrets are never returned.",
+      annotations: { readOnlyHint: true },
+      inputSchema: channelPagination,
+    },
+    async (input) => {
+      channelPageCheck(input)
+      return channelOutput(
+        "Voice providers",
+        await opensend.voiceProviders.list(
+          input as Parameters<typeof opensend.voiceProviders.list>[0]
+        )
+      )
+    }
+  )
+  server.registerTool(
+    "remove-voice-provider",
+    {
+      title: "Remove Voice Provider",
+      description:
+        "Remove an unused provider credential by id. Credentials referenced by bots cannot be removed.",
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+      },
+      inputSchema: { id: z.string() },
+    },
+    async ({ id }) =>
+      channelOutput("Voice providers", await opensend.voiceProviders.remove(id))
+  )
   const output = (result: { data: unknown; error: unknown }) =>
     channelOutput("Voice bots", result)
   server.registerTool(
