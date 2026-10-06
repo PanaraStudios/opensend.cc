@@ -1,6 +1,6 @@
 # v2 REST, SDK and MCP parity
 
-Audited on branch `fix/v2-dx-parity`. All 201 registered REST operations are listed below. 195 have SDK methods and MCP tools; six protocol or deprecated alias operations are explicitly exempted in `packages/sdk/test/rest-parity-exceptions.json`. None of the key-authenticated REST routes is dashboard-only or admin-only. Full-access-only operations (API keys, usage and OAuth grants) remain available to integrations.
+Audited on branch `fix/v2-dx-parity`, updated for IVR signing-secret rotation. All 202 registered REST operations are listed below. 196 have SDK methods and MCP tools; six protocol or deprecated alias operations are explicitly exempted in `packages/sdk/test/rest-parity-exceptions.json`. None of the key-authenticated REST routes is dashboard-only or admin-only. Full-access-only operations (API keys, usage and OAuth grants) remain available to integrations.
 
 The route source is `convex/api/http.ts` plus the SMTP registrations in `convex/http.ts`; the base contract lives in `openapi/opensend.yaml`. `convex/api/openapi.ts` enriches that contract with operation descriptions and schema-derived examples without changing fields or behavior. The route audit in `convex/api/openapi.test.ts` captures actual `apiRoute` registrations, including registrations outside `convex/api/`. SDK tests check all request paths and callable inventory methods. MCP tests invoke every tool and alternate route branch through the real SDK, then verify coverage and this table. New routes fail these checks until both bindings are exercised or an exact exception with a reason is added.
 
@@ -209,6 +209,7 @@ The route source is `convex/api/http.ts` plus the SMTP registrations in `convex/
 | DELETE | `/ivrs/{id}` | `ivrs:write` | `ivrs.remove` | `remove-ivr` | Covered |
 | POST | `/ivrs/{id}/validate` | `ivrs:read` | `ivrs.validate` | `validate-ivr` | Covered |
 | POST | `/ivrs/{id}/render` | `ivrs:write` | `ivrs.render` | `render-ivr` | Covered |
+| POST | `/ivrs/{id}/rotate-signing-secret` | `ivrs:write` | `ivrs.rotateSigningSecret` | `rotate-ivr-signing-secret` | Covered |
 | POST | `/voice-bots` | `voice_bots:write` | `voiceBots.create` | `create-voice-bot` | Covered |
 | GET | `/voice-bots` | `voice_bots:read` | `voiceBots.list` | `list-voice-bots` | Covered |
 | GET | `/voice-bots/{id}` | `voice_bots:read` | `voiceBots.get` | `get-voice-bot` | Covered |
