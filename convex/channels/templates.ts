@@ -76,6 +76,11 @@ export async function resolveLocalTemplate(
   }
 }
 
+/** Search scans reserve content + published bodies and historical name lookups.
+ * These reads happen after pagination, so header bytes alone are insufficient.
+ * Keep headroom for account/identity rows and up to 100 template metadata rows. */
+export const TEMPLATE_HYDRATION_BYTES = 4 * 1024 * 1024
+
 export type TemplatePageCache = Map<string, Promise<TemplateComponent[] | null>>
 
 /** Display lookups use the published copy even if Meta later paused it.
