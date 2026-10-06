@@ -15,6 +15,10 @@ export const sesTables = {
     callbackOrigin: v.string(),
     environmentCheckedAt: v.number(),
     completedAt: v.optional(v.number()),
+    installationId: v.optional(v.string()),
+    telemetryEnabled: v.optional(v.boolean()),
+    telemetryLastAttemptAt: v.optional(v.number()),
+    telemetryScheduledAt: v.optional(v.number()),
     emailDeferredAt: v.optional(v.number()),
     metaDeferredAt: v.optional(v.number()),
     channels: v.optional(

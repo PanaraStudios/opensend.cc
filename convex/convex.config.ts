@@ -10,6 +10,13 @@ const app = defineApp({
   env: {
     SITE_URL: v.string(),
 
+    OPENSEND_TELEMETRY: v.optional(v.string()),
+    OPENSEND_TELEMETRY_URL: v.optional(v.string()),
+    OPENSEND_VERSION: v.optional(v.string()),
+    OPENSEND_BACKEND: v.optional(v.string()),
+    OPENSEND_INSTALL_METHOD: v.optional(v.string()),
+    OPENSEND_ARCH: v.optional(v.string()),
+    OPENSEND_CALLING: v.optional(v.string()),
     SMTP_HOST: v.optional(v.string()),
     BETTER_AUTH_SECRET: v.string(),
     SSO_ENCRYPTION_KEY: v.string(),

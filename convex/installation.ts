@@ -584,6 +584,7 @@ export async function completeInstallation(
     await ctx.db.patch("installation", installation._id, {
       completedAt: Date.now(),
     })
+    await ctx.scheduler.runAfter(0, internal.telemetry.send, {})
     return
   }
   if (!installation.accountId) throw new ConvexError("Connect AWS first")
@@ -621,4 +622,5 @@ export async function completeInstallation(
   await ctx.db.patch("installation", installation._id, {
     completedAt: Date.now(),
   })
+  await ctx.scheduler.runAfter(0, internal.telemetry.send, {})
 }

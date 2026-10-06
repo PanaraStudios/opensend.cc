@@ -20,6 +20,7 @@ import type * as knowledge_ingest from "../knowledge/ingest.js";
 import type * as knowledge_state from "../knowledge/state.js";
 import type * as knowledge_resources from "../knowledge/resources.js";
 import type * as botToolkitAccess from "../botToolkitAccess.js";
+import type * as telemetry from "../telemetry.js";
 import type * as access from "../access.js";
 import type * as accountRecovery from "../accountRecovery.js";
 import type * as api_audience from "../api/audience.js";
@@ -276,6 +277,7 @@ declare const fullApi: ApiFromModules<{
   "knowledge/state": typeof knowledge_state;
   "knowledge/resources": typeof knowledge_resources;
   "botToolkitAccess": typeof botToolkitAccess;
+  telemetry: typeof telemetry;
   access: typeof access;
   accountRecovery: typeof accountRecovery;
   "api/audience": typeof api_audience;
