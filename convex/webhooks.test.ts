@@ -82,6 +82,58 @@ const deliveriesOf = (f: Setup, webhookId: Id<"webhooks">) =>
       .order("desc")
       .collect()
   )
+
+test("large customer events fan out in bounded replay-safe transactions", async () => {
+  const f = await setup()
+  for (let i = 0; i < 30; i++) await createWebhook(f.owner)
+  const id = await f.t.run((ctx) =>
+    ctx.db.insert("events", {
+      organizationId: f.owner.team,
+      type: "domain.created",
+      data: { body: "x".repeat(600_000) },
+    })
+  )
+  await f.t.run((ctx) =>
+    ctx.runMutation(
+      internal.webhooks.deliverEvent,
+      { id },
+      { transactionLimits: { bytesWritten: 8 * 1024 * 1024 } }
+    )
+  )
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  await f.t.mutation(internal.webhooks.deliverEvent, { id })
+  const rows = await f.t.run((ctx) =>
+    ctx.db.query("webhookDeliveries").collect()
+  )
+  expect(rows).toHaveLength(30)
+  expect(new Set(rows.map((row) => row.webhookId)).size).toBe(30)
+  expect(
+    rows.every((row) => row.messageId === `msg_${id}` && row.attempts === 1)
+  ).toBe(true)
+})
+
+test("two workers cannot claim the same customer webhook attempt", async () => {
+  const f = await setup()
+  const webhookId = await createWebhook(f.owner)
+  await deliver(f)
+  const [delivery] = await deliveriesOf(f, webhookId)
+  const args = { id: delivery._id, attempt: 0 }
+  expect(
+    await f.t.mutation(internal.webhooks.claimAttempt, args)
+  ).not.toBeNull()
+  expect(await f.t.mutation(internal.webhooks.claimAttempt, args)).toBeNull()
+  // A crashed claim still advances through the workpool completion callback.
+  await f.t.mutation(internal.webhooks.attemptDone, {
+    workId: "work" as WorkId,
+    context: args,
+    result: { kind: "failed", error: "Worker interrupted" },
+  })
+  const recorded = await f.t.run((ctx) =>
+    ctx.db.get("webhookDeliveries", delivery._id)
+  )
+  expect(recorded).toMatchObject({ attempts: 1 })
+  expect(recorded?.nextAttemptAt).toBeDefined()
+})
 const attempt = (f: Setup, id: Id<"webhookDeliveries">, number: number) =>
   f.t.action(internal.webhookDelivery.attempt, { id, attempt: number })
 const getDelivery = (f: Setup, id: Id<"webhookDeliveries">) =>
@@ -243,14 +295,6 @@ describe("signing", () => {
     expect(after).not.toBe(before)
     await deliver(f)
     const [delivery] = await deliveriesOf(f, id)
-    expect(
-      (
-        await f.t.mutation(internal.webhooks.claimAttempt, {
-          id: delivery._id,
-          attempt: 0,
-        })
-      )?.secret
-    ).toBe(after)
     await attempt(f, delivery._id, 0)
     const headers = sentHeaders(0)
     const [, init] = fetcher.mock.calls[0] as [URL, RequestInit]
