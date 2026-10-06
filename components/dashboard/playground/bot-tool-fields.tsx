@@ -14,10 +14,10 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { ResourceChecks } from "@/components/dashboard/resource-picker"
 import { VoiceField, VoiceChoiceField } from "./ivr-fields"
 import { validateCollect, type CollectField } from "@/lib/bot-toolkit"
 import type { VoiceBotConfig } from "@/lib/voice-bots"
-import type { KnowledgeBase, BotTool } from "@/packages/sdk/src/voice/toolkit-types"
 import { actionError } from "@/lib/action-error"
 const TYPES = [
   { value: "text", label: "Text" },
@@ -37,52 +37,21 @@ export function BotAttachments({
   onChange: (patch: Partial<VoiceBotConfig>) => void
   kind: "knowledge" | "tools"
 }) {
-  const bases = useTeamQuery(
-    api.knowledge.resources.dashboardList,
-    { limit: 100 },
-    { enabled: kind === "knowledge" }
-  ) as { data: KnowledgeBase[]; has_more: boolean } | undefined
-  const tools = useTeamQuery(
-    api.botTools.resources.dashboardList,
-    { limit: 100 },
-    { enabled: kind === "tools" }
-  ) as { data: BotTool[]; has_more: boolean } | undefined
-  const key = kind === "knowledge" ? "knowledgeBaseIds" : "customToolIds",
-    list = kind === "knowledge" ? bases : tools
+  const key = kind === "knowledge" ? "knowledgeBaseIds" : "customToolIds"
+  const selectedIds = config[key] ?? []
+  const noun = kind === "knowledge" ? "knowledge bases" : "webhook tools"
   return (
-    <div className="flex flex-col gap-3">
-      {!list ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : !list.data.length ? (
-        <p className="text-sm text-muted-foreground">
-          Create {kind === "knowledge" ? "knowledge bases" : "webhook tools"} in
-          Playground to attach them here.
-        </p>
-      ) : (
-        list.data.map((row) => (
-          <Field key={row.id} orientation="horizontal">
-            <FieldLabel>{row.name}</FieldLabel>
-            <Switch
-              aria-label={`Attach ${row.name}`}
-              checked={config[key]?.includes(row.id) ?? false}
-              onCheckedChange={(checked) =>
-                onChange({
-                  [key]: checked
-                    ? [...(config[key] ?? []), row.id]
-                    : (config[key]?.filter((id) => id !== row.id) ?? []),
-                })
-              }
-            />
-          </Field>
-        ))
-      )}
-      {list?.has_more ? (
-        <p className="text-sm text-muted-foreground">
-          Showing the latest 100 resources. Use the API to attach older
-          resources by ID.
-        </p>
-      ) : null}
-    </div>
+    <ResourceChecks
+      query={
+        kind === "knowledge"
+          ? api.knowledge.resources.options
+          : api.botTools.resources.options
+      }
+      selectedIds={selectedIds}
+      onChange={(ids) => onChange({ [key]: ids })}
+      noun={noun}
+      empty={`Create ${noun} in Playground to attach them here.`}
+    />
   )
 }
 export function CollectFields({
