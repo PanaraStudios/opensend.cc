@@ -39,7 +39,12 @@ export const botToolkitTables = {
     status: knowledgeStatus,
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_organizationId", ["organizationId"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["organizationId"],
+    }),
   knowledgeDocuments: defineTable({
     organizationId: v.string(),
     knowledgeBaseId: v.id("knowledgeBases"),
@@ -98,5 +103,9 @@ export const botToolkitTables = {
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_name", ["organizationId", "name"]),
+    .index("by_organizationId_and_name", ["organizationId", "name"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["organizationId"],
+    }),
 }

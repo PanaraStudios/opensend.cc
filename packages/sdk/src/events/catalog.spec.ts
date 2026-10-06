@@ -10,7 +10,9 @@ afterEach(() => vi.unstubAllGlobals())
 it.each(SYSTEM_EVENT_NAMES)(
   "provides a readable description for %s",
   (name) => {
-    expect(Object.hasOwn(SYSTEM_EVENT_DESCRIPTIONS, name)).toBe(true)
+    expect(
+      Object.prototype.hasOwnProperty.call(SYSTEM_EVENT_DESCRIPTIONS, name)
+    ).toBe(true)
     const description = SYSTEM_EVENT_DESCRIPTIONS[name]
     expect(description).toMatch(/^[A-Z].+\.$/)
     expect(description).not.toMatch(

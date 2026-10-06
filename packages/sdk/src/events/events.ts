@@ -1,3 +1,4 @@
+import type { PostOptions } from "../common/interfaces"
 import type { CatalogEvent } from "./catalog"
 import type { Response } from "../interfaces"
 import { buildPaginationUrl } from "../common/utils/build-pagination-query"
@@ -41,19 +42,27 @@ export class Events {
     return this.resend.get("/events/catalog")
   }
 
-  async send(payload: SendEventOptions): Promise<SendEventResponse> {
+  async send(
+    payload: SendEventOptions,
+    requestOptions: PostOptions = {}
+  ): Promise<SendEventResponse> {
     const data = await this.resend.post<SendEventResponseSuccess>(
       "/events/send",
-      parseEventToApiOptions(payload)
+      parseEventToApiOptions(payload),
+      requestOptions
     )
 
     return data
   }
 
-  async create(payload: CreateEventOptions): Promise<CreateEventResponse> {
+  async create(
+    payload: CreateEventOptions,
+    requestOptions: PostOptions = {}
+  ): Promise<CreateEventResponse> {
     const data = await this.resend.post<CreateEventResponseSuccess>(
       "/events",
-      payload
+      payload,
+      requestOptions
     )
 
     return data

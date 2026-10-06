@@ -287,31 +287,44 @@ export function addCallingTools(server: McpServer, opensend: Opensend) {
     async ({ id }) =>
       output(await opensend.whatsapp.phoneNumbers.getCalling(id))
   )
-  server.registerTool(
-    "update-whatsapp-calling",
-    {
-      title: "Update WhatsApp Calling Settings",
-      description:
-        "Enable or disable calls, set gateway/api mode, visibility, country restrictions, call hours, callback permission, voicemail and codecs. call_hours replaces the entire schedule; omitted holidays are removed. announcement_file_id uploads a finalized Ogg Opus file under 60 seconds for voicemail. SIP stays disabled.",
-      annotations: { readOnlyHint: false },
-      inputSchema: {
-        id: z.string(),
-        calling: calling.optional(),
-        routing: callingRouting.optional(),
-        handling_mode: z.enum(["api", "gateway"]).optional(),
-        announcement_file_id: z.string().optional(),
-        idempotencyKey: z.string().optional(),
+  for (const method of ["update", "patch"] as const)
+    server.registerTool(
+      `${method}-whatsapp-calling`,
+      {
+        title: "Update WhatsApp Calling Settings",
+        description:
+          "Enable or disable calls, set gateway/api mode, visibility, country restrictions, call hours, callback permission, voicemail and codecs. call_hours replaces the entire schedule; omitted holidays are removed. announcement_file_id uploads a finalized Ogg Opus file under 60 seconds for voicemail. SIP stays disabled.",
+        annotations: { readOnlyHint: false },
+        inputSchema: {
+          id: z.string(),
+          calling: calling.optional(),
+          routing: callingRouting.optional(),
+          handling_mode: z.enum(["api", "gateway"]).optional(),
+          announcement_file_id: z.string().optional(),
+          ...(method === "update"
+            ? { idempotencyKey: z.string().optional() }
+            : {}),
+        },
       },
-    },
-    async ({ id, idempotencyKey, ...input }) =>
-      output(
-        await opensend.whatsapp.phoneNumbers.updateCalling(
-          id,
-          input as UpdateCallingSettings,
-          { idempotencyKey }
+      async ({ id, idempotencyKey, ...input }) =>
+        output(
+          method === "patch"
+            ? await opensend.whatsapp.phoneNumbers.patchCalling(
+                id,
+                input as UpdateCallingSettings
+              )
+            : await opensend.whatsapp.phoneNumbers.updateCalling(
+                id,
+                input as UpdateCallingSettings,
+                {
+                  idempotencyKey:
+                    typeof idempotencyKey === "string"
+                      ? idempotencyKey
+                      : undefined,
+                }
+              )
         )
-      )
-  )
+    )
   server.registerTool(
     "get-whatsapp-call-permissions",
     {

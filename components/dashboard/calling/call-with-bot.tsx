@@ -17,6 +17,7 @@ import { toast } from "@/components/ui/toast"
 import { PhoneOutgoingIcon } from "lucide-react"
 import { useClock } from "@/lib/time/use-clock"
 import { actionError } from "@/lib/action-error"
+import { callPermissionLabel } from "@/lib/dashboard/voice-playground"
 import { PlaceCallFields, type PlaceCallConfig } from "./place-call-fields"
 
 export function CallWithBot({ contactId }: { contactId: string }) {
@@ -133,8 +134,7 @@ function CallForm({
       {config.accountId ? (
         <div className="flex items-center justify-between gap-2">
           <FieldDescription>
-            Calling permission:{" "}
-            {permission?.status.replaceAll("_", " ") ?? "Not checked"}
+            Calling permission: {callPermissionLabel(permission?.status)}
             {permission?.expires_at
               ? ` · expires ${new Date(permission.expires_at).toLocaleString()}`
               : ""}
@@ -182,8 +182,7 @@ export function CallPermissionStatus({
   )
   return (
     <span className="text-xs text-muted-foreground">
-      Calling permission:{" "}
-      {permission?.status.replaceAll("_", " ") ?? "Not checked"}
+      Calling permission: {callPermissionLabel(permission?.status)}
       {permission?.expires_at
         ? ` · expires ${new Date(permission.expires_at).toLocaleString()}`
         : ""}

@@ -85,7 +85,10 @@ describe("add-suppression", () => {
       name: "add-suppression",
       arguments: { email: "a@b.com" },
     })
-    expect(add).toHaveBeenCalledWith({ email: "a@b.com" })
+    expect(add).toHaveBeenCalledWith(
+      { email: "a@b.com" },
+      { idempotencyKey: undefined }
+    )
     const text = textOf(result as never)
     expect(text).toContain("Suppression added successfully.")
     expect(text).toContain("ID: sup_1")
@@ -264,7 +267,10 @@ describe("batch-add-suppressions", () => {
       name: "batch-add-suppressions",
       arguments: { emails: ["a@b.com", "c@d.com"] },
     })
-    expect(batchAdd).toHaveBeenCalledWith({ emails: ["a@b.com", "c@d.com"] })
+    expect(batchAdd).toHaveBeenCalledWith(
+      { emails: ["a@b.com", "c@d.com"] },
+      { idempotencyKey: undefined }
+    )
     const text = textOf(result as never)
     expect(text).toContain("Added 2 suppressions successfully.")
     expect(text).toContain("Email: a@b.com\nID: sup_1")
@@ -298,7 +304,10 @@ describe("batch-remove-suppressions", () => {
       name: "batch-remove-suppressions",
       arguments: { emails: ["a@b.com"] },
     })
-    expect(batchRemove).toHaveBeenCalledWith({ emails: ["a@b.com"] })
+    expect(batchRemove).toHaveBeenCalledWith(
+      { emails: ["a@b.com"] },
+      { idempotencyKey: undefined }
+    )
     const text = textOf(result as never)
     expect(text).toContain("Removed 1 suppression successfully.")
     expect(text).toContain("ID: sup_1")
@@ -310,7 +319,10 @@ describe("batch-remove-suppressions", () => {
       name: "batch-remove-suppressions",
       arguments: { ids: ["sup_1"] },
     })
-    expect(batchRemove).toHaveBeenCalledWith({ ids: ["sup_1"] })
+    expect(batchRemove).toHaveBeenCalledWith(
+      { ids: ["sup_1"] },
+      { idempotencyKey: undefined }
+    )
   })
 
   it("rejects using both emails and ids", async () => {

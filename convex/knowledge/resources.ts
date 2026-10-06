@@ -23,6 +23,7 @@ import schema from "../schema"
 import { text } from "../../lib/bot-toolkit"
 import { isPublicHostname } from "../../lib/net/public-host"
 import { retainFile, deleteFile } from "../storage/files"
+import { pickerArgs, pickerRows } from "../pickerOptions"
 export const publicRow = (
   row: Doc<"knowledgeBases"> | Doc<"knowledgeDocuments">
 ) => {
@@ -117,6 +118,22 @@ export const dashboardList = query({
       has_more: false,
       data: [],
     },
+})
+/** Knowledge bases a picker can search, including ones already attached. */
+export const options = query({
+  args: pickerArgs,
+  returns: v.array(v.object({ id: v.id("knowledgeBases"), name: v.string() })),
+  handler: async (ctx, args) => {
+    await authorizeToolkit(ctx, args, "knowledge")
+    const rows = await pickerRows(
+      ctx,
+      "knowledgeBases",
+      args.organizationId,
+      args.search,
+      args.selectedIds
+    )
+    return rows.map((row) => ({ id: row._id, name: row.name }))
+  },
 })
 const getArgs = {
   ...actor,

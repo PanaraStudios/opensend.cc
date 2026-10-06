@@ -65,6 +65,7 @@ import {
   emailStatusLabel,
   formatDateTime,
   sentenceCase,
+  timelineEventLabel,
 } from "@/lib/dashboard/format"
 import {
   tokenizeHtml,
@@ -159,17 +160,7 @@ function emailMeta(email: {
 }
 
 function eventLabel(type: TimelineEvent["type"]) {
-  if (!type) return "Event"
-  // Only channel messages are read, or received as events.
-  return type === "read" ||
-    type === "played" ||
-    type === "payment_updated" ||
-    type === "read_receipt_sent" ||
-    type === "read_receipt_failed" ||
-    type === "typing_failed" ||
-    type === "received"
-    ? sentenceCase(type)
-    : emailStatusLabel(type)
+  return timelineEventLabel(type)
 }
 
 function EmailEventsRow({ events }: { events: TimelineEvent[] }) {

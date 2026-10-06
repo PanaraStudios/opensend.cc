@@ -73,7 +73,10 @@ describe("create-api-key", () => {
       name: "create-api-key",
       arguments: { name: "My Key" },
     })
-    expect(create).toHaveBeenCalledWith({ name: "My Key" })
+    expect(create).toHaveBeenCalledWith(
+      { name: "My Key" },
+      { idempotencyKey: undefined }
+    )
     const text = textOf(result as never)
     expect(text).toContain("API key created successfully.")
     expect(text).toContain("Token: os_test0000000000000000000000000000")
@@ -89,11 +92,14 @@ describe("create-api-key", () => {
         domainId: "dom_1",
       },
     })
-    expect(create).toHaveBeenCalledWith({
-      name: "Sending Key",
-      permission: "sending_access",
-      domain_id: "dom_1",
-    })
+    expect(create).toHaveBeenCalledWith(
+      {
+        name: "Sending Key",
+        permission: "sending_access",
+        domain_id: "dom_1",
+      },
+      { idempotencyKey: undefined }
+    )
   })
 
   it("forwards custom resource scopes and a sending domain", async () => {
@@ -108,12 +114,15 @@ describe("create-api-key", () => {
       },
     })
     expect(result.isError).toBeFalsy()
-    expect(create).toHaveBeenCalledWith({
-      name: "CRM",
-      permission: "custom",
-      scopes: ["whatsapp:write", "contacts:read", "emails:write"],
-      domain_id: "dom_1",
-    })
+    expect(create).toHaveBeenCalledWith(
+      {
+        name: "CRM",
+        permission: "custom",
+        scopes: ["whatsapp:write", "contacts:read", "emails:write"],
+        domain_id: "dom_1",
+      },
+      { idempotencyKey: undefined }
+    )
   })
 
   it("rejects malformed scope inputs", async () => {

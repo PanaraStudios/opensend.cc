@@ -1,3 +1,4 @@
+import type { PostOptions } from '../../common/interfaces';
 import type { Resend } from '../../resend';
 import type {
   ClaimDomainOptions,
@@ -43,9 +44,14 @@ export class DomainClaims {
     return data;
   }
 
-  async verify(domainId: string): Promise<VerifyDomainClaimResponse> {
+  async verify(
+    domainId: string,
+    requestOptions: PostOptions = {},
+  ): Promise<VerifyDomainClaimResponse> {
     const data = await this.resend.post<VerifyDomainClaimResponseSuccess>(
       `/domains/${domainId}/claim/verify`,
+      undefined,
+      requestOptions,
     );
     return data;
   }

@@ -66,6 +66,14 @@ const workflow = {
   ],
 }
 const overrides: Record<string, Record<string, unknown>> = {
+  "send-message": {
+    channel: "email",
+    from: "sender@example.test",
+    to: "person@example.test",
+    subject: "Hello",
+    text: "Hello",
+  },
+  "upload-whatsapp-media": { content: "SGVsbG8=", contentType: "text/plain" },
   "create-bot-tool": {
     name: "book_appointment",
     parameters: { type: "object", properties: {} },
@@ -127,27 +135,20 @@ const overrides: Record<string, Record<string, unknown>> = {
   "send-event": { contactId: "test-id" },
   "manage-events": { name: "test.event" },
 }
-// Lane 5A owns these OpenAPI operations. Until integration, validate the
-// new tools against the binding meta-wave5-contract.md rather than claiming
-// these routes are already served on this branch.
-const wave5Operations = [
-  { method: "POST", pattern: /^\/(messenger|instagram)\/messages$/ },
-  { method: "GET", pattern: /^\/(messenger|instagram)\/messages(?:\/[^/]+)?$/ },
-  { method: "GET", pattern: /^\/messenger\/pages$/ },
-  { method: "GET", pattern: /^\/instagram\/accounts$/ },
-]
-const expectedOperations = [...operations, ...wave5Operations]
+const expectedOperations = operations
 // Real SDK requests are intercepted at fetch, never replaced by resource mocks.
 // An API error is deliberate: it exercises dispatch and error propagation for
 // every tool without inventing successful response bodies for 100+ operations.
-describe("all registered tools use OpenAPI or the wave 5 binding contract", () => {
+describe("all registered tools use the REST contract", () => {
   let connection: Awaited<ReturnType<typeof connectClient>>
   let definitions: Map<string, Schema>
   let activeTool = ""
+  const covered = new Map<string, Set<string>>()
   const requests: Array<{
     method: string
     path: string
     body?: Record<string, unknown>
+    idempotencyKey?: string | null
   }> = []
   beforeAll(async () => {
     vi.spyOn(console, "error").mockImplementation(() => {})
@@ -168,9 +169,28 @@ describe("all registered tools use OpenAPI or the wave 5 binding contract", () =
         const headers = new Headers(init?.headers)
         expect(headers.get("authorization")).toBe("Bearer " + fakeKey)
         expect(headers.get("user-agent")).toBe(USER_AGENT)
+        // A literal route wins over a parameter route (/emails/receiving vs /emails/{id}).
+        const operation = operations
+          .filter(
+            (op) =>
+              op.method === (init?.method ?? "GET") &&
+              op.pattern.test(url.pathname)
+          )
+          .sort(
+            (a, b) =>
+              b.path.replace(/\{[^}]+\}/g, "").length -
+              a.path.replace(/\{[^}]+\}/g, "").length
+          )[0]
+        if (operation) {
+          const key = `${operation.method} ${operation.path}`
+          const tools = covered.get(key) ?? new Set<string>()
+          tools.add(activeTool)
+          covered.set(key, tools)
+        }
         requests.push({
           method: init?.method ?? "GET",
           path: url.pathname,
+          idempotencyKey: headers.get("idempotency-key"),
           ...(typeof init?.body === "string"
             ? { body: JSON.parse(init.body) }
             : {}),
@@ -222,6 +242,7 @@ describe("all registered tools use OpenAPI or the wave 5 binding contract", () =
         {
           method: "POST",
           path: "/broadcasts",
+          idempotencyKey: null,
           body: {
             channel,
             name: "Local campaign",
@@ -244,10 +265,13 @@ describe("all registered tools use OpenAPI or the wave 5 binding contract", () =
     const args = {
       ...(sample(definitions.get(name)!) as Record<string, unknown>),
       ...overrides[name],
+      idempotencyKey: "contract-retry",
     }
     const result = await connection.client.callTool({ name, arguments: args })
     expect(requests.length, JSON.stringify(result)).toBeGreaterThan(0)
     for (const req of requests) {
+      if (req.method === "POST")
+        expect(req.idempotencyKey, name).toBe("contract-retry")
       expect(
         expectedOperations.some(
           (op) => op.method === req.method && op.pattern.test(req.path)
@@ -262,6 +286,12 @@ describe("all registered tools use OpenAPI or the wave 5 binding contract", () =
     expect(JSON.stringify(result)).toContain("contract-test error")
   })
   const branches = [
+    ...["messenger", "instagram"].flatMap((channel) => [
+      { name: "mark-message-read", args: { channel, id: "test-id" } },
+      { name: "set-typing", args: { channel, id: "test-id", on: true } },
+      { name: "mark_message_read", args: { channel, id: "test-id" } },
+      { name: "set_typing", args: { channel, id: "test-id", on: true } },
+    ]),
     ...["list", "get", "update", "remove"].map((action) => ({
       name: "manage-events",
       args: { action, identifier: "test-id", schema: {} },
@@ -300,16 +330,55 @@ describe("all registered tools use OpenAPI or the wave 5 binding contract", () =
     async ({ name, args }) => {
       requests.length = 0
       activeTool = name
-      const result = await connection.client.callTool({ name, arguments: args })
+      const result = await connection.client.callTool({
+        name,
+        arguments: { ...args, idempotencyKey: "contract-retry" },
+      })
       expect(requests.length, JSON.stringify(result)).toBeGreaterThan(0)
-      for (const req of requests)
+      for (const req of requests) {
+        if (req.method === "POST")
+          expect(req.idempotencyKey, name).toBe("contract-retry")
         expect(
           expectedOperations.some(
             (op) => op.method === req.method && op.pattern.test(req.path)
           ),
           JSON.stringify(req)
         ).toBe(true)
+      }
       expect(JSON.stringify(result)).toContain("contract-test error")
     }
   )
+  it("every REST operation has an MCP tool or an explicit exception", () => {
+    const exceptions = JSON.parse(
+      readFileSync(
+        new URL("../../sdk/test/rest-parity-exceptions.json", import.meta.url),
+        "utf8"
+      )
+    ) as Record<string, string>
+    expect(
+      operations
+        .map((op) => `${op.method} ${op.path}`)
+        .filter((op) => !covered.has(op) && !(op in exceptions))
+        .sort()
+    ).toEqual([])
+    const rows = readFileSync(
+      new URL("../../../docs/qa/dx-parity.md", import.meta.url),
+      "utf8"
+    )
+      .split("\n")
+      .filter((line) => /^\| (GET|POST|PATCH|DELETE) \|/.test(line))
+    for (const row of rows) {
+      const columns = row
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim())
+      const key = `${columns[0]} ${columns[1].replaceAll("`", "")}`
+      for (const match of columns[4].matchAll(/`([^`]+)`/g)) {
+        expect(definitions.has(match[1]), match[1]).toBe(true)
+        expect(covered.get(key)?.has(match[1]), key + " via " + match[1]).toBe(
+          true
+        )
+      }
+    }
+  })
 })

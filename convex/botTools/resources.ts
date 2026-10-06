@@ -23,6 +23,7 @@ import {
 } from "../../lib/bot-toolkit"
 import { VOICE_BOT_TOOLS } from "../../lib/voice-bots"
 import { isPublicHostname } from "../../lib/net/public-host"
+import { pickerArgs, pickerRows } from "../pickerOptions"
 export function publicTool(row: Doc<"botTools">) {
   return {
     id: row._id,
@@ -85,6 +86,22 @@ export const dashboardList = query({
   args: { organizationId: v.string(), ...listArgs },
   returns: v.any(),
   handler: listTools,
+})
+/** Webhook tools a picker can search, including ones already attached. */
+export const options = query({
+  args: pickerArgs,
+  returns: v.array(v.object({ id: v.id("botTools"), name: v.string() })),
+  handler: async (ctx, args) => {
+    await authorizeToolkit(ctx, args, "bot_tools")
+    const rows = await pickerRows(
+      ctx,
+      "botTools",
+      args.organizationId,
+      args.search,
+      args.selectedIds
+    )
+    return rows.map((row) => ({ id: row._id, name: row.name }))
+  },
 })
 export const get = internalQuery({
   args: { ...actor, id: v.string() },
