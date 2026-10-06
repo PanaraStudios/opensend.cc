@@ -173,3 +173,48 @@ test("disconnect frees every WABA past the first hundred", async () => {
     )
   ).toEqual([])
 })
+
+test("reconnecting a Page reuses its team's connection after fifty former owners", async () => {
+  fakeGraph(pageGraphRoutes())
+  const f = await pagesFixture()
+  const connectionId = await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.accounts[0].id))!
+    const connection = (await ctx.db.get(
+      "metaConnections",
+      account.connectionId
+    ))!
+    const fields = withoutSystemFields(connection)
+    await ctx.db.delete("metaConnections", connection._id)
+    for (let i = 0; i < 50; i++)
+      await ctx.db.insert("metaConnections", {
+        ...fields,
+        organizationId: `former-connection-owner-${i}`,
+        status: "disconnected",
+      })
+    const id = await ctx.db.insert("metaConnections", fields)
+    for (const row of f.accounts)
+      await ctx.db.patch("channelAccounts", row.id, { connectionId: id })
+    return id
+  })
+  await f.owner.client.action(api.meta.pageConnectActions.connectPageManual, {
+    organizationId: f.owner.team,
+    pageId: (await f.t.run((ctx) =>
+      ctx.db.get("channelAccounts", f.accounts[0].id)
+    ))!.pageId!,
+    token: "page-reconnect-test-token",
+  })
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("channelAccounts", f.accounts[0].id)))!
+      .connectionId
+  ).toBe(connectionId)
+  expect(
+    await f.t.run((ctx) =>
+      ctx.db
+        .query("metaConnections")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", f.owner.team)
+        )
+        .collect()
+    )
+  ).toHaveLength(1)
+})

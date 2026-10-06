@@ -311,12 +311,14 @@ async function saveConnection(
     scopes: string[]
   }
 ) {
-  const connection = (
-    await ctx.db
-      .query("metaConnections")
-      .withIndex("by_businessId", (q) => q.eq("businessId", args.businessId))
-      .take(50)
-  ).find((row) => row.organizationId === args.organizationId)
+  const connection = await ctx.db
+    .query("metaConnections")
+    .withIndex("by_organizationId_and_businessId", (q) =>
+      q
+        .eq("organizationId", args.organizationId)
+        .eq("businessId", args.businessId)
+    )
+    .first()
   const fields = {
     businessName: args.businessName,
     method: args.method,
