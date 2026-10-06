@@ -149,6 +149,7 @@ export const toolNames = [
   "request-contact-call-permission",
   "request-whatsapp-call-permission",
   "revoke-oauth-grant",
+  "rotate-ivr-signing-secret",
   "rotate-webhook-signing-secret",
   "search-knowledge",
   "send-batch-emails",
