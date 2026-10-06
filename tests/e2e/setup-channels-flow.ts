@@ -10,6 +10,13 @@ export async function chooseEmailSetup(page: Page) {
     page.getByRole("heading", { name: "Choose channels", exact: true })
   ).toBeVisible()
   const wizard = page.getByTestId("installation-wizard")
+  const telemetry = wizard.getByRole("switch", {
+    name: "Share anonymous usage statistics",
+    exact: true,
+  })
+  await expect(telemetry).toBeVisible()
+  await expect(telemetry).toBeEnabled()
+  await expect(telemetry).toBeChecked()
   await wizard.getByRole("checkbox", { name: /Email/ }).check()
   await wizard.getByRole("checkbox", { name: /WhatsApp, Messenger/ }).uncheck()
   await page.screenshot({
