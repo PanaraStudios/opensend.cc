@@ -127,8 +127,11 @@ Compose supplies backend and installation method metadata. The installer also
 supplies architecture. `pnpm setup` records the source installation method and
 architecture. Other source deployments can set `OPENSEND_INSTALL_METHOD=source`,
 `OPENSEND_ARCH=amd64|arm64`, and `OPENSEND_VERSION` to a release version. When
-calling services are enabled, set `OPENSEND_CALLING=1`; otherwise it defaults to
-false. Values outside the supported method and architecture labels become
+the version has a leading `v`, it is removed. Empty or invalid overrides in
+release images use the release version baked into the migrate image, which
+writes the resolved version to Convex before deploying. Without a valid version,
+the payload uses `0.0.0-unknown`. When calling services are enabled, set
+`OPENSEND_CALLING=1`; otherwise it defaults to false. Values outside the supported method and architecture labels become
 `unknown`. No hostname or URL is included in deployment metadata.
 
 ## What is never sent

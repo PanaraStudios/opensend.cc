@@ -16,7 +16,6 @@ import { counters, type KeyPart } from "./counts"
 import { logSourceValue, statusClassValue } from "./tables/api"
 import { CHANNELS, CHANNEL_MESSAGE_STATUSES } from "./tables/channels"
 import { literals } from "./counts"
-import packageInfo from "../package.json"
 import {
   buildPayload,
   emptyUsage,
@@ -455,7 +454,7 @@ async function gather(
   return buildPayload({
     ...identity,
     now,
-    version: env.OPENSEND_VERSION || packageInfo.version,
+    version: env.OPENSEND_VERSION,
     deployment,
     counts,
     smtpUsed30d,

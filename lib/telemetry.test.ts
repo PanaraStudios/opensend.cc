@@ -4,6 +4,7 @@ import {
   band,
   buildPayload,
   emptyUsage,
+  normalizeTelemetryVersion,
   telemetryEnabled,
   TELEMETRY_DAY,
   TELEMETRY_COUNT_FIELDS,
@@ -75,4 +76,72 @@ test("payload explicitly projects schema 1 and supports v1 zero defaults", () =>
     ].sort()
   )
   assert.ok(new TextEncoder().encode(JSON.stringify(payload)).length < 8192)
+})
+
+test("versions normalize release tags and fall back to the baked release then unknown", () => {
+  for (const [version, expected] of [
+    ["v0.1.1", "0.1.1"],
+    ["0.1.1", "0.1.1"],
+    ["v2.0.0-rc.1", "2.0.0-rc.1"],
+    ["1.2.3-rc.1+build.42", "1.2.3-rc.1+build.42"],
+  ])
+    assert.equal(normalizeTelemetryVersion(version, "v9.9.9"), expected)
+  for (const version of [
+    "latest",
+    "",
+    undefined,
+    "junk",
+    "vv0.1.1",
+    "1.2.3-",
+    `1.2.3+${"a".repeat(123)}`,
+  ]) {
+    assert.equal(
+      normalizeTelemetryVersion(version, "v2.0.0-rc.1"),
+      "2.0.0-rc.1"
+    )
+    assert.equal(normalizeTelemetryVersion(version), "0.0.0-unknown")
+    assert.equal(normalizeTelemetryVersion(version, "latest"), "0.0.0-unknown")
+  }
+  assert.equal(
+    normalizeTelemetryVersion(`1.2.3+${"a".repeat(122)}`),
+    `1.2.3+${"a".repeat(122)}`
+  )
+})
+
+test("payload version always satisfies the collector semver contract", () => {
+  const collectorSemver =
+    /^\d+\.\d+\.\d+(?:-[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?(?:\+[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?$/
+  for (const version of [
+    "v0.1.1",
+    "0.1.1",
+    "v2.0.0-rc.1",
+    "latest",
+    "",
+    undefined,
+    "junk",
+    "vv0.1.1",
+    `1.2.3+${"a".repeat(123)}`,
+  ]) {
+    for (const bakedVersion of [undefined, "v2.0.0-rc.1", "latest"]) {
+      const payload = buildPayload({
+        installationId: "18f5b149-bbd7-48e8-bc04-f2eaad4d0de7",
+        now: TELEMETRY_DAY,
+        installedAt: 0,
+        version,
+        bakedVersion,
+        deployment: {
+          backend: "self-hosted",
+          installMethod: "script",
+          arch: "arm64",
+          calling: false,
+        },
+        counts: emptyUsage(),
+        sesProduction: null,
+        smtpUsed30d: false,
+        ssoEnabled: false,
+      })
+      assert.match(payload.version, collectorSemver)
+      assert.ok(payload.version.length <= 128)
+    }
+  }
 })

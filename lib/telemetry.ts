@@ -50,11 +50,27 @@ export function telemetryEnabled(
 ) {
   return environment !== "0" && (preference ?? true)
 }
+const SEMVER =
+  /^\d+\.\d+\.\d+(?:-[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?(?:\+[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?$/
+
+/** Normalize installer tags, then the image's release tag, to collector semver. */
+export function normalizeTelemetryVersion(
+  version?: string,
+  bakedVersion?: string
+): string {
+  for (const candidate of [version, bakedVersion]) {
+    const normalized = candidate?.replace(/^v/, "")
+    if (normalized && normalized.length <= 128 && SEMVER.test(normalized))
+      return normalized
+  }
+  return "0.0.0-unknown"
+}
 export function buildPayload(input: {
   installationId: string
   now: number
   installedAt: number
-  version: string
+  version?: string
+  bakedVersion?: string
   deployment: Deployment
   counts: UsageCounts
   sesProduction: boolean | null
@@ -66,7 +82,7 @@ export function buildPayload(input: {
     schema: 1 as const,
     installationId: input.installationId,
     sentAt: new Date(input.now).toISOString(),
-    version: input.version,
+    version: normalizeTelemetryVersion(input.version, input.bakedVersion),
     deployment: {
       backend: input.deployment.backend,
       installMethod: input.deployment.installMethod,
