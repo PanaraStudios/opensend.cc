@@ -323,11 +323,17 @@ export const project = internalMutation({
     id: v.id("metaWebhookEvents"),
     attempt: v.optional(v.number()),
     statusIndexes: v.optional(v.array(v.number())),
+    cursor: v.optional(v.number()),
   },
   returns: v.null(),
-  handler: async (ctx, { id, attempt = 0, statusIndexes }) => {
+  handler: async (ctx, { id, attempt = 0, statusIndexes, cursor = 0 }) => {
     const event = await ctx.db.get("metaWebhookEvents", id)
-    if (!event || (event.projectedAt !== undefined && !statusIndexes))
+    if (
+      !event ||
+      (!statusIndexes &&
+        (event.projectedAt !== undefined ||
+          (event.projectionCursor ?? 0) !== cursor))
+    )
       return null
     const root = object(JSON.parse(event.body))
     const retired = new Map<string, boolean>()
@@ -401,6 +407,9 @@ export const project = internalMutation({
     const pendingIndexes = statusIndexes ? new Set(statusIndexes) : null
     const unmatched: number[] = []
     for (const [index, item] of items.entries()) {
+      // Ten messages leave headroom for contacts, counts, media and outbox
+      // writes. The raw event and progress commit with the continuation.
+      if (!pendingIndexes && (index < cursor || index >= cursor + 10)) continue
       if (
         pendingIndexes &&
         (!pendingIndexes.has(index) ||
@@ -491,7 +500,8 @@ export const project = internalMutation({
           cursor: null,
         })
     }
-    for (const change of statusIndexes ? [] : changes) {
+    const more = !statusIndexes && cursor + 10 < items.length
+    for (const change of statusIndexes || more ? [] : changes) {
       if (oneOf(change.field, TEMPLATE_WEBHOOK_FIELDS))
         await templateWebhook(
           ctx,
@@ -518,8 +528,20 @@ export const project = internalMutation({
         "Dropping unmatched Meta statuses after retries",
         unmatched.length
       )
-    if (!statusIndexes)
-      await ctx.db.patch("metaWebhookEvents", id, { projectedAt: Date.now() })
+    if (!statusIndexes) {
+      await ctx.db.patch(
+        "metaWebhookEvents",
+        id,
+        more
+          ? { projectionCursor: cursor + 10 }
+          : { projectedAt: Date.now(), projectionCursor: undefined }
+      )
+      if (more)
+        await ctx.scheduler.runAfter(0, internal.meta.projection.project, {
+          id,
+          cursor: cursor + 10,
+        })
+    }
     return null
   },
 })

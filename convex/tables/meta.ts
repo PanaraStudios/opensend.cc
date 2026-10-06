@@ -80,6 +80,8 @@ export const metaTables = {
     body: v.string(),
     receivedAt: v.number(),
     projectedAt: v.optional(v.number()),
+    /** Next messaging item to project from a large delivery. */
+    projectionCursor: v.optional(v.number()),
     error: v.optional(v.string()),
   })
     .index("by_bodyHash", ["bodyHash"])

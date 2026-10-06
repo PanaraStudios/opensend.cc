@@ -135,6 +135,44 @@ test("rebundled WhatsApp statuses emit each advancing milestone only once", asyn
   ).toEqual(["whatsapp.message.delivered", "whatsapp.message.read"])
 })
 
+test("large Meta batches project in bounded transactions and replay once", async () => {
+  const f = await inboundFixture()
+  const body = envelope({
+    metadata: { phone_number_id: PHONE_ID },
+    messages: Array.from({ length: 60 }, (_, i) => ({
+      from: SENDER,
+      id: `wamid.batch.${i}`,
+      timestamp: String(Math.floor(Date.now() / 1000)),
+      type: "text",
+      text: { body: `Message ${i}` },
+    })),
+  })
+  expect((await post(f, body)).status).toBe(200)
+  const event = (await f.t.run((ctx) =>
+    ctx.db.query("metaWebhookEvents").first()
+  ))!
+  await f.t.run((ctx) =>
+    ctx.runMutation(
+      internal.meta.projection.project,
+      { id: event._id },
+      { transactionLimits: { documentsRead: 400 } }
+    )
+  )
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  const data = await rows(f)
+  expect(data.messages).toHaveLength(60)
+  expect(new Set(data.messages.map((row) => row.externalId)).size).toBe(60)
+  expect(data.conversations[0].unreadCount).toBe(60)
+  expect(
+    data.events.filter((row) => row.type === "whatsapp.message.received")
+  ).toHaveLength(60)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", event._id)))
+      ?.projectedAt
+  ).toBeDefined()
+})
+
 test("missing, wrong and altered signatures refuse storage; raw bytes are capped", async () => {
   const f = await inboundFixture()
   for (const headers of [
