@@ -2,11 +2,14 @@ import { agentQueues } from "../../services/call-gateway/src/queues"
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
+  agentPresenceLabel,
   callElapsed,
   callEventLabel,
   callTimer,
   isDtmf,
+  offerIsFresh,
   permissionAllows,
+  presenceIsCurrent,
   softphoneTransition as step,
   type SoftphonePhase,
 } from "./softphone"
@@ -39,6 +42,17 @@ test("stale UI events cannot answer twice or revive a hung-up call", () => {
   assert.equal(step("claiming", "fail"), "error")
   assert.equal(step("error", "online"), "registering")
   assert.equal(step("held", "away"), "away")
+})
+test("an unset clock does not ring stale offers or expire the roster", () => {
+  assert.equal(offerIsFresh(1_000, 0), false)
+  assert.equal(offerIsFresh(1_000, 30_000), true)
+  assert.equal(offerIsFresh(1_000, 61_001), false)
+  assert.equal(presenceIsCurrent(5_000, 0), false)
+  assert.equal(presenceIsCurrent(5_000, 4_000), true)
+  assert.equal(presenceIsCurrent(5_000, 5_000), false)
+  assert.equal(agentPresenceLabel("online", 1, 0), "Online")
+  assert.equal(agentPresenceLabel("online", 1_000, 2_000), "Away")
+  assert.equal(agentPresenceLabel("away", 9_000, 1_000), "Away")
 })
 test("timer and thread call labels handle missing time, future time and missed calls", () => {
   assert.equal(callElapsed(null, 1234), 0)

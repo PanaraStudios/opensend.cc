@@ -2,6 +2,19 @@ import { searchNeedle, matchesNeedle } from "./search"
 
 export const OPTION_LIMIT = 20
 
+/** Saved ids a picker resolves in addition to the suggestion page. */
+export const PICKER_SELECTED_LIMIT = 64
+
+/** Unique saved ids, capped so a picker query stays a bounded point lookup. */
+export function pickerSelectedIds(
+  ids: readonly (string | null | undefined)[] | undefined
+) {
+  return [...new Set((ids ?? []).filter((id): id is string => !!id))].slice(
+    0,
+    PICKER_SELECTED_LIMIT
+  )
+}
+
 /** Rank bounded configuration rows: exact, prefix, then substring matches. */
 export function matchingOptions<T>(
   rows: T[],

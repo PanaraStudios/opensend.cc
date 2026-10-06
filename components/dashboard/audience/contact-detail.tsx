@@ -417,7 +417,11 @@ function ContactPage({
                         </TableCell>
                         <TableCell>
                           <Switch
-                            aria-label={`Subscribe to ${topic.name}`}
+                            aria-label={
+                              subscription === "subscribed"
+                                ? `Unsubscribe ${topic.name}`
+                                : `Subscribe ${topic.name}`
+                            }
                             checked={subscription === "subscribed"}
                             onCheckedChange={(checked) =>
                               setContactTopic(
@@ -524,10 +528,14 @@ function ContactPage({
                         <ItemContent>
                           <ItemTitle>{broadcast.name}</ItemTitle>
                           <ItemDescription>
-                            {broadcast.subject} ·{" "}
-                            {formatDate(
-                              broadcast.sentAt ?? broadcast.createdAt
-                            )}
+                            {[
+                              broadcast.subject.trim(),
+                              formatDate(
+                                broadcast.sentAt ?? broadcast.createdAt
+                              ),
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
                           </ItemDescription>
                         </ItemContent>
                         <RecipientOutcomeBadge

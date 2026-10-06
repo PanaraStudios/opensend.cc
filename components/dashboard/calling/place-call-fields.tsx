@@ -1,7 +1,8 @@
 "use client"
-import { useId, useState } from "react"
-import { useTeamQuery } from "@/components/auth/workspace"
+import { useCallback, useId, useState } from "react"
 import { api } from "@/convex/_generated/api"
+import { pickerSelectedIds } from "@/lib/dashboard/options"
+import { useResourceOptions } from "@/components/dashboard/resource-picker"
 import {
   OptionSelect,
   ListPagination,
@@ -41,41 +42,44 @@ export function PlaceCallFields({
     api.meta.connect.countAccounts,
     { channel: "whatsapp" }
   )
-  const [botAfter, setBotAfter] = useState<string>()
-  const [ivrAfter, setIvrAfter] = useState<string>()
-  const [botPages, setBotPages] = useState<{ value: string; label: string }[]>(
-    []
+  const routeId = config.route.startsWith("bot:")
+    ? config.route.slice(4)
+    : config.route.startsWith("ivr:")
+      ? config.route.slice(4)
+      : ""
+  const { rows: botRows, setSearch: setBotSearch } = useResourceOptions(
+    api.voice.resources.botOptions,
+    {
+      selectedIds: pickerSelectedIds(
+        config.route.startsWith("bot:") ? [routeId] : []
+      ),
+    }
   )
-  const [ivrPages, setIvrPages] = useState<{ value: string; label: string }[]>(
-    []
+  const { rows: ivrRows, setSearch: setIvrSearch } = useResourceOptions(
+    api.ivr.definitions.options,
+    {
+      selectedIds: pickerSelectedIds(
+        config.route.startsWith("ivr:") ? [routeId] : []
+      ),
+    }
   )
-  const bots = useTeamQuery(api.voice.resources.dashboardList, {
-    limit: 50,
-    after: botAfter,
-  }) as { data: { id: string; name: string }[]; has_more: boolean } | undefined
-  const ivrs = useTeamQuery(api.ivr.definitions.dashboardList, {
-    limit: 50,
-    after: ivrAfter,
-  }) as
-    | {
-        data: { id: string; name: string; published?: boolean }[]
-        has_more: boolean
-      }
-    | undefined
-  const botItems = [
-    ...botPages,
-    ...(bots?.data ?? []).map((bot) => ({
-      value: `bot:${bot.id}`,
-      label: `Bot · ${bot.name}`,
-    })),
-  ]
-  const ivrItems = [
-    ...ivrPages,
-    ...(ivrs?.data ?? []).map((ivr) => ({
-      value: `ivr:${ivr.id}`,
-      label: `IVR · ${ivr.name}`,
-    })),
-  ]
+  const onRouteSearch = useCallback(
+    (value: string) => {
+      setBotSearch(value)
+      setIvrSearch(value)
+    },
+    [setBotSearch, setIvrSearch]
+  )
+  const botItems = (botRows ?? []).map((bot) => ({
+    value: `bot:${bot.id}`,
+    label: bot.name,
+    group: "Voice bots",
+  }))
+  const ivrItems = (ivrRows ?? []).map((ivr) => ({
+    value: `ivr:${ivr.id}`,
+    label: ivr.name,
+    group: "IVRs",
+  }))
   const [variableName, setVariableName] = useState("")
   const update = (patch: Partial<PlaceCallConfig>) =>
     onChange({ ...config, ...patch })
@@ -105,37 +109,13 @@ export function PlaceCallFields({
           value={config.route}
           disabled={disabled}
           items={[...botItems, ...ivrItems]}
+          search={{
+            onChange: onRouteSearch,
+            placeholder: "Search bots and IVRs",
+          }}
           onChange={(route) => update({ route })}
           placeholder="Choose a bot or IVR"
         />
-        {bots?.has_more ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={disabled}
-            onClick={() => {
-              setBotPages(botItems)
-              setBotAfter(bots.data.at(-1)?.id)
-            }}
-          >
-            Load more bots
-          </Button>
-        ) : null}
-        {ivrs?.has_more ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={disabled}
-            onClick={() => {
-              setIvrPages(ivrItems)
-              setIvrAfter(ivrs.data.at(-1)?.id)
-            }}
-          >
-            Load more IVRs
-          </Button>
-        ) : null}
       </Field>
       <Field>
         <FieldLabel htmlFor={`${id}-purpose`}>Call purpose</FieldLabel>

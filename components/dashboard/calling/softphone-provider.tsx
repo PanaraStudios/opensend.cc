@@ -28,6 +28,8 @@ import {
   softphoneTransition,
   callElapsed,
   callTimer,
+  offerIsFresh,
+  presenceIsCurrent,
   type SoftphonePhase,
 } from "@/lib/meta/softphone"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -230,7 +232,7 @@ function TeamSoftphone({
             !c.test &&
             !c.assignedAgent &&
             ["queued", "ringing"].includes(c.status) &&
-            (c.offeredAt ?? c._creationTime) + 60000 > now
+            offerIsFresh(c.offeredAt ?? c._creationTime, now)
         )
       : undefined
   const displayedId =
@@ -247,7 +249,7 @@ function TeamSoftphone({
         c.direction === "inbound" &&
         !c.assignedAgent &&
         ["queued", "ringing"].includes(c.status) &&
-        (c.offeredAt ?? c._creationTime) + 60000 > now
+        offerIsFresh(c.offeredAt ?? c._creationTime, now)
     ).length ?? 0
   const working =
     pending || ["registering", "claiming", "ending"].includes(phase)
@@ -545,7 +547,9 @@ function TeamSoftphone({
     }
     window.addEventListener("pageshow", restore)
     window.addEventListener("pagehide", leave)
-    const tick = setInterval(() => setNow(Date.now()), 1000)
+    const updateClock = () => setNow(Date.now())
+    updateClock()
+    const tick = setInterval(updateClock, 1000)
     return () => {
       alive.current = false
       window.removeEventListener("pageshow", restore)
@@ -640,7 +644,7 @@ function TeamSoftphone({
         (a) =>
           a.id !== null &&
           a.status === "online" &&
-          a.availableUntil > now &&
+          presenceIsCurrent(a.availableUntil, now) &&
           a.userId !== current?.assignedAgent
       )
       .map((a) => ({ value: a.id!, label: a.name })),

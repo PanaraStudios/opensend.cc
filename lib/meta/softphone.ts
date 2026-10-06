@@ -48,6 +48,33 @@ export function softphoneTransition(
 export function callElapsed(start: number | null | undefined, now: number) {
   return Math.max(0, Math.floor((now - (start ?? now)) / 1000))
 }
+
+/** A queued offer is ringable only after the clock is known and still inside the window.
+    `now` of 0 is the unset clock, not the epoch, so it must not match every call. */
+export function offerIsFresh(
+  offeredAt: number,
+  now: number,
+  windowMs = 60_000
+) {
+  return now > 0 && offeredAt + windowMs > now
+}
+
+/** Presence is current only once the clock is known and the lease has not expired. */
+export function presenceIsCurrent(availableUntil: number, now: number) {
+  return now > 0 && availableUntil > now
+}
+
+/** Online/away for a roster row. An unset clock shows the stored status. */
+export function agentPresenceLabel(
+  status: string,
+  availableUntil: number,
+  now: number
+) {
+  const current = now > 0 && availableUntil <= now ? "away" : status || "away"
+  if (current === "online") return "Online"
+  if (current === "away") return "Away"
+  return current
+}
 export function callTimer(seconds: number) {
   const value = Math.max(0, Math.floor(seconds))
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`
