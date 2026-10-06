@@ -23,6 +23,12 @@ import {
   ownsSoftphone,
 } from "@/lib/meta/call-card"
 import { actionError } from "@/lib/action-error"
+import {
+  browserIceServers,
+  iceNeedsRefresh,
+  usesTurn,
+  type IceConfiguration,
+} from "@/lib/calling/ice"
 import { BrowserPhone, RingSound } from "@/lib/calling/browser"
 import {
   softphoneTransition,
@@ -179,6 +185,8 @@ function TeamSoftphone({
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
   const [queues, setQueues] = useState<string[]>([])
+  const [relay, setRelay] = useState(false)
+  const ice = useRef<IceConfiguration | null>(null)
   const [microphoneId, setMicrophoneId] = useState("default")
   const setup = useTeamQuery(
     api.calling.playgroundState.setup,
@@ -207,6 +215,7 @@ function TeamSoftphone({
     {},
     { enabled: !!organizationId, optional: true }
   )
+  const fetchIce = useAction(api.calling.softphone.iceServers)
   const session = useAction(api.calling.softphone.session)
   const revoke = useAction(api.calling.softphone.revoke)
   const answerAction = useAction(api.calling.softphone.answer)
@@ -284,6 +293,8 @@ function TeamSoftphone({
     setPending(true)
     // Stop routing before waiting for any call teardown.
     setOnline(false)
+    setRelay(false)
+    ice.current = null
     ring.current?.stop()
     await presence({ ...args, status: "away" }).catch(() => undefined)
     const browser = phone.current
@@ -377,7 +388,15 @@ function TeamSoftphone({
       }))
       browser.setMicrophone(selectedMicrophone)
       await browser.microphone()
-      await browser.register(credential)
+      const configuration = await fetchIce(args)
+      if (!alive.current) {
+        await browser.close()
+        await revoke(args)
+        return
+      }
+      ice.current = configuration
+      await browser.register(credential, configuration)
+      setRelay(usesTurn(browserIceServers(configuration)))
       if (!alive.current) {
         await browser.close()
         await revoke(args)
@@ -389,6 +408,8 @@ function TeamSoftphone({
     } catch (reason) {
       await phone.current?.close()
       phone.current = null
+      setRelay(false)
+      ice.current = null
       if (credential) await revoke(args).catch(() => undefined)
       disconnect.current = null
       fail(reason, true)
@@ -568,7 +589,7 @@ function TeamSoftphone({
     if (!online) return
     let stopped = false,
       renewing = false
-    const heartbeat = setInterval(() => {
+    const renew = () => {
       if (renewing) return
       renewing = true
       void (async () => {
@@ -576,6 +597,13 @@ function TeamSoftphone({
         if (stopped) return
         if (credential.leaseId !== expectedLease.current)
           throw new Error("Agent session expired; go online again")
+        if (ice.current && iceNeedsRefresh(ice.current)) {
+          const configuration = await fetchIce({ organizationId, browserId })
+          if (stopped) return
+          ice.current = configuration
+          phone.current?.setIceConfiguration(configuration)
+          setRelay(usesTurn(browserIceServers(configuration)))
+        }
         await presence({ organizationId, browserId, status: "online" })
       })()
         .catch((reason) => {
@@ -587,14 +615,20 @@ function TeamSoftphone({
         .finally(() => {
           renewing = false
         })
-    }, 30000)
+    }
+    const heartbeat = setInterval(renew, 30000)
+    const resume = () => {
+      if (document.visibilityState === "visible") renew()
+    }
+    document.addEventListener("visibilitychange", resume)
     return () => {
       stopped = true
+      document.removeEventListener("visibilitychange", resume)
       clearInterval(heartbeat)
     }
     // Session callbacks use only this mounted team's stable args.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [online, organizationId, browserId, session, presence])
+  }, [online, organizationId, browserId, session, presence, fetchIce])
   useEffect(() => {
     if (!incoming) {
       if (!active.current && !operation.current) {
@@ -683,6 +717,9 @@ function TeamSoftphone({
                 phone.current?.setMicrophone(value)
               }}
             />
+            {online && relay && (
+              <p className="text-xs text-muted-foreground">Relay: on</p>
+            )}
             <p role="status" className="text-sm">
               Calls waiting: {waiting}
             </p>

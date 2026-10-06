@@ -34,6 +34,7 @@ symmetric NAT are not supported by the scripted calling setup.
 | UDP 20000–20199  | Meta to Janus media                                                  |
 | UDP 20400–20799  | Browser to FreeSWITCH media                                          |
 | TCP and UDP 3478 | Optional TURN listener                                               |
+| TCP 5349         | Optional TLS TURN listener                                           |
 | UDP 20800–20999  | Optional TURN relays                                                 |
 
 Open the calling ports in both the provider firewall and the host firewall.
@@ -97,11 +98,16 @@ subsequent runs. `--no-start` prepares files without deploying or taking a data
 backup; review and start them by re-running install without that flag. It may
 still use the backend image to generate the admin key.
 
-TURN is optional: add `--turn yes` if you operate a browser client configured to
-use it. **The current dashboard browser adapter has an empty `iceServers` list.**
-Starting coturn alone does not fix calling from restrictive browser networks.
-It needs browser credential/configuration work outside the installer. See
-[optional TURN](browser-softphone.md#optional-turn-for-agents). Meta-to-Janus
+TURN is optional: add `--turn yes` when browser agents behind strict NAT or
+firewalls get no audio. The installer generates and preserves `CALL_TURN_SECRET`
+and sets `CALL_TURN_URLS`; migration supplies both to Convex. Agents receive
+one-hour HMAC credentials tied to their owned softphone session, refreshed before
+expiry. The shared secret stays on the server. Without both variables, browsers
+use `CALL_STUN_URLS` (default `stun:stun.l.google.com:19302`) only. Open TCP/UDP
+3478 and UDP 20800–20999, or the saved TURN ports; for optional TLS TURN configure
+certificates and open TCP 5349. See
+[optional TURN](browser-softphone.md#optional-turn-for-agents) for environment,
+TLS configuration, credential details and relay diagnostics. Meta-to-Janus
 media never uses this TURN server. Voice provider credentials and bot settings
 are configured in the dashboard; starting voice-agent does not configure a bot.
 
@@ -223,8 +229,10 @@ for the exact links shown by this version.
   certificate is not trusted on a public hostname.
 - **Call connects with no audio:** check public IPv4 advertisement and both UDP
   ranges in provider/Docker firewall rules. HTTPS working does not prove media
-  works. TURN currently needs changes to the browser adapter; starting coturn
-  alone does not make the dashboard use it.
+  works. For restrictive agent networks, enable TURN and check **Relay: on** in
+  the microphone area. Verify the selected relay candidate in browser WebRTC
+  diagnostics. Coturn denies private peers, so FreeSWITCH must advertise its
+  reachable public RTP address.
 - **Missing recordings:** FreeSWITCH stores WAVs in `calling-recordings`. The current
   Convex recording action requires `CALL_GATEWAY_RECORDINGS_DIR` on its Node
   action runtime, which this compose stack does not mount. Recording ingestion
