@@ -1,5 +1,6 @@
 import { permissionLimiter, permissionLimitKey } from "./outboundState"
 import { completeOnHangup } from "../ivr/runtime"
+import { settleTerminal } from "./terminal"
 import { v } from "convex/values"
 import { internalMutation, type MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
@@ -397,7 +398,7 @@ async function lifecycle(
     if (next === "connected") patch.connectedAt = row.connectedAt ?? at
   }
   await ctx.db.patch("calls", row._id, patch)
-  const updated = (await ctx.db.get("calls", row._id))!
+  let updated = (await ctx.db.get("calls", row._id))!
   // Inbound calls always refresh the service window, even when termination arrived first.
   if (
     ((event === "connect" && direction === "inbound") ||
@@ -421,6 +422,10 @@ async function lifecycle(
         lastInboundAt: Math.max(at, thread.lastInboundAt ?? 0),
         windowExpiresAt: Math.max(at, thread.lastInboundAt ?? 0) + 86400000,
       })
+  }
+  if (!CALL_TERMINAL.has(row.status) && CALL_TERMINAL.has(updated.status)) {
+    await settleTerminal(ctx, updated)
+    updated = (await ctx.db.get("calls", row._id))!
   }
   if (
     updated.status !== row.status ||
