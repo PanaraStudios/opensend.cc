@@ -628,6 +628,8 @@ describe("REST domain tracking", () => {
 
 describe("inbound SNS notifications", () => {
   async function inboundWorld() {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-09-28T12:00:00.000Z"))
     const f = await fixture()
     await storeTestCredentials(f)
     const inbound = await f.t.run((ctx) =>

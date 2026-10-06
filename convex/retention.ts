@@ -6,6 +6,8 @@ import schema from "./schema"
 import { deleteRow, patchRow } from "./counts"
 import { readBroadcastStats } from "./broadcastMetrics"
 
+import { SNS_DEDUPE_RETENTION_MS } from "./ses/contracts"
+
 const DAY = 86_400_000
 export const retentionPage = {
   numItems: 100,
@@ -21,7 +23,7 @@ export const ses = internalMutation({
     const page = await stream(ctx.db, schema)
       .query("sesEvents")
       .withIndex("by_creation_time", (q) =>
-        q.lt("_creationTime", Date.now() - 30 * DAY)
+        q.lt("_creationTime", Date.now() - SNS_DEDUPE_RETENTION_MS)
       )
       .paginate({ ...retentionPage, cursor: null })
     for (const row of page.page) await ctx.db.delete("sesEvents", row._id)

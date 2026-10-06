@@ -1,6 +1,9 @@
 import { v, ConvexError, type Infer } from "convex/values"
 import { isPublicHostname } from "../../lib/net/public-host"
 import { env } from "../_generated/server"
+// Keep signed SNS notifications inside the dedupe window, with five days of margin.
+export const SNS_DEDUPE_RETENTION_MS = 30 * 86_400_000
+export const SNS_MAX_MESSAGE_AGE_MS = SNS_DEDUPE_RETENTION_MS - 5 * 86_400_000
 export const setupStepValue = v.union(
   v.literal("welcome"),
   v.literal("aws"),
