@@ -75,6 +75,9 @@ services:
       CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
       CALL_AGENT_WSS_URL: ${CALL_AGENT_WSS_URL:-}
       CALL_AGENT_QUEUES: ${CALL_AGENT_QUEUES:-}
+      CALL_STUN_URLS: ${CALL_STUN_URLS:-}
+      CALL_TURN_URLS: ${CALL_TURN_URLS:-}
+      CALL_TURN_SECRET: ${CALL_TURN_SECRET:-}
   app:
     image: ${APP_IMAGE:-ghcr.io/panarastudios/opensend-app:${OPENSEND_VERSION:-latest}}
     build:
@@ -268,12 +271,19 @@ services:
     ports:
       - "${CALL_TURN_PORT:-3478}:${CALL_TURN_PORT:-3478}/udp"
       - "${CALL_TURN_PORT:-3478}:${CALL_TURN_PORT:-3478}/tcp"
+      - "${CALL_TURN_TLS_PORT:-5349}:${CALL_TURN_TLS_PORT:-5349}/tcp"
       - "${CALL_TURN_RELAY_RANGE:-20800-20999}:${CALL_TURN_RELAY_RANGE:-20800-20999}/udp"
     environment:
       CALL_TURN_PUBLIC_IP: ${CALL_TURN_PUBLIC_IP:-}
-      CALL_TURN_PASSWORD: ${CALL_TURN_PASSWORD:-}
+      CALL_TURN_SECRET: ${CALL_TURN_SECRET:-}
+      CALL_TURN_REALM: ${CALL_TURN_REALM:-opensend-calling}
+      CALL_TURN_TLS_PORT: ${CALL_TURN_TLS_PORT:-5349}
+      CALL_TURN_CERT_FILE: ${CALL_TURN_CERT_FILE:-}
+      CALL_TURN_KEY_FILE: ${CALL_TURN_KEY_FILE:-}
       CALL_TURN_PORT: ${CALL_TURN_PORT:-3478}
       CALL_TURN_RELAY_RANGE: ${CALL_TURN_RELAY_RANGE:-20800-20999}
+    volumes:
+      - ${CALL_TURN_CERT_DIR:-./docker/calling-certs}:/certs:ro
   oidc:
     image: quay.io/keycloak/keycloak:26.3.3@sha256:6a7217a100bd3e5de4063a27a538ef999a3c5a88c4b4ec0ffc0a642aee7b2597
     profiles: [oidc-test]

@@ -72,6 +72,7 @@ janus_range=${JANUS_RTP_RANGE:-20000-20199}
 fs_range=${FREESWITCH_RTP_RANGE:-20400-20799}
 turn=${OPENSEND_TURN:-}
 turn_port=${CALL_TURN_PORT:-3478}
+turn_tls_port=${CALL_TURN_TLS_PORT:-5349}
 turn_range=${CALL_TURN_RELAY_RANGE:-20800-20999}
 purge=0
 case ${1:-} in
@@ -335,18 +336,19 @@ if [ "$calling" = yes ]; then
     $1 == 0 || $1 == 10 || $1 == 127 || $1 >= 224 || ($1 == 172 && $2 >= 16 && $2 <= 31) || ($1 == 192 && $2 == 168) || ($1 == 169 && $2 == 254) || ($1 == 100 && $2 >= 64 && $2 <= 127) { exit 1 }'; then
     die 'Calling needs a public IPv4 address'
   fi
-  for pair in CALLING_WSS_PORT FREESWITCH_CERT_DIR JANUS_RTP_RANGE FREESWITCH_RTP_RANGE CALL_TURN_PORT CALL_TURN_RELAY_RANGE; do
+  for pair in CALLING_WSS_PORT FREESWITCH_CERT_DIR JANUS_RTP_RANGE FREESWITCH_RTP_RANGE CALL_TURN_PORT CALL_TURN_TLS_PORT CALL_TURN_RELAY_RANGE; do
     if has_env "$pair"; then
       value=$(get_env "$pair")
       case $pair in
         CALLING_WSS_PORT) wss_port=$value ;; FREESWITCH_CERT_DIR) cert_dir=$value ;;
         JANUS_RTP_RANGE) janus_range=$value ;; FREESWITCH_RTP_RANGE) fs_range=$value ;;
-        CALL_TURN_PORT) turn_port=$value ;; CALL_TURN_RELAY_RANGE) turn_range=$value ;;
+        CALL_TURN_PORT) turn_port=$value ;; CALL_TURN_TLS_PORT) turn_tls_port=$value ;; CALL_TURN_RELAY_RANGE) turn_range=$value ;;
       esac
     fi
   done
   valid_port CALLING_WSS_PORT "$wss_port"
   valid_port CALL_TURN_PORT "$turn_port"
+  valid_port CALL_TURN_TLS_PORT "$turn_tls_port"
   valid_range JANUS_RTP_RANGE "$janus_range"
   valid_range FREESWITCH_RTP_RANGE "$fs_range"
   valid_range CALL_TURN_RELAY_RANGE "$turn_range"
@@ -359,6 +361,9 @@ if [ "$calling" = yes ]; then
     }
   }'; then die 'Calling UDP ranges overlap each other or the private SIP range 20200-20399'; fi
   if [ "$turn" = yes ] && [ "$wss_port" = "$turn_port" ]; then die 'WSS and TURN TCP ports must differ'; fi
+  if [ "$turn" = yes ]; then
+    [ "$turn_tls_port" != "$turn_port" ] && [ "$turn_tls_port" != "$wss_port" ] || die 'TURN TLS, TURN and WSS TCP ports must differ'
+  fi
   if [ -n "$cert_dir" ]; then
     case $cert_dir in /*) ;; *) die '--calling-cert-dir must be an absolute path' ;; esac
   fi
@@ -386,7 +391,7 @@ clear_compose_env() {
   unset CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT CONVEX_SELF_HOSTED_URL CONVEX_URL CONVEX_SITE_URL
   unset INSTANCE_NAME INSTANCE_SECRET BETTER_AUTH_SECRET SSO_ENCRYPTION_KEY CONVEX_SELF_HOSTED_ADMIN_KEY SITE_URL CONVEX_PUBLIC_URL CONVEX_PUBLIC_SITE_URL CONVEX_BACKEND_ORIGIN
   unset CALL_GATEWAY_URL CALL_GATEWAY_SECRET CALL_AGENT_WSS_URL CALL_AGENT_QUEUES VOICE_AGENT_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET DRACHTIO_SECRET
-  unset CALLING_WSS_PORT FREESWITCH_CERT_DIR JANUS_RTP_RANGE FREESWITCH_RTP_RANGE JANUS_PUBLIC_IP FREESWITCH_PUBLIC_IP CALL_GATEWAY_CONVEX_HTTP_URL CALL_TURN_PUBLIC_IP CALL_TURN_PASSWORD CALL_TURN_PORT CALL_TURN_RELAY_RANGE
+  unset CALLING_WSS_PORT FREESWITCH_CERT_DIR JANUS_RTP_RANGE FREESWITCH_RTP_RANGE JANUS_PUBLIC_IP FREESWITCH_PUBLIC_IP CALL_GATEWAY_CONVEX_HTTP_URL CALL_TURN_PUBLIC_IP CALL_TURN_PASSWORD CALL_TURN_SECRET CALL_TURN_URLS CALL_STUN_URLS CALL_TURN_REALM CALL_TURN_TLS_PORT CALL_TURN_CERT_DIR CALL_TURN_CERT_FILE CALL_TURN_KEY_FILE CALL_TURN_PORT CALL_TURN_RELAY_RANGE
   if [ "$convex_mode" = cloud ]; then unset SES_CALLBACK_ORIGIN; fi
 }
 backup() (
@@ -576,8 +581,17 @@ if [ "$calling" = yes ]; then
   if [ "$turn" = yes ]; then
     put_env CALL_TURN_PUBLIC_IP "$calling_ip"
     put_env CALL_TURN_PORT "$turn_port"
+    put_env CALL_TURN_TLS_PORT "$turn_tls_port"
     put_env CALL_TURN_RELAY_RANGE "$turn_range"
-    secret_keys="$secret_keys CALL_TURN_PASSWORD"
+    put_env CALL_TURN_URLS "turn:$calling_domain:$turn_port?transport=udp,turn:$calling_domain:$turn_port?transport=tcp"
+    if [ -z "$(get_env CALL_TURN_SECRET 2>/dev/null || true)" ]; then
+      put_env CALL_TURN_SECRET "$(random_secret)" replace
+    fi
+    # Retire the unused long-term browser password on older installations.
+    if has_env CALL_TURN_PASSWORD; then
+      awk 'index($0, "CALL_TURN_PASSWORD=") != 1 { print }' "$env_file" > "$env_file.tmp"
+      mv "$env_file.tmp" "$env_file"
+    fi
   fi
   for key in $secret_keys; do
     if ! has_env "$key"; then put_env "$key" "$(random_secret)"; fi
@@ -633,7 +647,7 @@ if [ "$calling" = yes ]; then
   say "Calling firewall: TCP $wss_port; UDP $janus_range and $fs_range. Keep media ports mapped 1:1."
   if [ "$turn" = yes ]; then
     say "TURN firewall: TCP/UDP $turn_port; UDP $turn_range."
-    warn 'The current dashboard does not use TURN automatically; its browser adapter needs iceServers support. See docs/browser-softphone.md.'
+    say 'Browser agents receive short-lived relay credentials. See docs/browser-softphone.md.'
   fi
 fi
 say 'For Meta channels, finish the public callback and Meta app steps in the installation wizard.'

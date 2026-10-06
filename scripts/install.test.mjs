@@ -30,7 +30,7 @@ const secretKeys = [
   "FREESWITCH_DIRECTORY_SECRET",
   "DRACHTIO_SECRET",
   "VOICE_AGENT_SECRET",
-  "CALL_TURN_PASSWORD",
+  "CALL_TURN_SECRET",
 ]
 
 async function fixture(t) {
@@ -409,6 +409,7 @@ test("invalid calling inputs fail before writing configuration", async (t) => {
     ["--janus-rtp-range", "20200-20399"],
     ["--turn-relay-range", "22000-22999"],
     ["--turn-port", "8443"],
+    ["--turn-port", "5349"],
     ["--calling-cert-dir", "relative"],
     ["--calling-domain", "bad/host"],
   ]) {
@@ -627,4 +628,48 @@ test("public calling needs a public IP and a certificate directory before startu
     f.settings()
   )
   assert.equal(f.settings().FREESWITCH_CERT_DIR, certDir)
+})
+
+test("legacy TURN password migrates to a new REST secret, retained on upgrades", async (t) => {
+  const f = await fixture(t)
+  await f.run(["--no-start", ...callingFlags])
+  const path = join(f.installation, ".env")
+  const legacy = randomBytes(32).toString("hex")
+  writeFileSync(
+    path,
+    readFileSync(path, "utf8")
+      .replace(/^CALL_TURN_SECRET=.*$/m, `CALL_TURN_PASSWORD=${legacy}`)
+      .replace(/^CALL_TURN_URLS=.*\n/m, "")
+  )
+  const migrated = await f.run([
+    "--upgrade",
+    "--no-start",
+    "--version",
+    "itest-b",
+  ])
+  const env = f.settings()
+  privateOutput(migrated, env)
+  assert.equal(migrated.output.includes(legacy), false)
+  assert.equal(/^[a-f0-9]{64}$/.test(env.CALL_TURN_SECRET), true)
+  assert.equal(env.CALL_TURN_SECRET === legacy, false)
+  assert.equal(env.CALL_TURN_PASSWORD, undefined)
+  assert.equal(
+    env.CALL_TURN_URLS,
+    "turn:calling.example.test:3479?transport=udp,turn:calling.example.test:3479?transport=tcp"
+  )
+  const config = f.composeConfig()
+  assert.equal(
+    config.services.coturn.environment.CALL_TURN_SECRET ===
+      env.CALL_TURN_SECRET,
+    true
+  )
+  assert.equal(
+    config.services.migrate.environment.CALL_TURN_SECRET ===
+      env.CALL_TURN_SECRET,
+    true
+  )
+  assert.equal(config.services.app.environment.CALL_TURN_SECRET, undefined)
+  assert.equal(config.services.coturn.environment.CALL_TURN_PASSWORD, undefined)
+  await f.run(["--upgrade", "--no-start", "--version", "itest-c"])
+  assert.equal(f.settings().CALL_TURN_SECRET === env.CALL_TURN_SECRET, true)
 })

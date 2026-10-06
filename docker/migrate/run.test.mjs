@@ -226,6 +226,9 @@ test("calling deployment supplies gateway and browser settings without erasing e
     CALL_GATEWAY_SECRET: randomBytes(32).toString("hex"),
     CALL_AGENT_WSS_URL: "wss://calling.example.test:7443",
     CALL_AGENT_QUEUES: JSON.stringify({ team: ["support"] }),
+    CALL_STUN_URLS: "stun:stun.example.test:3478",
+    CALL_TURN_URLS: "turn:relay.example.test:3478?transport=tcp",
+    CALL_TURN_SECRET: randomBytes(32).toString("hex"),
   }
   const { code, calls } = await f.run([], {
     CONVEX_SELF_HOSTED_ADMIN_KEY: "",
