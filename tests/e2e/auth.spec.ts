@@ -260,6 +260,30 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByLabel("Secret access key", { exact: true })
     ).toBeVisible()
+    const setupTelemetry = owner.getByRole("switch", {
+      name: "Share anonymous usage statistics",
+      exact: true,
+    })
+    await expect(setupTelemetry).toBeVisible()
+    await expect(setupTelemetry).toBeEnabled()
+    await expect(setupTelemetry).toBeChecked()
+    await setupTelemetry.click()
+    await expect(setupTelemetry).not.toBeChecked()
+    await owner.reload()
+    await expect(setupTelemetry).toBeEnabled()
+    await expect(setupTelemetry).not.toBeChecked()
+    await owner
+      .getByRole("button", { name: "View what's sent", exact: true })
+      .click()
+    const setupPayload = owner.getByRole("dialog", {
+      name: "Anonymous statistics payload",
+      exact: true,
+    })
+    await expect(setupPayload.locator("pre")).toContainText('"schema": 1')
+    await owner.keyboard.press("Escape")
+    await expect(setupPayload).toBeHidden()
+    await setupTelemetry.click()
+    await expect(setupTelemetry).toBeChecked()
     const credentialsHelpButton = owner.getByRole("button", {
       name: "Help with AWS credentials",
     })
@@ -634,6 +658,61 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await owner.getByRole("option", { name: "Amazon SES", exact: true }).click()
     await expect(owner).toHaveURL(/\/instance\/ses$/)
     await expect(owner.getByTestId("ses-settings")).toBeVisible()
+    await expect(
+      owner.getByText("Anonymous usage statistics", { exact: true })
+    ).toBeVisible()
+    const telemetry = owner.getByRole("switch", {
+      name: "Share anonymous usage statistics",
+      exact: true,
+    })
+    await expect(telemetry).toBeEnabled()
+    await expect(telemetry).toBeChecked()
+    await telemetry.click()
+    await expect(telemetry).not.toBeChecked()
+    await expect
+      .poll(async () => (await c.query(api.telemetry.settings)).enabled)
+      .toBe(false)
+    await owner.reload()
+    await expect(telemetry).toBeEnabled()
+    await expect(telemetry).not.toBeChecked()
+    await telemetry.click()
+    await expect(telemetry).toBeChecked()
+    await expect
+      .poll(async () => (await c.query(api.telemetry.settings)).enabled)
+      .toBe(true)
+    await owner
+      .getByRole("button", { name: "View what's sent", exact: true })
+      .click()
+    const telemetryDialog = owner.getByRole("dialog", {
+      name: "Anonymous statistics payload",
+      exact: true,
+    })
+    await expect(telemetryDialog).toBeVisible()
+    const telemetryJson = telemetryDialog.locator("pre")
+    await expect(telemetryJson).toContainText('"schema": 1')
+    const payloadJson = (await telemetryJson.textContent())!
+    const payload = JSON.parse(payloadJson)
+    expect(payload.schema).toBe(1)
+    expect(payload.deployment.calling).toBe(false)
+    for (const field of [
+      "whatsappAccounts",
+      "messengerPages",
+      "instagramAccounts",
+      "channelMessages24h",
+      "calls30d",
+      "ivrs",
+      "voiceBots",
+    ])
+      expect(payload.usage[field]).toBe("0")
+    for (const privateValue of [
+      ownerEmail,
+      "onboarding.example.test",
+      "Playwright Team",
+    ])
+      expect(payloadJson).not.toContain(privateValue)
+    expect(payloadJson).not.toMatch(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+    await owner.keyboard.press("Escape")
+    await expect(telemetryDialog).toBeHidden()
     await expect(owner.getByTestId("installation-wizard")).toHaveCount(0)
     await expect(owner.getByText(/Step \d+ of \d+/)).toHaveCount(0)
     await expect(

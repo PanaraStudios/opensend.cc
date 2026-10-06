@@ -10,6 +10,12 @@ export const CONVEX_ENV_KEYS = [
   "DOMAIN_CONNECT_PRIVATE_KEY",
   "DOMAIN_CONNECT_SIGNER",
   "SMTP_HOST",
+  "OPENSEND_TELEMETRY",
+  "OPENSEND_TELEMETRY_URL",
+  "OPENSEND_VERSION",
+  "OPENSEND_BACKEND",
+  "OPENSEND_INSTALL_METHOD",
+  "OPENSEND_ARCH",
 ]
 
 /** Empty Compose defaults must not erase an existing deployment setting. */

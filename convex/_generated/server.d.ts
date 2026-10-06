@@ -28,6 +28,13 @@ import type { DataModel } from "./dataModel.js";
  * `convex.config.ts`.
  */
 type Env = {
+  readonly OPENSEND_TELEMETRY: string | undefined;
+  readonly OPENSEND_TELEMETRY_URL: string | undefined;
+  readonly OPENSEND_VERSION: string | undefined;
+  readonly OPENSEND_BACKEND: string | undefined;
+  readonly OPENSEND_INSTALL_METHOD: string | undefined;
+  readonly OPENSEND_ARCH: string | undefined;
+
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
   readonly ALLOW_LOCAL_OIDC: string | undefined;

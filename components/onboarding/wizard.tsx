@@ -1,4 +1,5 @@
 "use client"
+import { TelemetrySettings } from "@/components/dashboard/settings-telemetry"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -228,6 +229,7 @@ export function InstallationWizard() {
             />
           </>
         )}
+        {step === "aws" && <TelemetrySettings setup />}
         {step === "aws" &&
           (installation?.accountId && !editingConnection ? (
             <>

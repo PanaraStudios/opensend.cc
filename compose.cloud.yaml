@@ -5,6 +5,7 @@ services:
   migrate:
     depends_on: !reset {}
     environment:
+      OPENSEND_BACKEND: convex-cloud
       CONVEX_DEPLOY_KEY: ${CONVEX_DEPLOY_KEY:?Set CONVEX_DEPLOY_KEY to your deployment deploy key}
       CONVEX_SELF_HOSTED_URL: !reset null
       CONVEX_SELF_HOSTED_ADMIN_KEY: !reset null
