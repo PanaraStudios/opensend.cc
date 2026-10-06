@@ -14,7 +14,7 @@ certificates: {
   rsa_private_key = false
 }
 media: {
-  rtp_port_range = "20000-20199"
+  rtp_port_range = "${JANUS_RTP_RANGE}"
   dtls_mtu = 1200
   no_media_timer = 5
 }

@@ -1,8 +1,9 @@
 "use node"
 import { ConvexError, v } from "convex/values"
-import { action, internalAction } from "../_generated/server"
+import { action, internalAction, env } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
+import { buildIceServers } from "../../lib/calling/turn"
 import { agentActor } from "./agentAccess"
 import {
   gateway,
@@ -78,6 +79,32 @@ export const session = action({
     } catch (error) {
       callingFailure(error)
     }
+  },
+})
+export const iceServers = action({
+  args: browserArgs,
+  returns: v.object({
+    iceServers: v.array(
+      v.object({
+        urls: v.array(v.string()),
+        username: v.optional(v.string()),
+        credential: v.optional(v.string()),
+      })
+    ),
+    expiresAt: v.union(v.number(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const leaseId: string = await ctx.runMutation(
+      internal.calling.softphoneState.iceSession,
+      args
+    )
+    return buildIceServers({
+      stunUrls: env.CALL_STUN_URLS,
+      turnUrls: env.CALL_TURN_URLS,
+      secret: env.CALL_TURN_SECRET,
+      leaseId,
+      now: Date.now(),
+    })
   },
 })
 export const revoke = action({

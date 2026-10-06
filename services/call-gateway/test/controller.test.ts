@@ -129,6 +129,57 @@ function fixture(inviteFailure?: string, voice?: VoiceRuntime) {
   return { controller, commands, events, fs, sessions }
 }
 
+test("media heartbeats stop when Janus stops receiving audio or the call ends", async (t) => {
+  t.mock.timers.enable({
+    apis: ["Date", "setInterval"],
+    now: 1_800_000_000_000,
+  })
+  const f = fixture()
+  try {
+    await f.controller.start()
+    await f.controller.inbound(offer, "heartbeat")
+    await f.controller.route({ callId: "heartbeat", target: "ivr" })
+    f.sessions[0].emit("event", {
+      janus: "media",
+      type: "audio",
+      receiving: true,
+    })
+    t.mock.timers.tick(5000)
+    assert.equal(
+      f.events.filter((event) => event.event === "heartbeat").length,
+      1
+    )
+    t.mock.timers.tick(25000)
+    assert.equal(
+      f.events.filter((event) => event.event === "heartbeat").length,
+      1
+    )
+    t.mock.timers.tick(5000)
+    assert.equal(
+      f.events.filter((event) => event.event === "heartbeat").length,
+      2
+    )
+    f.sessions[0].emit("event", {
+      janus: "media",
+      type: "audio",
+      receiving: false,
+    })
+    t.mock.timers.tick(60000)
+    assert.equal(
+      f.events.filter((event) => event.event === "heartbeat").length,
+      2
+    )
+    await f.controller.hangup("heartbeat")
+    t.mock.timers.tick(60000)
+    assert.equal(
+      f.events.filter((event) => event.event === "heartbeat").length,
+      2
+    )
+  } finally {
+    await f.controller.close()
+  }
+})
+
 test("a rejected SIP INVITE preserves its cause when controller teardown closes the session", async () => {
   const f = fixture("Not Found")
   try {

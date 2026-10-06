@@ -10,6 +10,9 @@ const app = defineApp({
   env: {
     SITE_URL: v.string(),
 
+    CALL_STUN_URLS: v.optional(v.string()),
+    CALL_TURN_URLS: v.optional(v.string()),
+    CALL_TURN_SECRET: v.optional(v.string()),
     SMTP_HOST: v.optional(v.string()),
     BETTER_AUTH_SECRET: v.string(),
     SSO_ENCRYPTION_KEY: v.string(),

@@ -5,6 +5,7 @@ import { apiError } from "../api/caller"
 import { CALL_TERMINAL } from "../../lib/meta/calling"
 import { retirement } from "../teamLifecycle"
 import { string } from "../../lib/meta/parse"
+import { recordActivity } from "./activity"
 export const consume = internalMutation({
   args: {
     nonce: v.string(),
@@ -50,6 +51,8 @@ export const consume = internalMutation({
       at,
       event,
     })
+    if (event === "heartbeat" || event === "media_up")
+      await recordActivity(ctx, row, event === "heartbeat")
     if (event === "recording_ready") {
       await ctx.db.patch("calls", row._id, {
         gatewayRecordingFile: string(data.recordingFile),
@@ -57,7 +60,10 @@ export const consume = internalMutation({
       await ctx.scheduler.runAfter(0, internal.calling.media.gatewayRecording, {
         id: row._id,
       })
-    } else if (!CALL_TERMINAL.has(row.status) && at >= (row.gatewayAt ?? 0)) {
+    } else if (
+      !CALL_TERMINAL.has(row.status) &&
+      (event === "hangup" || at >= (row.gatewayAt ?? 0))
+    ) {
       if (event === "answer_ready" || event === "offer_ready") {
         const sdp = string(data.answerSdp || data.offerSdp)
         if (row.localSession && row.localSession.sdp !== sdp)
@@ -85,7 +91,7 @@ export const consume = internalMutation({
               }
             : {}),
         })
-      else if (event === "hangup" && at >= row.observedAt)
+      else if (event === "hangup")
         await ctx.scheduler.runAfter(
           0,
           row.test

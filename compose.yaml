@@ -71,6 +71,13 @@ services:
       DOMAIN_CONNECT_PRIVATE_KEY: ${DOMAIN_CONNECT_PRIVATE_KEY:-}
       DOMAIN_CONNECT_SIGNER: ${DOMAIN_CONNECT_SIGNER:-}
       SMTP_HOST: ${SMTP_HOST:-}
+      CALL_GATEWAY_URL: ${CALL_GATEWAY_URL:-}
+      CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
+      CALL_AGENT_WSS_URL: ${CALL_AGENT_WSS_URL:-}
+      CALL_AGENT_QUEUES: ${CALL_AGENT_QUEUES:-}
+      CALL_STUN_URLS: ${CALL_STUN_URLS:-}
+      CALL_TURN_URLS: ${CALL_TURN_URLS:-}
+      CALL_TURN_SECRET: ${CALL_TURN_SECRET:-}
   app:
     image: ${APP_IMAGE:-ghcr.io/panarastudios/opensend-app:${OPENSEND_VERSION:-latest}}
     build:
@@ -123,17 +130,18 @@ services:
         condition: service_healthy
   janus:
     profiles: [calling]
-    image: opensend-janus:1.2.3
+    image: ${JANUS_IMAGE:-ghcr.io/panarastudios/opensend-janus:${OPENSEND_VERSION:-latest}}
     build:
       context: docker/janus
     restart: unless-stopped
     ports:
-      - "20000-20199:20000-20199/udp"
+      - "${JANUS_RTP_RANGE:-20000-20199}:${JANUS_RTP_RANGE:-20000-20199}/udp"
     environment:
       JANUS_API_SECRET: ${JANUS_API_SECRET:-}
       JANUS_STUN_SERVER: ${JANUS_STUN_SERVER-stun.l.google.com}
       JANUS_STUN_PORT: ${JANUS_STUN_PORT:-19302}
       JANUS_PUBLIC_IP: ${JANUS_PUBLIC_IP:-}
+      JANUS_RTP_RANGE: ${JANUS_RTP_RANGE:-20000-20199}
     volumes:
       - janus-certs:/certs
     healthcheck:
@@ -144,19 +152,20 @@ services:
       start_period: 20s
   freeswitch:
     profiles: [calling]
-    image: opensend-freeswitch:1.11.3
+    image: ${FREESWITCH_IMAGE:-ghcr.io/panarastudios/opensend-freeswitch:${OPENSEND_VERSION:-latest}}
     build:
       context: docker/freeswitch
     restart: unless-stopped
     stop_grace_period: 20s
     ports:
       - "${CALLING_WSS_PORT:-7443}:7443/tcp"
-      - "20400-20799:20400-20799/udp"
+      - "${FREESWITCH_RTP_RANGE:-20400-20799}:${FREESWITCH_RTP_RANGE:-20400-20799}/udp"
     environment:
       FREESWITCH_ESL_SECRET: ${FREESWITCH_ESL_SECRET:-}
       FREESWITCH_SIP_SECRET: ${FREESWITCH_SIP_SECRET:-}
       FREESWITCH_DIRECTORY_SECRET: ${FREESWITCH_DIRECTORY_SECRET:-}
       FREESWITCH_PUBLIC_IP: ${FREESWITCH_PUBLIC_IP:-auto}
+      FREESWITCH_RTP_RANGE: ${FREESWITCH_RTP_RANGE:-20400-20799}
     volumes:
       - ${FREESWITCH_CERT_DIR:-freeswitch-certs}:/certs
       - calling-recordings:/recordings
@@ -172,7 +181,7 @@ services:
       start_period: 20s
   voice-agent:
     profiles: [calling]
-    image: opensend-voice-agent:0.1.0
+    image: ${VOICE_AGENT_IMAGE:-ghcr.io/panarastudios/opensend-voice-agent:${OPENSEND_VERSION:-latest}}
     build:
       context: .
       dockerfile: services/voice-agent/Dockerfile
@@ -182,14 +191,20 @@ services:
       CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
       CALL_GATEWAY_CONVEX_HTTP_URL: ${CALL_GATEWAY_CONVEX_HTTP_URL:-http://convex:3211}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8094/healthz')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8094/healthz')",
+        ]
       interval: 10s
       timeout: 3s
       retries: 10
       start_period: 30s
   drachtio:
     profiles: [calling]
-    image: opensend-drachtio:0.9.11
+    image: ${DRACHTIO_IMAGE:-ghcr.io/panarastudios/opensend-drachtio:${OPENSEND_VERSION:-latest}}
     build:
       context: docker/drachtio
     restart: unless-stopped
@@ -202,7 +217,7 @@ services:
       retries: 10
   call-gateway:
     profiles: [calling]
-    image: opensend-call-gateway:0.1.0
+    image: ${CALL_GATEWAY_IMAGE:-ghcr.io/panarastudios/opensend-call-gateway:${OPENSEND_VERSION:-latest}}
     build:
       context: .
       dockerfile: services/call-gateway/Dockerfile
@@ -224,7 +239,7 @@ services:
       DRACHTIO_SECRET: ${DRACHTIO_SECRET:-}
       DRACHTIO_HOST: drachtio
       CALL_VOICE_RTP_HOST: call-gateway
-      CALL_AGENT_QUEUES: '${CALL_AGENT_QUEUES:-{}}'
+      CALL_AGENT_QUEUES: "${CALL_AGENT_QUEUES:-{}}"
       FREESWITCH_HOST: freeswitch
       FREESWITCH_ESL_SECRET: ${FREESWITCH_ESL_SECRET:-}
       FREESWITCH_SIP_SECRET: ${FREESWITCH_SIP_SECRET:-}
@@ -249,17 +264,25 @@ services:
   # Opt in with --profile calling-turn in addition to --profile calling.
   coturn:
     profiles: [calling-turn]
-    image: opensend-coturn:4.6
+    image: ${COTURN_IMAGE:-ghcr.io/panarastudios/opensend-coturn:${OPENSEND_VERSION:-latest}}
     build:
       context: docker/coturn
     restart: unless-stopped
     ports:
-      - "3478:3478/udp"
-      - "3478:3478/tcp"
-      - "20800-20999:20800-20999/udp"
+      - "${CALL_TURN_PORT:-3478}:${CALL_TURN_PORT:-3478}/udp"
+      - "${CALL_TURN_PORT:-3478}:${CALL_TURN_PORT:-3478}/tcp"
+      - "${CALL_TURN_RELAY_RANGE:-20800-20999}:${CALL_TURN_RELAY_RANGE:-20800-20999}/udp"
     environment:
       CALL_TURN_PUBLIC_IP: ${CALL_TURN_PUBLIC_IP:-}
-      CALL_TURN_PASSWORD: ${CALL_TURN_PASSWORD:-}
+      CALL_TURN_SECRET: ${CALL_TURN_SECRET:-}
+      CALL_TURN_REALM: ${CALL_TURN_REALM:-opensend-calling}
+      CALL_TURN_TLS_PORT: ${CALL_TURN_TLS_PORT:-5349}
+      CALL_TURN_CERT_FILE: ${CALL_TURN_CERT_FILE:-}
+      CALL_TURN_KEY_FILE: ${CALL_TURN_KEY_FILE:-}
+      CALL_TURN_PORT: ${CALL_TURN_PORT:-3478}
+      CALL_TURN_RELAY_RANGE: ${CALL_TURN_RELAY_RANGE:-20800-20999}
+    volumes:
+      - ${CALL_TURN_CERT_DIR:-./docker/calling-certs}:/certs:ro
   oidc:
     image: quay.io/keycloak/keycloak:26.3.3@sha256:6a7217a100bd3e5de4063a27a538ef999a3c5a88c4b4ec0ffc0a642aee7b2597
     profiles: [oidc-test]

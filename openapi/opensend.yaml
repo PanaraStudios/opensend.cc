@@ -14378,6 +14378,34 @@ paths:
           $ref: "#/components/responses/Error422"
         "429":
           $ref: "#/components/responses/Error429"
+  /ivrs/{id}/rotate-signing-secret:
+    post:
+      operationId: ivrs/rotateSigningSecret
+      tags: [IVRs]
+      summary: Rotate IVR signing secret
+      description: Replace the signing credential and reveal it in this write-scoped response. Save it now; subsequent reads are redacted. Supports Idempotency-Key.
+      x-opensend-scope: ivrs:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: IVR with the new signing secret
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ivr" }
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "422":
+          $ref: "#/components/responses/Error422"
+        "429":
+          $ref: "#/components/responses/Error429"
   /voice-bots:
     post:
       operationId: createVoiceBot
@@ -29914,7 +29942,9 @@ components:
         updated_at:
           type: string
           format: date-time
-        webhook_signing_secret: *a1
+        webhook_signing_secret:
+          type: string
+          description: Full signing secret on creation or rotation only; "[redacted]" on reads, updates and render responses.
         prompt_status:
           type: string
           enum:

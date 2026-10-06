@@ -31,6 +31,8 @@ interface Call {
   /** Epoch ms when the call was answered. Session clocks add this offset. */
   answeredAt?: number
   mediaReported: boolean
+  mediaReceiving?: boolean
+  heartbeatAt?: number
   ending: boolean
   created: number
   setup: Promise<{ answerSdp: string } | { offerSdp: string }>
@@ -170,6 +172,15 @@ export class CallController implements GatewayApi {
       for (const call of this.calls.values())
         if (!call.routed && Date.now() - call.created > 60000)
           void this.finish(call, "Call was not routed within 60 seconds")
+        else if (
+          !call.ending &&
+          call.routed &&
+          call.mediaReceiving &&
+          Date.now() - (call.heartbeatAt ?? 0) >= 30000
+        ) {
+          call.heartbeatAt = Date.now()
+          this.notify(call, { event: "heartbeat" })
+        }
     }, 5000)
   }
   private notify(call: Call, payload: CallbackPayload) {
@@ -223,6 +234,9 @@ export class CallController implements GatewayApi {
     this.calls.set(callId, call)
     janus.on("event", (event: JanusEvent) => {
       const result = event.plugindata?.data.result
+      // Janus reports transitions into/out of receiving RTP (including silent audio).
+      if (event.janus === "media" && event.type === "audio")
+        call.mediaReceiving = event.receiving === true
       if (
         event.janus === "media" &&
         event.type === "audio" &&
@@ -371,6 +385,8 @@ export class CallController implements GatewayApi {
           `originate {origination_uuid=${call.uuid},opensend_call_id=${call.id},media_webrtc=true,absolute_codec_string=OPUS@48000h@20i,originate_timeout=10}user/${request.extension}@${this.options.fsHost} &park()`
         )
         await this.parked(call)
+        // Browser playground legs are anchored in FreeSWITCH rather than Janus.
+        call.mediaReceiving = true
         this.notify(call, { event: "media_up" })
         return { offerSdp: "" }
       } catch (error) {

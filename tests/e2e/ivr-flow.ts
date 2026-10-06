@@ -3,6 +3,29 @@ import { playgroundShots } from "./playground-shots"
 import { client } from "./ses-fixtures"
 import { api } from "../../convex/_generated/api"
 import { createApiKey } from "./broadcast-received-flow"
+
+/** Reveal the one-time signing secret, close it, and confirm it leaves the page. */
+async function dismissSigningSecret(page: Page) {
+  const dialog = page.getByRole("dialog", {
+    name: "Signing secret",
+    exact: true,
+  })
+  await expect(
+    dialog.getByText("You won't see it again.", { exact: true })
+  ).toBeVisible()
+  await dialog
+    .getByRole("button", { name: "Show Signing secret", exact: true })
+    .click()
+  const secret = await dialog
+    .getByLabel("Signing secret", { exact: true })
+    .inputValue()
+  expect(secret).not.toBe("[redacted]")
+  expect(secret).not.toMatch(/^•+$/)
+  expect(secret.length).toBeGreaterThan(0)
+  await dialog.getByRole("button", { name: "Done", exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByText(secret, { exact: true })).toHaveCount(0)
+}
 export function ivrTests(state: () => { owner: Page; organizationId: string }) {
   test("IVR API creates, validates, updates and deletes a team menu tree", async () => {
     const { owner } = state(),
@@ -117,6 +140,7 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
       .click()
     await playgroundShots(owner, "playground-ivr-create")
     await create.getByRole("button", { name: "Create", exact: true }).click()
+    await dismissSigningSecret(owner)
     await expect(owner).toHaveURL(/\/playground\/ivr\/[^/]+$/)
     await expect(owner.getByLabel("Menu ID", { exact: true })).toHaveCount(0)
     await owner
@@ -240,6 +264,31 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
     await expect(owner.getByText(/pending_render/)).toHaveCount(0)
     await playgroundShots(owner, "playground-ivr-tester")
     await tester.getByRole("button", { name: "Close", exact: true }).click()
+    await owner.getByRole("button", { name: "Settings", exact: true }).click()
+    await expect(
+      editor.getByText("Signing secret: hidden", { exact: true })
+    ).toBeVisible()
+    await expect(editor.getByText("[redacted]", { exact: true })).toHaveCount(0)
+    await editor
+      .getByRole("button", { name: "Rotate secret", exact: true })
+      .click()
+    const rotate = owner.getByRole("alertdialog", {
+      name: "Rotate signing secret?",
+      exact: true,
+    })
+    await expect(rotate).toContainText(
+      "The old secret stops working immediately"
+    )
+    await expect(rotate).toContainText("integrations must be updated")
+    await rotate.getByRole("button", { name: "Rotate", exact: true }).click()
+    await dismissSigningSecret(owner)
+    await expect(
+      editor.getByText("Signing secret: hidden", { exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("dialog", { name: "Signing secret", exact: true })
+    ).toBeHidden()
+    await expect(editor.getByText("[redacted]", { exact: true })).toHaveCount(0)
     await owner
       .getByRole("button", { name: "More options", exact: true })
       .click()

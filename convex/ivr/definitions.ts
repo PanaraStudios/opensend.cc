@@ -22,7 +22,7 @@ import { requireActiveTeam } from "../teamLifecycle"
 import { idempotent } from "../api/idempotency"
 import { listArgs, cursorPage } from "../api/paging"
 import schema from "../schema"
-import { encryptSecret, decryptSecret } from "../secrets"
+import { encryptSecret } from "../secrets"
 import { createWebhookSecret } from "../../lib/dashboard/ids"
 import { internal } from "../_generated/api"
 import {
@@ -235,7 +235,7 @@ export async function payload(ctx: QueryCtx, row: Doc<"ivrs">) {
     ...readDefinition(row),
     created_at: new Date(row.createdAt).toISOString(),
     updated_at: new Date(row.updatedAt).toISOString(),
-    webhook_signing_secret: await decryptSecret(row.webhookSecret),
+    webhook_signing_secret: "[redacted]",
     prompt_renders,
     prompt_status: prompt_renders.some((p) => p.status === "failed")
       ? "failed"
@@ -310,7 +310,10 @@ async function writeDefinition(
       })
     if (d.promptVoice)
       await ctx.scheduler.runAfter(0, internal.ivr.rendering.render, { id })
-    return payload(ctx, (await ctx.db.get("ivrs", id))!)
+    return {
+      ...(await payload(ctx, (await ctx.db.get("ivrs", id))!)),
+      ...(!row ? { webhook_signing_secret: args.webhookSecret! } : {}),
+    }
   }
   return args.caller
     ? idempotent(ctx, args.caller, operation, (body) => ({
@@ -457,4 +460,38 @@ export const dashboardValidate = action({
   returns: v.object({ valid: v.boolean(), errors: v.array(v.string()) }),
   handler: (ctx, args): Promise<{ valid: boolean; errors: string[] }> =>
     ctx.runQuery(internal.ivr.definitions.validate, args),
+})
+
+/** Only a write-authorized creation/rotation response reveals the credential. */
+export const rotateSecret = internalMutation({
+  args: { ...actor, id: v.string(), webhookSecret: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, true)
+    const operation = async () => {
+      const row = await own(ctx, args.organizationId, args.id)
+      if (!/^whsec_[A-Za-z0-9+/=]+$/.test(args.webhookSecret))
+        throw invalid("Missing webhook signing secret")
+      await ctx.db.patch("ivrs", row._id, {
+        webhookSecret: await encryptSecret(args.webhookSecret),
+        updatedAt: Date.now(),
+      })
+      return {
+        ...(await payload(ctx, (await ctx.db.get("ivrs", row._id))!)),
+        webhook_signing_secret: args.webhookSecret,
+      }
+    }
+    return args.caller
+      ? idempotent(ctx, args.caller, operation, (body) => ({ body }))
+      : operation()
+  },
+})
+export const dashboardRotateSecret = action({
+  args: { organizationId: v.string(), id: v.string() },
+  returns: v.any(),
+  handler: (ctx, args): Promise<Record<string, unknown>> =>
+    ctx.runMutation(internal.ivr.definitions.rotateSecret, {
+      ...args,
+      webhookSecret: createWebhookSecret(),
+    }),
 })

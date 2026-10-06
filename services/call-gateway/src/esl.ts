@@ -74,15 +74,24 @@ export class FreeSwitch extends EventEmitter {
       port: this.port,
     }))
     const challenge = new Promise<void>((resolve, reject) => {
+      const done = (error?: Error) => {
+        clearTimeout(timer)
+        socket.off("error", failed)
+        socket.off("close", closed)
+        this.off("challenge", ready)
+        if (error) reject(error)
+        else resolve()
+      }
+      const ready = () => done()
+      const failed = (error: Error) => done(error)
+      const closed = () => done(new Error("ESL closed before authentication"))
       const timer = setTimeout(() => {
         socket.destroy()
-        reject(new Error("ESL connection timed out"))
+        done(new Error("ESL connection timed out"))
       }, 5000)
-      socket.once("error", reject)
-      this.once("challenge", () => {
-        clearTimeout(timer)
-        resolve()
-      })
+      socket.once("error", failed)
+      socket.once("close", closed)
+      this.once("challenge", ready)
     })
     socket.on("data", (chunk) => {
       try {

@@ -892,9 +892,7 @@ test("caller lookup defaults on for new and old bots, and names an unknown calle
     (await (await f.request(`/voice-bots/${f.bot}`)).json()).callerContext
   ).toBe(true)
   const callId = await f.createCall()
-  await f.t.run((ctx) =>
-    ctx.db.patch("calls", callId, { from: "15555550124" })
-  )
+  await f.t.run((ctx) => ctx.db.patch("calls", callId, { from: "15555550124" }))
   await f.t.mutation(internal.voice.routing.select, { id: callId })
   const body = await botSession(f, callId)
   expect(body.callerContextBlock).toBe(
@@ -1014,9 +1012,8 @@ test("a bot session includes the caller's newest contact notes, each truncated",
 test("caller lookup can be turned off", async () => {
   const f = await fixture()
   expect(
-    (
-      await f.request(`/voice-bots/${f.bot}`, "PATCH", { callerContext: false })
-    ).status
+    (await f.request(`/voice-bots/${f.bot}`, "PATCH", { callerContext: false }))
+      .status
   ).toBe(200)
   expect(
     (await (await f.request(`/voice-bots/${f.bot}`)).json()).callerContext
@@ -1086,20 +1083,25 @@ test("a failed caller lookup still starts the bot without the block", async () =
   expect(body.keys.live).toBe("secret-provider-key-1234")
   expect(body.callerContextBlock).toBeUndefined()
   expect(
-    errors.mock.calls.some((call) =>
-      String(call[0]).includes("caller context unavailable") &&
-      String(call[0]).includes("reason=failed")
+    errors.mock.calls.some(
+      (call) =>
+        String(call[0]).includes("caller context unavailable") &&
+        String(call[0]).includes("reason=failed")
     )
   ).toBe(true)
-  expect(errors.mock.calls.some((call) => String(call[0]).includes("Ada"))).toBe(
-    false
-  )
+  expect(
+    errors.mock.calls.some((call) => String(call[0]).includes("Ada"))
+  ).toBe(false)
   expect(
     await (
       await f.signed("tools", {
         callId,
         organizationId: f.owner.team,
-        toolCall: { id: "lookup-broken", name: "lookup_contact", arguments: {} },
+        toolCall: {
+          id: "lookup-broken",
+          name: "lookup_contact",
+          arguments: {},
+        },
       })
     ).json()
   ).toMatchObject({ ok: false })
@@ -1121,25 +1123,21 @@ test("the next bot session after an IVR transfer loads the caller again", async 
       feature: "ivr",
     })
   })
-  const created = await f.request(
-    "/ivrs",
-    "POST",
-    {
-      name: "Reception",
-      language: "en",
-      entryMenuId: "main",
-      menus: [
-        {
-          id: "main",
-          name: "Main",
-          prompt: { kind: "audio", fileId: upload },
-          options: { "1": { kind: "bot", botId: f.bot } },
-          noInputAction: { kind: "hangup" },
-          failureAction: { kind: "hangup" },
-        },
-      ],
-    }
-  )
+  const created = await f.request("/ivrs", "POST", {
+    name: "Reception",
+    language: "en",
+    entryMenuId: "main",
+    menus: [
+      {
+        id: "main",
+        name: "Main",
+        prompt: { kind: "audio", fileId: upload },
+        options: { "1": { kind: "bot", botId: f.bot } },
+        noInputAction: { kind: "hangup" },
+        failureAction: { kind: "hangup" },
+      },
+    ],
+  })
   expect(created.status).toBe(201)
   const ivr = (await created.json()).id as string
   expect(
@@ -1170,7 +1168,10 @@ test("the next bot session after an IVR transfer loads the caller again", async 
         toolCall: { id: "to-ivr", name: "transfer_to_ivr", arguments: {} },
       })
     ).json()
-  ).toMatchObject({ ok: true, result: { action: "transfer_to_ivr", ivrId: ivr } })
+  ).toMatchObject({
+    ok: true,
+    result: { action: "transfer_to_ivr", ivrId: ivr },
+  })
   vi.setSystemTime(Date.now() + 2000)
   expect(
     (
@@ -1186,9 +1187,8 @@ test("the next bot session after an IVR transfer loads the caller again", async 
     ).status
   ).toBe(200)
   expect(
-    (
-      await ivrGateway(f, "/calling/gateway/ivr/start", { callId, ivrId: ivr })
-    ).status
+    (await ivrGateway(f, "/calling/gateway/ivr/start", { callId, ivrId: ivr }))
+      .status
   ).toBe(200)
   const next = await ivrGateway(f, "/calling/gateway/ivr/next", {
     callId,
@@ -1296,4 +1296,50 @@ test("REST contact note sources are scoped and preserved across edits", async ()
   expect(
     await f.t.run((ctx) => ctx.db.query("contactNotes").collect())
   ).toHaveLength(1)
+})
+
+test("forced voice catalog refreshes share a committed team quota across credentials and failures", async () => {
+  const f = await fixture()
+  const providers: { id: Id<"voiceProviders"> }[] = []
+  for (const label of ["One", "Two"]) {
+    providers.push(
+      await (
+        await f.request("/voice-providers", "POST", {
+          provider: "elevenlabs",
+          label,
+          key: "fixture-key",
+        })
+      ).json()
+    )
+  }
+  const net = await import("../lib/net/public-fetch")
+  const provider = vi
+    .spyOn(net, "publicFetch")
+    .mockRejectedValue(new Error("Provider unavailable"))
+  const refresh = (
+    credentialId: (typeof providers)[number]["id"],
+    force = true
+  ) =>
+    f.owner.client.action(api.voice.elevenlabs.dashboardRefresh, {
+      organizationId: f.owner.team,
+      credentialId,
+      force,
+    })
+  await refresh(providers[0].id)
+  const requests = provider.mock.calls.length
+  expect(requests).toBeGreaterThan(0)
+  await expect(refresh(providers[1].id)).rejects.toThrow("Wait one minute")
+  expect(provider.mock.calls.length).toBe(requests)
+  await refresh(providers[0].id, false)
+  expect(provider.mock.calls.length).toBe(requests)
+  await expect(
+    f.outsider.client.action(api.voice.elevenlabs.dashboardRefresh, {
+      organizationId: f.owner.team,
+      credentialId: providers[0].id,
+      force: true,
+    })
+  ).rejects.toThrow()
+  vi.setSystemTime(Date.now() + 60000)
+  await refresh(providers[1].id)
+  expect(provider.mock.calls.length).toBeGreaterThan(requests)
 })

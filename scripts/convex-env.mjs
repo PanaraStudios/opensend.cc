@@ -11,6 +11,13 @@ export const CONVEX_ENV_KEYS = [
   "DOMAIN_CONNECT_PRIVATE_KEY",
   "DOMAIN_CONNECT_SIGNER",
   "SMTP_HOST",
+  "CALL_GATEWAY_URL",
+  "CALL_GATEWAY_SECRET",
+  "CALL_AGENT_WSS_URL",
+  "CALL_AGENT_QUEUES",
+  "CALL_STUN_URLS",
+  "CALL_TURN_URLS",
+  "CALL_TURN_SECRET",
 ]
 
 /** Empty Compose defaults must not erase an existing deployment setting. */

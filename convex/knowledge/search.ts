@@ -1,4 +1,5 @@
 "use node"
+import { embedText } from "../../lib/net/embedding"
 import { v } from "convex/values"
 import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
@@ -6,7 +7,7 @@ import type { Id } from "../_generated/dataModel"
 import { actor } from "../botToolkitAccess"
 import { type Caller, invalid } from "../api/caller"
 import { decryptSecret } from "../secrets"
-import { embedText, knowledgeScope } from "../../lib/bot-toolkit"
+import { knowledgeScope } from "../../lib/bot-toolkit"
 export type KnowledgeMatch = {
   id: string
   documentId: string
@@ -49,6 +50,10 @@ export async function searchKnowledge(
     }
   )
   if (!args.knowledgeBaseIds.length) return { data: [] }
+  await ctx.runMutation(internal.botToolkitAccess.reserveOutbound, {
+    organizationId: args.organizationId,
+    operation: "knowledgeSearch",
+  })
   const vector = await embedText(
     await decryptSecret(encryptedKey),
     args.query,

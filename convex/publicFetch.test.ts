@@ -104,6 +104,21 @@ test("redirects are returned without following their targets", async () => {
   expect(addresses).toEqual(["2606:4700::1111", "2606:4700::1111"])
 })
 
+test.each([204, 205, 304])(
+  "streaming accepts bodyless HTTP %s safely",
+  async (status) => {
+    vi.spyOn(dns, "lookup").mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+    ] as never)
+    transport(status, "")
+    const response = await publicFetch("https://public.example", {
+      stream: true,
+    })
+    expect(response.status).toBe(status)
+    expect(response.body).toBeNull()
+  }
+)
+
 test("bounds bodies, with truncation only when requested", async () => {
   vi.spyOn(dns, "lookup").mockResolvedValue([
     { address: "93.184.216.34", family: 4 },

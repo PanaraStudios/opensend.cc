@@ -1,4 +1,6 @@
 import { outboundInstructions } from "../../lib/calling/outbound"
+import { recordActivity } from "../calling/activity"
+import { insertTranscript, toolLimitReached } from "./transcriptCounts"
 import {
   saveCollectedField,
   completeCollection,
@@ -224,14 +226,7 @@ export const tool = internalMutation({
         previous.arguments === serialized
         ? JSON.parse(previous.result!)
         : { ok: false, error: "Tool id reused with different arguments" }
-    const lifetime = await ctx.db
-      .query("callTranscripts")
-      .withIndex("by_callId", (q) => q.eq("callId", call._id))
-      .take(2001)
-    if (
-      lifetime.length > 2000 ||
-      lifetime.filter((line) => line.kind === "tool").length >= 128
-    )
+    if (await toolLimitReached(ctx, call))
       return { ok: false, error: "Call tool limit reached" }
     let result: { ok: boolean; result?: unknown; error?: string }
     // Side effects and durable deduplication commit in the same transaction.
@@ -265,7 +260,7 @@ export const tool = internalMutation({
         ).slice(0, 512),
       }
     }
-    await ctx.db.insert("callTranscripts", {
+    await insertTranscript(ctx, {
       organizationId: call.organizationId,
       callId: call._id,
       eventId: `tool:${toolCall.id}`,
@@ -304,7 +299,7 @@ async function execute(
             ? { conversationId: person.conversationId }
             : {}),
         })
-      await ctx.db.insert("callTranscripts", {
+      await insertTranscript(ctx, {
         organizationId: call.organizationId,
         callId: call._id,
         eventId: crypto.randomUUID(),
@@ -401,6 +396,13 @@ export const event = internalMutation({
     )
       return null
     if (
+      (data.type === "transcript" && string(object(data.transcript).text)) ||
+      (data.type === "media" &&
+        (Number(data.received) > 0 || Number(data.sent) > 0)) ||
+      (data.type === "playback_done" && Number(data.playedMs) > 0)
+    )
+      await recordActivity(ctx, call)
+    if (
       data.type === "state" &&
       call.botConfig &&
       ["hangup", "agent"].includes(string(data.state))
@@ -412,7 +414,13 @@ export const event = internalMutation({
     )
       throw notFound("Bot call")
     if (data.type === "bot_completed") {
-      if (call.botEndedAt) return null
+      // Terminal reconciliation may settle billing before the gateway's final
+      // summary arrives. Enrich that settled session once without charging it again.
+      if (
+        call.botEndedAt &&
+        (!CALL_TERMINAL.has(call.status) || !call.botCompletionPending)
+      )
+        return null
       const at = Math.min(Date.now(), Number(data.endedAt ?? data.timestamp)),
         outcome = string(data.outcome)
       if (
@@ -439,16 +447,18 @@ export const event = internalMutation({
       }
       await ctx.db.patch("calls", call._id, {
         botActive: false,
-        botEndedAt: at,
-        botDuration:
-          (call.botDuration ?? 0) +
-          Math.min(
-            call.botConfig!.maxDurationSeconds,
-            Math.max(
-              0,
-              (at - (call.botSessionStartedAt ?? call.botStartedAt!)) / 1000
-            )
-          ),
+        botEndedAt: call.botEndedAt ?? at,
+        botCompletionPending: false,
+        botDuration: call.botEndedAt
+          ? call.botDuration
+          : (call.botDuration ?? 0) +
+            Math.min(
+              call.botConfig!.maxDurationSeconds,
+              Math.max(
+                0,
+                (at - (call.botSessionStartedAt ?? call.botStartedAt!)) / 1000
+              )
+            ),
         botOutcome,
         botSummary: string(data.summary).slice(0, 4000),
         botUsage: totalUsage,
@@ -484,7 +494,7 @@ export const event = internalMutation({
     }
     const line = object(data.transcript)
     const supplied = Number(line.timestampMs)
-    await ctx.db.insert("callTranscripts", {
+    await insertTranscript(ctx, {
       organizationId: call.organizationId,
       callId: call._id,
       eventId,
