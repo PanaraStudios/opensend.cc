@@ -1,3 +1,4 @@
+import type { PostOptions } from '../common/interfaces';
 import { buildPaginationUrl } from '../common/utils/build-pagination-query';
 import {
   parseContactPropertyFromApi,
@@ -33,11 +34,13 @@ export class ContactProperties {
 
   async create(
     options: CreateContactPropertyOptions,
+    requestOptions: PostOptions = {},
   ): Promise<CreateContactPropertyResponse> {
     const apiOptions = parseContactPropertyToApiOptions(options);
     const data = await this.resend.post<CreateContactPropertyResponseSuccess>(
       '/contact-properties',
       apiOptions,
+      requestOptions,
     );
     return data;
   }

@@ -310,6 +310,53 @@ export function addChannelTools(
     async ({ id }) => output(await resource.messages.get(id))
   )
   server.registerTool(
+    `get-${channel}-${whatsapp ? "phone-number" : channel === "messenger" ? "page" : "account"}`,
+    {
+      title: `Get ${label} Account`,
+      description: `Retrieve one connected ${label} sending account by id.`,
+      annotations: { readOnlyHint: true },
+      inputSchema: { id: z.string() },
+    },
+    async ({ id }) => output(await resource.accounts.get(id))
+  )
+  server.registerTool(
+    `list-${channel}-conversations`,
+    {
+      title: `List ${label} Conversations`,
+      description: `List team ${label} conversations with limit and either after or before. Returns data and has_more; continue using the last conversation id.`,
+      annotations: { readOnlyHint: true },
+      inputSchema: channelPagination,
+    },
+    async (input) => {
+      channelPageCheck(input)
+      return output(
+        await opensend[channel].conversations.list(
+          input as Parameters<typeof opensend.whatsapp.conversations.list>[0]
+        )
+      )
+    }
+  )
+  server.registerTool(
+    `list-${channel}-conversation-messages`,
+    {
+      title: `List ${label} Conversation Messages`,
+      description: `List messages in one team ${label} conversation with limit and either after or before. Returns data and has_more; continue using the last message id.`,
+      annotations: { readOnlyHint: true },
+      inputSchema: { id: z.string(), ...channelPagination },
+    },
+    async ({ id, ...input }) => {
+      channelPageCheck(input)
+      return output(
+        await opensend[channel].conversations.messages(
+          id,
+          input as Parameters<
+            typeof opensend.whatsapp.conversations.messages
+          >[1]
+        )
+      )
+    }
+  )
+  server.registerTool(
     `list-${channel}-${resource.accountName}`,
     {
       title: `List ${label} ${resource.accountTitle}`,
@@ -338,34 +385,52 @@ export function addChannelControlTools(server: McpServer, opensend: Opensend) {
     destructiveHint: false,
     idempotentHint: true,
   }
-  server.registerTool(
-    "mark_message_read",
-    {
-      title: "Mark Message Read",
-      description:
-        "Send a Meta read receipt for a team inbound message received within 30 days. Optionally show typing. Throttled reads are accepted without another Meta call.",
-      annotations,
-      inputSchema: { channel, id: z.string(), typing: z.boolean().optional() },
-    },
-    async ({ channel, id, typing }) =>
-      channelOutput(
-        channel,
-        await opensend[channel].messages.markRead(id, { typing })
-      )
-  )
-  server.registerTool(
-    "set_typing",
-    {
-      title: "Set Typing Indicator",
-      description:
-        "Show typing in a team conversation. Messenger and Instagram support on/off; WhatsApp supports on only, using its latest inbound message and marking it read. Calls are throttled per conversation.",
-      annotations,
-      inputSchema: { channel, id: z.string(), on: z.boolean() },
-    },
-    async ({ channel, id, on }) =>
-      channelOutput(
-        channel,
-        await opensend[channel].conversations.typing(id, on)
-      )
-  )
+  for (const name of ["mark_message_read", "mark-message-read"])
+    server.registerTool(
+      name,
+      {
+        title: "Mark Message Read",
+        description:
+          "Send a Meta read receipt for a team inbound message received within 30 days. Optionally show typing. Throttled reads are accepted without another Meta call.",
+        annotations,
+        inputSchema: {
+          channel,
+          id: z.string(),
+          typing: z.boolean().optional(),
+          idempotencyKey: z.string().optional(),
+        },
+      },
+      async ({ channel, id, typing, idempotencyKey }) =>
+        channelOutput(
+          channel,
+          await opensend[channel].messages.markRead(
+            id,
+            { typing },
+            { idempotencyKey }
+          )
+        )
+    )
+  for (const name of ["set_typing", "set-typing"])
+    server.registerTool(
+      name,
+      {
+        title: "Set Typing Indicator",
+        description:
+          "Show typing in a team conversation. Messenger and Instagram support on/off; WhatsApp supports on only, using its latest inbound message and marking it read. Calls are throttled per conversation.",
+        annotations,
+        inputSchema: {
+          channel,
+          id: z.string(),
+          on: z.boolean(),
+          idempotencyKey: z.string().optional(),
+        },
+      },
+      async ({ channel, id, on, idempotencyKey }) =>
+        channelOutput(
+          channel,
+          await opensend[channel].conversations.typing(id, on, {
+            idempotencyKey,
+          })
+        )
+    )
 }

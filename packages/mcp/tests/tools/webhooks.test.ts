@@ -168,10 +168,13 @@ describe("webhook event tools", () => {
       arguments: { webhookId: WEBHOOK_ID, eventId: EVENT_ID },
     })
 
-    expect(replayEvent).toHaveBeenCalledWith({
-      webhookId: WEBHOOK_ID,
-      eventId: EVENT_ID,
-    })
+    expect(replayEvent).toHaveBeenCalledWith(
+      {
+        webhookId: WEBHOOK_ID,
+        eventId: EVENT_ID,
+      },
+      { idempotencyKey: undefined }
+    )
     expect(textOf(result as never)).toContain(EVENT_ID)
   })
 
@@ -191,7 +194,9 @@ describe("webhook event tools", () => {
       arguments: { webhookId: WEBHOOK_ID },
     })
 
-    expect(rotateSigningSecret).toHaveBeenCalledWith(WEBHOOK_ID)
+    expect(rotateSigningSecret).toHaveBeenCalledWith(WEBHOOK_ID, {
+      idempotencyKey: undefined,
+    })
     expect(textOf(result as never)).toContain("whsec_rotated")
   })
 

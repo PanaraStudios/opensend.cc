@@ -1,3 +1,4 @@
+import type { PostOptions } from '../common/interfaces';
 import { Webhook } from 'standardwebhooks';
 import { buildPaginationUrl } from '../common/utils/build-pagination-query';
 import type { Resend } from '../resend';
@@ -98,10 +99,13 @@ export class Webhooks {
 
   async rotateSigningSecret(
     id: string,
+    requestOptions: PostOptions = {},
   ): Promise<RotateWebhookSigningSecretResponse> {
     const data =
       await this.resend.post<RotateWebhookSigningSecretResponseSuccess>(
         `/webhooks/${id}/signing-secret/rotate`,
+        undefined,
+        requestOptions,
       );
     return data;
   }

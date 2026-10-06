@@ -18,6 +18,7 @@ const ADD_SUPPRESSION_TOOL = {
     "Add an email address to the suppression list in Opensend. Suppressed addresses never receive emails from the account, even when included as recipients. Hard bounces and spam complaints are added to the suppression list automatically; use this tool to manually suppress an address when needed, e.g. to honor a do-not-contact request. To suppress many addresses at once, use batch-add-suppressions instead.",
   inputSchema: {
     email: z.email().describe("Email address to suppress"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -95,6 +96,7 @@ const BATCH_ADD_SUPPRESSIONS_TOOL = {
       .array(z.email())
       .nonempty()
       .describe("Email addresses to suppress"),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -117,6 +119,7 @@ const BATCH_REMOVE_SUPPRESSIONS_TOOL = {
       .describe(
         'Suppression IDs to remove from the suppression list. Cannot be used with "emails".'
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -124,8 +127,11 @@ export function addSuppressionTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "add-suppression",
     ADD_SUPPRESSION_TOOL,
-    async ({ email }) => {
-      const response = await opensend.suppressions.add({ email })
+    async ({ email, idempotencyKey }) => {
+      const response = await opensend.suppressions.add(
+        { email },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
@@ -247,8 +253,11 @@ export function addSuppressionTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "batch-add-suppressions",
     BATCH_ADD_SUPPRESSIONS_TOOL,
-    async ({ emails }) => {
-      const response = await opensend.suppressions.batch.add({ emails })
+    async ({ emails, idempotencyKey }) => {
+      const response = await opensend.suppressions.batch.add(
+        { emails },
+        { idempotencyKey }
+      )
 
       if (response.error) {
         throw new Error(
@@ -275,7 +284,7 @@ export function addSuppressionTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "batch-remove-suppressions",
     BATCH_REMOVE_SUPPRESSIONS_TOOL,
-    async ({ emails, ids }) => {
+    async ({ emails, ids, idempotencyKey }) => {
       if (emails && ids) {
         throw new Error(
           'Cannot use both "emails" and "ids" parameters. Provide only one.'
@@ -286,7 +295,8 @@ export function addSuppressionTools(server: McpServer, opensend: Opensend) {
       }
 
       const response = await opensend.suppressions.batch.remove(
-        emails ? { emails } : { ids: ids as [string, ...string[]] }
+        emails ? { emails } : { ids: ids as [string, ...string[]] },
+        { idempotencyKey }
       )
 
       if (response.error) {

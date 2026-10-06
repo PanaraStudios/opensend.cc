@@ -1,3 +1,4 @@
+import type { PostOptions } from '../common/interfaces';
 import { buildPaginationUrl } from '../common/utils/build-pagination-query';
 import { parseEmailToApiOptions } from '../common/utils/parse-email-to-api-options';
 import { render } from '../render';
@@ -100,9 +101,14 @@ export class Emails {
     return data;
   }
 
-  async cancel(id: string): Promise<CancelEmailResponse> {
+  async cancel(
+    id: string,
+    requestOptions: PostOptions = {},
+  ): Promise<CancelEmailResponse> {
     const data = await this.resend.post<CancelEmailResponseSuccess>(
       `/emails/${id}/cancel`,
+      undefined,
+      requestOptions,
     );
     return data;
   }
@@ -110,10 +116,12 @@ export class Emails {
   async share(
     id: string,
     payload?: ShareEmailOptions,
+    requestOptions: PostOptions = {},
   ): Promise<ShareEmailResponse> {
     const data = await this.resend.post<ShareEmailResponseSuccess>(
       `/emails/${id}/share`,
       { expires_in: payload?.expiresIn },
+      requestOptions,
     );
     return data;
   }
