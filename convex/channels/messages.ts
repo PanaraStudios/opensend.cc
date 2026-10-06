@@ -17,7 +17,10 @@ import { live } from "../meta/connect"
 import { teamRow } from "../lists"
 import { decryptSecret } from "../secrets"
 import { invalid, notFound } from "../api/caller"
-import { broadcastMessageMetric } from "../broadcastMetrics"
+import {
+  broadcastMessageMetric,
+  broadcastRecipientProblem,
+} from "../broadcastMetrics"
 import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
 import {
@@ -672,6 +675,27 @@ export const claim = internalMutation({
       (await retirement(ctx, message.organizationId))
     )
       return null
+    const problem = await broadcastRecipientProblem(ctx, message)
+    const run = message.automationRunId
+      ? await ctx.db.get("automationRuns", message.automationRunId)
+      : null
+    const automationContact = run?.contactId
+      ? await ctx.db.get("contacts", run.contactId)
+      : null
+    if (
+      problem ||
+      (message.automationRunId &&
+        (!automationContact ||
+          automationContact.organizationId !== message.organizationId ||
+          automationContact.unsubscribed))
+    ) {
+      await fail(
+        ctx,
+        message,
+        "The recipient is no longer eligible for this message."
+      )
+      return null
+    }
     let access: Awaited<ReturnType<typeof channelAccountAccess>>
     try {
       access = await channelAccountAccess(

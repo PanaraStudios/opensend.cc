@@ -161,6 +161,42 @@ async function setup() {
 }
 type Fixture = Awaited<ReturnType<typeof setup>>
 
+test.each(["unsubscribed", "deleted"] as const)(
+  "WhatsApp rechecks a queued broadcast recipient after %s",
+  async (change) => {
+    const f = await setup()
+    const [contactId] = await f.contacts([
+      { phone: `+${SENDER}`, firstName: "Queued" },
+    ])
+    const id = await f.create()
+    await f.fanout(id)
+    const [recipient] = await f.recipients(id)
+    if (change === "deleted")
+      await f.owner.client.mutation(api.contacts.remove, {
+        organizationId: f.owner.team,
+        ids: [contactId],
+      })
+    else
+      await f.owner.client.mutation(api.contacts.update, {
+        id: contactId,
+        unsubscribed: true,
+      })
+    await f.t.action(internal.channels.deliver.deliver, {
+      id: recipient.messageId!,
+      generation: 0,
+    })
+    expect(f.graph.to(`/${PHONE_ID}/messages`, "POST")).toHaveLength(0)
+    expect(
+      (
+        await f.t.run((ctx) =>
+          ctx.db.get("channelMessages", recipient.messageId!)
+        )
+      )?.status
+    ).toBe("failed")
+    expect((await f.read(id))?.status).toBe("failed")
+  }
+)
+
 test("broadcast media headers require an upload or reuse a stored sample without a variable mapping", async () => {
   const f = await setup()
   const published = await f.t.run(async (ctx) => {
@@ -670,6 +706,43 @@ test("automation text sends inside the window, skips outside it and without a ph
       node: JSON.stringify({ ...node, accountId: foreign }),
     })
   ).rejects.toBeDefined()
+})
+
+test("WhatsApp rechecks a queued automation recipient after unsubscribe", async () => {
+  const f = await setup()
+  await project(f, incoming("wamid.automation-eligibility"))
+  const contact = (await f.t.run((ctx) =>
+    ctx.db
+      .query("contacts")
+      .withIndex("by_organizationId_and_phone", (q) =>
+        q.eq("organizationId", f.owner.team).eq("phone", `+${SENDER}`)
+      )
+      .unique()
+  ))!
+  const node = whatsappStep(f, "text")
+  const automationId = await automation(f, [node])
+  const row = (await f.t.run((ctx) => ctx.db.get("automations", automationId)))!
+  const id = await f.t.run((ctx) => startRun(ctx, row, contact, {}))
+  await f.t.mutation(internal.automationRuntime.perform, { id, key: node.key })
+  const message = (
+    await f.t.run((ctx) =>
+      ctx.db
+        .query("channelMessages")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", f.owner.team)
+        )
+        .collect()
+    )
+  ).find((m) => m.automationRunId === id)!
+  await f.owner.client.mutation(api.contacts.update, {
+    id: contact._id,
+    unsubscribed: true,
+  })
+  await deliver(f, message._id)
+  expect(f.graph.to(`/${PHONE_ID}/messages`, "POST")).toHaveLength(0)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("channelMessages", message._id)))?.status
+  ).toBe("failed")
 })
 
 test("WhatsApp graph validation, REST round-trip and enabling validate references across teams", async () => {
