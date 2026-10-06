@@ -54,6 +54,10 @@ vi.mock("convex/react", () => ({
           : state.complete,
   useAction: () => vi.fn(),
 }))
+vi.mock("@/components/dashboard/settings-telemetry", () => ({
+  TelemetrySettings: () =>
+    createElement("span", null, "Share anonymous usage statistics"),
+}))
 vi.mock("@/components/dashboard/settings-meta", () => ({
   SettingsMeta: () => createElement("span", null, "Shared Meta settings"),
 }))
