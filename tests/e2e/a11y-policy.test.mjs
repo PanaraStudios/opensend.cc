@@ -14,7 +14,7 @@ import {
   withinA11yScanBudget,
 } from "./a11y-policy.ts"
 
-test("contrast remains counted in the summary while only its failure gate is deferred", () => {
+test("contrast is counted in the summary and enforced after the owner decision", () => {
   const findings = [
     { ruleId: "color-contrast", impact: "serious" },
     { ruleId: "color-contrast", impact: "critical" },
@@ -22,11 +22,12 @@ test("contrast remains counted in the summary while only its failure gate is def
   ]
   assert.deepEqual(summarizeA11yFindings(findings), {
     total: 3,
-    allowlisted: 2,
-    failing: 1,
+    allowlisted: 0,
+    failing: 3,
     rules: { "color-contrast": 2, "button-name": 1 },
   })
-  assert.equal(blocksA11yTour(findings[0]), false)
+  assert.equal(blocksA11yTour(findings[0]), true)
+  assert.equal(blocksA11yTour(findings[1]), true)
   assert.equal(blocksA11yTour(findings[2]), true)
 })
 

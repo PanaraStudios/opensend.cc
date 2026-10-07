@@ -1,9 +1,7 @@
 // Only evidenced third-party or deliberate exceptions belong here, with a reason
 // beside each rule id.
 // Allowlisted rules are still scanned and recorded; only failure gating changes.
-export const A11Y_RULE_ALLOWLIST: ReadonlySet<string> = new Set([
-  "color-contrast", // pending owner decision on token contrast
-])
+export const A11Y_RULE_ALLOWLIST: ReadonlySet<string> = new Set([])
 
 // Only sandboxed customer HTML, shared by email/template previews and raw HTML
 // editor blocks. Excluding the frame removes it from AxeBuilder's frame traversal;
