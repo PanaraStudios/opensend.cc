@@ -1,13 +1,69 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { createRequire } from "node:module"
+import { Window } from "happy-dom"
 import {
   A11Y_FULL_TAGS,
   A11Y_THEME_RULES,
   A11Y_MOBILE_STATES,
+  A11Y_PREVIEW_FRAME_SELECTOR,
+  A11yScanTimeoutError,
   a11yScanMode,
   blocksA11yTour,
+  withinA11yScanBudget,
 } from "./a11y-policy.ts"
+
+test("preview exclusion prevents axe frame traversal without excluding other UI frames", async () => {
+  const require = createRequire(import.meta.url)
+  const axe = createRequire(require.resolve("@axe-core/playwright"))("axe-core")
+  const window = new Window({ settings: { disableIframePageLoading: true } })
+  try {
+    window.document.body.innerHTML = `
+      <iframe data-slot="email-preview-frame" sandbox="" title="Email preview"></iframe>
+      <iframe data-slot="email-preview-frame" sandbox="" title="HTML block"></iframe>
+      <iframe id="ui-frame" title="Application UI"></iframe>
+    `
+    window.eval(axe.source)
+    assert.equal(
+      window.axe.utils.getFrameContexts({ include: ["body"] }).length,
+      3
+    )
+    const frames = window.axe.utils.getFrameContexts({
+      include: ["body"],
+      exclude: [A11Y_PREVIEW_FRAME_SELECTOR],
+    })
+    assert.equal(frames.length, 1)
+    assert.ok(
+      window.document.querySelector(frames[0].frameSelector) ===
+        window.document.getElementById("ui-frame")
+    )
+  } finally {
+    await window.happyDOM.close()
+  }
+})
+
+test("scan budget retains successful results and surfaces engine failures", async () => {
+  const result = { violations: [] }
+  assert.equal(await withinA11yScanBudget(async () => result), result)
+  const error = new TypeError("Scan engine failed")
+  await assert.rejects(
+    withinA11yScanBudget(async () => {
+      throw error
+    }),
+    (caught) => caught === error
+  )
+})
+
+test("an unresponsive scan fails its hard budget rather than blocking the tour", async () => {
+  await assert.rejects(
+    withinA11yScanBudget(() => new Promise(() => {}), 10),
+    (error) => {
+      assert.ok(error instanceof A11yScanTimeoutError)
+      assert.match(error.message, /exceeded/)
+      return true
+    }
+  )
+})
 
 test("tour scans each desktop state fully in light and only theme rules in dark", () => {
   for (const screen of [

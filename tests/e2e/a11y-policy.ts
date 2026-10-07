@@ -3,6 +3,42 @@
 // Allowlisted rules are still scanned and recorded; only failure gating changes.
 export const A11Y_RULE_ALLOWLIST: ReadonlySet<string> = new Set([])
 
+// Only sandboxed customer HTML, shared by email/template previews and raw HTML
+// editor blocks. Excluding the frame removes it from AxeBuilder's frame traversal;
+// other frames remain eligible. Do not broaden this to every iframe or sandbox.
+export const A11Y_PREVIEW_FRAME_SELECTOR =
+  'iframe[data-slot="email-preview-frame"]'
+export const A11Y_SCAN_MAX_MS = 20_000
+
+export class A11yScanTimeoutError extends Error {
+  constructor(maxMs: number) {
+    super(`axe scan exceeded its ${maxMs / 1000}s budget`)
+    this.name = "A11yScanTimeoutError"
+  }
+}
+
+export async function withinA11yScanBudget<Result>(
+  scan: () => Promise<Result>,
+  maxMs = A11Y_SCAN_MAX_MS
+): Promise<Result> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const started = performance.now()
+  try {
+    const result = await Promise.race([
+      scan(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new A11yScanTimeoutError(maxMs)), maxMs)
+      }),
+    ])
+    // Also enforce the deadline if the event loop delays delivery of the timer.
+    if (performance.now() - started > maxMs)
+      throw new A11yScanTimeoutError(maxMs)
+    return result
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export const A11Y_FULL_TAGS = [
   "wcag2a",
   "wcag2aa",

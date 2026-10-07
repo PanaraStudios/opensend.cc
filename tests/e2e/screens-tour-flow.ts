@@ -11,8 +11,11 @@ import {
   A11Y_FULL_TAGS,
   A11Y_THEME_RULES,
   A11Y_RULE_ALLOWLIST,
+  A11Y_PREVIEW_FRAME_SELECTOR,
+  A11yScanTimeoutError,
   a11yScanMode,
   blocksA11yTour,
+  withinA11yScanBudget,
 } from "./a11y-policy"
 
 type Screen = { name: string; open: (page: Page) => Promise<void> }
@@ -696,6 +699,7 @@ export function screensTourTests(state: TourState) {
     page.on("pageerror", onError)
     let axeTimeMs = 0
     const axeScans = { full: 0, theme: 0 }
+    const axeErrors = new Map<string, number>()
     try {
       for (const width of [1280, 390]) {
         await page.setViewportSize({ width, height: 960 })
@@ -835,13 +839,25 @@ export function screensTourTests(state: TourState) {
             if (scanMode !== "skip") {
               const axeStarted = performance.now()
               axeScans[scanMode]++
+              let errorKind: string | undefined
               try {
-                const builder = new AxeBuilder({ page })
-                const result = await (
-                  scanMode === "full"
+                const result = await withinA11yScanBudget(async () => {
+                  const previewFrames = await page
+                    .locator(A11Y_PREVIEW_FRAME_SELECTOR)
+                    .count()
+                  console.log(
+                    `[screens tour] axe start: ${screen.name} ${theme} ${width}px ` +
+                      `${scanMode}; child frames: ${page.frames().length - 1}; ` +
+                      `excluded preview frames: ${previewFrames}`
+                  )
+                  const builder = new AxeBuilder({ page }).exclude(
+                    A11Y_PREVIEW_FRAME_SELECTOR
+                  )
+                  return (scanMode === "full"
                     ? builder.withTags(A11Y_FULL_TAGS)
                     : builder.withRules(A11Y_THEME_RULES)
-                ).analyze()
+                  ).analyze()
+                })
                 for (const violation of result.violations) {
                   for (const node of violation.nodes) {
                     findings.push({
@@ -862,16 +878,36 @@ export function screensTourTests(state: TourState) {
                   }
                 }
               } catch (error) {
+                errorKind = error instanceof Error ? error.name : "NonError"
+                axeErrors.set(errorKind, (axeErrors.get(errorKind) ?? 0) + 1)
+                console.error(
+                  `[screens tour] axe error: ${screen.name} ${theme} ${width}px ` +
+                    `${errorKind}: ${String(error)}`
+                )
                 findings.push({
                   screen: screen.name,
                   theme,
                   width,
                   kind: "a11y-scan-error",
-                  detail: String(error),
+                  detail: { errorKind, message: String(error) },
                   screenshot,
                 })
+                writeFileSync(
+                  join(dir, "findings.json"),
+                  JSON.stringify({ visited, findings }, null, 2)
+                )
+                if (error instanceof A11yScanTimeoutError) {
+                  // AxeBuilder cannot cancel analyze(). Abort: context.close()
+                  // below stops it before another scan can start.
+                  throw error
+                }
               } finally {
-                axeTimeMs += performance.now() - axeStarted
+                const elapsedMs = performance.now() - axeStarted
+                axeTimeMs += elapsedMs
+                console.log(
+                  `[screens tour] axe scan: ${screen.name} ${theme} ${width}px ` +
+                    `${scanMode} ${(elapsedMs / 1000).toFixed(2)}s (${errorKind ?? "ok"})`
+                )
               }
             }
             const evidence = await page.evaluate(() => {
@@ -988,7 +1024,9 @@ export function screensTourTests(state: TourState) {
     } finally {
       console.log(
         `[screens tour] axe total: ${(axeTimeMs / 1000).toFixed(1)}s ` +
-          `(${axeScans.full} full scans, ${axeScans.theme} theme scans; includes scan errors)`
+          `(${axeScans.full} full scans, ${axeScans.theme} theme scans); ` +
+          `scan errors: ${[...axeErrors.values()].reduce((total, count) => total + count, 0)}; ` +
+          `error kinds: ${JSON.stringify(Object.fromEntries(axeErrors))}`
       )
       page.off("console", onConsole)
       page.off("pageerror", onError)
