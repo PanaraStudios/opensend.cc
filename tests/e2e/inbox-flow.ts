@@ -266,9 +266,13 @@ export function inboxTests(
         message.conversationId === conversationId && message.type === "template"
     )!
     await owner.goto(`/emails/messages/${templateMessage._id}`)
-    await expect(owner.getByTestId("whatsapp-preview")).toContainText(
-      "Hi Pablo, your order is ready."
-    )
+    // The detail page also renders the conversation thread, which repeats the
+    // card; check the message's own Preview tab.
+    await expect(
+      owner
+        .getByRole("tabpanel", { name: "Preview" })
+        .getByTestId("whatsapp-preview")
+    ).toContainText("Hi Pablo, your order is ready.")
     await shots(owner, "template-detail")
     expect((await sends(owner)).at(-1)?.body).toMatchObject({
       to: CUSTOMER,
