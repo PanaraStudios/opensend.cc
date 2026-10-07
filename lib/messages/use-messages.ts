@@ -34,6 +34,7 @@ export type LogRow = {
   party: string
   /** The subject, or the message's preview. */
   summary: string
+  error?: string
   /** Where a received message arrived. */
   to: string
   status:
@@ -70,6 +71,10 @@ function asSentRow(item: SentItem): LogRow {
     href: messageHref("email", email.id),
     party: email.to,
     summary: email.subject,
+    error:
+      "error" in email && typeof email.error === "string"
+        ? email.error
+        : undefined,
     to: email.to,
     status: { kind: "email", value: email.status },
     createdAt: email.createdAt,
@@ -89,6 +94,10 @@ function asReceivedRow(item: ReceivedItem): LogRow {
     href: messageHref("received", email.id),
     party: email.from,
     summary: email.subject,
+    error:
+      "error" in email && typeof email.error === "string"
+        ? email.error
+        : undefined,
     to: email.to,
     status: null,
     createdAt: email.createdAt,

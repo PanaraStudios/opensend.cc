@@ -443,7 +443,7 @@ test("SC identity: list, detail, suggestions and Inbox hydrate channel-only cont
   expect(
     await f.owner.client.query(api.conversations.get, { id: thread!._id })
   ).toMatchObject({
-    name: "Unknown contact",
+    name: "Messenger user",
     contact: { channelIdentity: expected },
   })
   await expect(

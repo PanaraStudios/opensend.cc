@@ -75,6 +75,7 @@ import {
   isEmail,
   suppressionReasonLabel,
 } from "@/lib/dashboard/format"
+import { emailFailureMessage } from "@/lib/dashboard/email-failure"
 import { actionError } from "@/lib/action-error"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import { useReceivingDomain } from "@/lib/received/use-received"
@@ -216,6 +217,11 @@ function LogCell({ row }: { row: LogRow }) {
         <span className="truncate text-xs text-muted-foreground">
           {row.summary}
         </span>
+        {row.error ? (
+          <span className="text-xs text-destructive">
+            {emailFailureMessage(row.error)}
+          </span>
+        ) : null}
       </div>
     </IconCell>
   )

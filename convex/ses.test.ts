@@ -1600,7 +1600,7 @@ describe("native SES team tenants", () => {
         organizationId: f.owner.team,
         domainId: f.domain,
       })
-    ).rejects.toThrow("Domain is not ready")
+    ).rejects.toThrow("mail.example.test is not verified for sending")
     await f.t.run(async (ctx) => {
       await patchRow(ctx, "domains", f.domain, {
         status: "verified",

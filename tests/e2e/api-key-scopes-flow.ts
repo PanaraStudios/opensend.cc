@@ -17,7 +17,7 @@ export function apiKeyScopesTests(
       .first()
       .click()
     const dialog = owner.getByRole("dialog", {
-      name: "Add API Key",
+      name: "Create API key",
       exact: true,
     })
     await dialog.getByLabel("Name", { exact: true }).fill("Custom CRM E2E")
@@ -31,6 +31,12 @@ export function apiKeyScopesTests(
       dialog.getByRole("button", { name: "Emails Read", exact: true })
     ).toHaveAttribute("aria-pressed", "true")
     await dialog.getByRole("button", { name: "Clear", exact: true }).click()
+    await dialog.getByRole("button", { name: "Create", exact: true }).click()
+    await expect(
+      dialog.getByText(
+        "Choose at least one resource scope for a Custom API key"
+      )
+    ).toBeVisible()
     await dialog
       .getByRole("button", { name: "Emails Write", exact: true })
       .click()
@@ -64,7 +70,7 @@ export function apiKeyScopesTests(
       )
       .toBe(true)
     await playgroundShots(owner, "api-key-scopes")
-    await dialog.getByRole("button", { name: "Add", exact: true }).click()
+    await dialog.getByRole("button", { name: "Create", exact: true }).click()
     const reveal = owner.getByRole("dialog", {
       name: "View API Key",
       exact: true,

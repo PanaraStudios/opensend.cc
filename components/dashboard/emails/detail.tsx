@@ -71,6 +71,7 @@ import {
   tokenizeHtml,
   type HtmlTokenKind,
 } from "@/lib/dashboard/highlight-html"
+import { emailFailureMessage } from "@/lib/dashboard/email-failure"
 import { actionError } from "@/lib/action-error"
 import { useReceived } from "@/lib/received/use-received"
 import type {
@@ -402,6 +403,21 @@ export function EmailDetail() {
             <ItemDescription>{formatDateTime(log.createdAt)}</ItemDescription>
           </ItemContent>
         </Item>
+      ) : null}
+      {email.status === "failed" && email.error ? (
+        <Alert variant="destructive" data-testid="email-failure">
+          <CircleAlertIcon />
+          <AlertTitle>Email could not be sent</AlertTitle>
+          <AlertDescription>
+            {emailFailureMessage(email.error)}
+            {email.providerError ? (
+              <JsonSection
+                title="Provider message"
+                value={email.providerError}
+              />
+            ) : null}
+          </AlertDescription>
+        </Alert>
       ) : null}
       <EmailEventsRow events={timeline.pageRows} />
       <ListPagination {...timeline.pagination} embedded noun="event" />

@@ -80,4 +80,43 @@ export function contactsPhoneTests(state: () => { owner: Page }) {
     ).toHaveAttribute("href", `/contacts/${id}`)
     await shot(owner, "rest")
   })
+  test("an empty segment explains membership and adds a contact through search", async () => {
+    const { owner } = state()
+    const headers = await createApiKey(owner, "QA segment picker")
+    const origin = process.env.OPENSEND_CALLBACK_ORIGIN!
+    const response = await owner.request.post(`${origin}/segments`, {
+      headers,
+      data: { name: "QA empty segment" },
+    })
+    expect(response.ok()).toBeTruthy()
+    const { id } = await response.json()
+    await owner.goto(`/segments/${id}`)
+    await expect(
+      owner.getByText("No contacts in this segment", { exact: true })
+    ).toBeVisible()
+    await expect(owner.getByText(/bulk action in Contacts/)).toBeVisible()
+    await owner
+      .getByRole("button", { name: "Add contacts", exact: true })
+      .first()
+      .click()
+    const dialog = owner.getByRole("dialog", {
+      name: "Add contacts",
+      exact: true,
+    })
+    await dialog.getByLabel("Contact", { exact: true }).click()
+    await owner.getByPlaceholder("Search contacts…").fill("442079460958")
+    await owner
+      .getByRole("option", { name: "+442079460958", exact: true })
+      .click()
+    await dialog
+      .getByRole("button", { name: "Add contact", exact: true })
+      .click()
+    await expect(dialog).toBeHidden()
+    await expect(
+      owner.getByRole("row").filter({ hasText: "+442079460958" })
+    ).toBeVisible()
+    await expect(
+      owner.getByText("No contacts in this segment", { exact: true })
+    ).toHaveCount(0)
+  })
 }

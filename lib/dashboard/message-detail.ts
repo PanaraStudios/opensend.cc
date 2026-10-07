@@ -1,4 +1,5 @@
 import { CHANNELS, type Channel } from "../channels"
+import { contactIdentity } from "./contacts"
 import { fromWaId } from "./phone"
 import type { ThreadMessage } from "../messages/use-messages"
 
@@ -28,10 +29,16 @@ export function messageParty(input: {
 }) {
   if (input.channel === "whatsapp" && /^\+?[1-9]\d{7,14}$/.test(input.address))
     return fromWaId(input.address)
-  return input.username
-    ? `@${input.username.replace(/^@/, "")}`
-    : input.profileName ||
-        (input.channel === "email" ? input.address : "Contact")
+  if (input.channel === "email") return input.address
+  return contactIdentity(
+    {},
+    {
+      channel: input.channel,
+      externalId: input.address,
+      profileName: input.profileName,
+      username: input.username,
+    }
+  ).label
 }
 
 /** Detail renders exactly this message, even when it is older than the thread page. */

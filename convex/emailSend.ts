@@ -8,6 +8,7 @@ import { v, ConvexError } from "convex/values"
 import { internalAction } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { awsError, connectionClients, missing } from "./ses/aws"
+import { emailFailureMessage } from "../lib/dashboard/email-failure"
 import { sesMailbox } from "../lib/dashboard/email-send"
 
 /** Only throttling and explicit server failures can retry. An absent
@@ -32,7 +33,12 @@ export const deliver = internalAction({
     if (!message) return null
     let outcome:
       | { kind: "sent"; messageId: string }
-      | { kind: "failed"; error: string; retryable: boolean }
+      | {
+          kind: "failed"
+          error: string
+          providerError?: string
+          retryable: boolean
+        }
     try {
       const attachments = await Promise.all(
         message.attachments.map(async (attachment) => {
@@ -95,9 +101,18 @@ export const deliver = internalAction({
       )
       outcome = { kind: "sent", messageId: result.MessageId ?? "" }
     } catch (error) {
+      const providerError =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`.slice(0, 4000)
+          : undefined
+      const explanation = emailFailureMessage(providerError ?? awsError(error))
       outcome = {
         kind: "failed",
-        error: awsError(error),
+        error:
+          explanation === providerError
+            ? emailFailureMessage(awsError(error))
+            : explanation,
+        ...(providerError ? { providerError } : {}),
         retryable: retryable(error),
       }
     }

@@ -155,6 +155,12 @@ export const channelTables = {
       "channel",
       "externalId",
     ])
+    .index("by_organizationId_and_channel_and_status_and_registeredAt", [
+      "organizationId",
+      "channel",
+      "status",
+      "registeredAt",
+    ])
     .index("by_connectionId", ["connectionId"])
     .index("by_wabaId", ["wabaId"]),
   /** A person's identity on a channel. Messenger and Instagram ids are

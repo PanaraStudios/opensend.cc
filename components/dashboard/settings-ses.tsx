@@ -50,11 +50,6 @@ export function SettingsSes() {
   const callbackOrigin = installation?.callbackOrigin
   return (
     <div className="flex max-w-3xl flex-col gap-6" data-testid="ses-settings">
-      <FileStorageSettings />
-      <TelemetrySettings />
-      <p className="text-sm text-muted-foreground">
-        Manage the AWS connection used by all teams.
-      </p>
       <SettingsCard
         title="AWS connection"
         actions={
@@ -145,6 +140,16 @@ export function SettingsSes() {
           <TenantCleanup />
         </>
       )}
+      <section aria-label="Instance settings" className="flex flex-col gap-6">
+        <div>
+          <h2 className="text-base font-medium">Instance settings</h2>
+          <p className="text-sm text-muted-foreground">
+            Storage and usage sharing for the whole instance.
+          </p>
+        </div>
+        <FileStorageSettings />
+        <TelemetrySettings />
+      </section>
       <ChangePublicUrlDialog open={moving} onOpenChange={setMoving} />
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-lg">

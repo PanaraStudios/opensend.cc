@@ -140,6 +140,8 @@ export const broadcastTables = {
     contactId: v.id("contacts"),
     email: v.string(),
     emailId: v.optional(v.id("emails")),
+    failureReason: v.optional(v.string()),
+    providerError: v.optional(v.string()),
     messageId: v.optional(v.id("channelMessages")),
     /** Primary identity display at fan-out; null records a known absence.
         Omitted on legacy rows, which hydrate the current primary identity. */

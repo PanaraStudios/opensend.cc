@@ -538,6 +538,16 @@ function summary(email: Doc<"emails">) {
     cc: email.cc ?? null,
     reply_to: email.replyTo ?? null,
     last_event: email.status,
+    ...(email.status === "failed" && email.error
+      ? {
+          failed: {
+            reason: email.error,
+            ...(email.providerError
+              ? { provider_message: email.providerError }
+              : {}),
+          },
+        }
+      : {}),
     scheduled_at:
       email.scheduledAt === undefined ? null : apiTime(email.scheduledAt),
   }

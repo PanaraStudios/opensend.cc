@@ -55,6 +55,30 @@ export async function requireMember(
   return { ...actor, member }
 }
 
+const INVITE_ONLY =
+  "This instance is invite-only. Ask a team admin for an invitation."
+async function registrationAllowed(
+  ctx: QueryCtx | MutationCtx,
+  email: string,
+  now: number
+) {
+  const setup = await ctx.db
+    .query("bootstrap")
+    .withIndex("by_key", (q) => q.eq("key", "initial-account"))
+    .unique()
+  if (!setup) return true
+  const invitations = await ctx.db
+    .query("invitation")
+    .withIndex("email", (q) => q.eq("email", email.trim().toLowerCase()))
+    .take(100)
+  return invitations.some((i) => i.status === "pending" && i.expiresAt > now)
+}
+export const checkRegistration = query({
+  args: { email: v.string(), now: v.number() },
+  returns: v.boolean(),
+  handler: (ctx, { email, now }) => registrationAllowed(ctx, email, now),
+})
+
 /** Runs from the adapter's user-create trigger, in the insertion transaction. */
 export const admitUser = mutation({
   args: { userId: v.string(), email: v.string() },
@@ -77,7 +101,7 @@ export const admitUser = mutation({
         (i) => i.status === "pending" && i.expiresAt > Date.now()
       )
     )
-      throw new ConvexError("Registration requires a valid invitation")
+      throw new ConvexError(INVITE_ONLY)
     return null
   },
 })

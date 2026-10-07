@@ -73,7 +73,7 @@ export function EditorTopBar({
             if (draft.trim()) commitDraft()
             else setDraft(name)
           }}
-          aria-label={`${sentenceCase(noun)} name`}
+          aria-label={`${sentenceCase(noun)} name${nameReadOnly ? " (read-only)" : ""}`}
           readOnly={nameReadOnly}
           data-testid="editor-name"
           placeholder="Untitled"

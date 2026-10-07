@@ -54,17 +54,31 @@ tags:
   - name: Voice Bots
 x-tagGroups:
   - name: Multichannel
-    tags: [Messages, Events, Templates, Broadcasts, Automations, Webhooks, Media]
+    tags: [ Messages, Events, Templates, Broadcasts, Automations, Webhooks, Media ]
   - name: Email
-    tags: [Emails, Receiving Emails, Domains, SMTP, Suppressions]
+    tags: [ Emails, Receiving Emails, Domains, SMTP, Suppressions ]
   - name: WhatsApp
-    tags: [WhatsApp]
+    tags: [ WhatsApp ]
   - name: Messenger
-    tags: [Messenger]
+    tags: [ Messenger ]
   - name: Instagram
-    tags: [Instagram]
+    tags: [ Instagram ]
   - name: Workspace
-    tags: [API Keys, Contacts, Contact Properties, Segments, Topics, Logs, OAuth, Usage, Knowledge, Bot Tools, Voice Bots, IVRs]
+    tags:
+      [
+        API Keys,
+        Contacts,
+        Contact Properties,
+        Segments,
+        Topics,
+        Logs,
+        OAuth,
+        Usage,
+        Knowledge,
+        Bot Tools,
+        Voice Bots,
+        IVRs
+      ]
 x-opensend-base-commit: 0b10d8d
 x-resend-source-sha256: 1bc22334de302c1bddec319da1abe1d640fc5bdb626eb0cde81bc0b67fb2d4f7
 paths:
@@ -876,7 +890,7 @@ paths:
   /messages:
     post:
       operationId: messages/send
-      tags: [Messages]
+      tags: [ Messages ]
       summary: Send a message across channels
       x-opensend-scope: full_access
       x-opensend-dynamic-scope: channel:write
@@ -886,9 +900,9 @@ paths:
         fallback, not a requirement. Legacy Sending access may send email only. This adapter uses
         the existing email and Meta senders, sharing validation, window rules and errors. Returns
         the queued id. Idempotency-Key replays the response for 24 hours. Email media uses the
-        existing attachments contract (id, path or base64 content and filename); Meta media is
-        one item with type and exactly one id or url. Meta reply_to is a message id; email
-        reply_to is an address or array of addresses.
+        existing attachments contract (id, path or base64 content and filename); Meta media is one
+        item with type and exactly one id or url. Meta reply_to is a message id; email reply_to is
+        an address or array of addresses.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -904,66 +918,66 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [id]
+                required: [ id ]
                 additionalProperties: false
                 properties:
-                  id: {type: string}
-        '401': {$ref: '#/components/responses/Error401'}
-        '403': {$ref: '#/components/responses/Error403'}
-        '404': {$ref: '#/components/responses/Error404'}
-        '409': {$ref: '#/components/responses/Error409'}
+                  id: { type: string }
+        '401': { $ref: '#/components/responses/Error401' }
+        '403': { $ref: '#/components/responses/Error403' }
+        '404': { $ref: '#/components/responses/Error404' }
+        '409': { $ref: '#/components/responses/Error409' }
         "413":
           $ref: "#/components/responses/Error413"
-        '422': {$ref: '#/components/responses/Error422'}
-        '429': {$ref: '#/components/responses/Error429'}
+        '422': { $ref: '#/components/responses/Error422' }
+        '429': { $ref: '#/components/responses/Error429' }
     get:
       operationId: messages/list
-      tags: [Messages]
+      tags: [ Messages ]
       summary: List messages across readable channels
       x-opensend-scope: full_access
       x-opensend-dynamic-scope: readable-channels
       description: >-
-        Returns only channels granted read access by lib/api-scopes.ts; write implies read.
-        An explicit channel filter requires that channel's read scope. At least one readable
-        channel is required. Full access reads every channel. Merges sent and received email
-        and Meta messages newest first by creation time and id. Use next_cursor with identical
-        filters and readable channels; the cursor is opaque, and changes to filters/scopes are
-        rejected. Bounded scans may return a short or empty page with has_more=true. New messages
-        before the cursor do not shift later pages. Email contact_id identifies the primary
-        recipient's CRM contact (or the sender for inbound email); it is null if unlinked.
+        Returns only channels granted read access by lib/api-scopes.ts; write implies read. An
+        explicit channel filter requires that channel's read scope. At least one readable channel is
+        required. Full access reads every channel. Merges sent and received email and Meta messages
+        newest first by creation time and id. Use next_cursor with identical filters and readable
+        channels; the cursor is opaque, and changes to filters/scopes are rejected. Bounded scans
+        may return a short or empty page with has_more=true. New messages before the cursor do not
+        shift later pages. Email contact_id identifies the primary recipient's CRM contact (or the
+        sender for inbound email); it is null if unlinked.
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
         - name: cursor
           in: query
-          schema: {type: string}
+          schema: { type: string }
         - name: channel
           in: query
-          schema: {type: string, enum: [email, whatsapp, messenger, instagram]}
+          schema: { type: string, enum: [ email, whatsapp, messenger, instagram ] }
         - name: direction
           in: query
-          schema: {type: string, enum: [inbound, outbound]}
+          schema: { type: string, enum: [ inbound, outbound ] }
         - name: status
           in: query
-          schema: {type: string}
+          schema: { type: string }
         - name: contact_id
           in: query
-          schema: {type: string}
+          schema: { type: string }
         - name: from
           in: query
           description: Exact sender address or channel identifier.
-          schema: {type: string}
+          schema: { type: string }
         - name: to
           in: query
           description: Exact recipient; for email matches any to address.
-          schema: {type: string}
+          schema: { type: string }
         - name: created_after
           in: query
           description: Inclusive lower creation timestamp (ISO 8601).
-          schema: {type: string, format: date-time}
+          schema: { type: string, format: date-time }
         - name: created_before
           in: query
           description: Inclusive upper creation timestamp (ISO 8601).
-          schema: {type: string, format: date-time}
+          schema: { type: string, format: date-time }
       responses:
         '200':
           description: Message page
@@ -971,54 +985,57 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [object, data, has_more, next_cursor]
+                required: [ object, data, has_more, next_cursor ]
                 additionalProperties: false
                 properties:
-                  object: {const: list, type: string}
+                  object: { const: list, type: string }
                   data:
                     type: array
-                    items: {$ref: '#/components/schemas/Message'}
-                  has_more: {type: boolean}
-                  next_cursor: {type: [string, 'null']}
-        '401': {$ref: '#/components/responses/Error401'}
-        '403': {$ref: '#/components/responses/Error403'}
-        '422': {$ref: '#/components/responses/Error422'}
-        '429': {$ref: '#/components/responses/Error429'}
+                    items: { $ref: '#/components/schemas/Message' }
+                  has_more: { type: boolean }
+                  next_cursor: { type: [ string, 'null' ] }
+        '401': { $ref: '#/components/responses/Error401' }
+        '403': { $ref: '#/components/responses/Error403' }
+        '422': { $ref: '#/components/responses/Error422' }
+        '429': { $ref: '#/components/responses/Error429' }
   /messages/{id}:
     get:
       operationId: messages/get
-      tags: [Messages]
+      tags: [ Messages ]
       summary: Get a message in any channel
       x-opensend-scope: full_access
       x-opensend-dynamic-scope: message-channel:read
-      description: Requires emails:read or the stored message channel's read scope. Write implies read. Tenant isolation and permissions are rechecked when reading the message. Returns 403 for an unreadable channel, 404 for an unknown or other team's id.
+      description: Requires emails:read or the stored message channel's read scope. Write implies read.
+        Tenant isolation and permissions are rechecked when reading the message. Returns 403 for an
+        unreadable channel, 404 for an unknown or other team's id.
       parameters:
         - name: id
           in: path
           required: true
-          schema: {type: string}
+          schema: { type: string }
       responses:
         '200':
           description: Message
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Message'}
-        '401': {$ref: '#/components/responses/Error401'}
-        '403': {$ref: '#/components/responses/Error403'}
-        '404': {$ref: '#/components/responses/Error404'}
-        '429': {$ref: '#/components/responses/Error429'}
+              schema: { $ref: '#/components/schemas/Message' }
+        '401': { $ref: '#/components/responses/Error401' }
+        '403': { $ref: '#/components/responses/Error403' }
+        '404': { $ref: '#/components/responses/Error404' }
+        '429': { $ref: '#/components/responses/Error429' }
   /contacts/{id}/notes:
     get:
       operationId: contacts/notes/list
-      tags: [Contacts]
+      tags: [ Contacts ]
       summary: List contact notes
-      description: Plain text contact notes, scoped to the contact's organization. Authors are derived from the authenticated caller. Lists are newest first.
+      description: Plain text contact notes, scoped to the contact's organization. Authors are derived
+        from the authenticated caller. Lists are newest first.
       x-opensend-scope: contacts:read
       parameters:
         - name: id
           in: path
           required: true
-          schema: {type: string}
+          schema: { type: string }
         - $ref: '#/components/parameters/PaginationLimit'
         - $ref: '#/components/parameters/PaginationAfter'
         - $ref: '#/components/parameters/PaginationBefore'
@@ -1029,11 +1046,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [object, data, has_more]
+                required: [ object, data, has_more ]
                 additionalProperties: false
                 properties:
-                  object: {type: string, const: list}
-                  has_more: {type: boolean}
+                  object: { type: string, const: list }
+                  has_more: { type: boolean }
                   data:
                     type: array
                     items:
@@ -1054,15 +1071,16 @@ paths:
           $ref: '#/components/responses/Error500'
     post:
       operationId: contacts/notes/create
-      tags: [Contacts]
+      tags: [ Contacts ]
       summary: Create contact notes
-      description: Plain text contact notes, scoped to the contact's organization. Authors are derived from the authenticated caller. Lists are newest first.
+      description: Plain text contact notes, scoped to the contact's organization. Authors are derived
+        from the authenticated caller. Lists are newest first.
       x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
           required: true
-          schema: {type: string}
+          schema: { type: string }
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -1098,19 +1116,20 @@ paths:
   /contacts/{id}/notes/{note_id}:
     patch:
       operationId: contacts/notes/update
-      tags: [Contacts]
+      tags: [ Contacts ]
       summary: Update contact notes
-      description: Plain text contact notes, scoped to the contact's organization. Authors are derived from the authenticated caller. Lists are newest first.
+      description: Plain text contact notes, scoped to the contact's organization. Authors are derived
+        from the authenticated caller. Lists are newest first.
       x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
           required: true
-          schema: {type: string}
+          schema: { type: string }
         - name: note_id
           in: path
           required: true
-          schema: {type: string}
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -1142,19 +1161,20 @@ paths:
           $ref: '#/components/responses/Error500'
     delete:
       operationId: contacts/notes/remove
-      tags: [Contacts]
+      tags: [ Contacts ]
       summary: Remove contact notes
-      description: Plain text contact notes, scoped to the contact's organization. Authors are derived from the authenticated caller. Lists are newest first.
+      description: Plain text contact notes, scoped to the contact's organization. Authors are derived
+        from the authenticated caller. Lists are newest first.
       x-opensend-scope: contacts:write
       parameters:
         - name: id
           in: path
           required: true
-          schema: {type: string}
+          schema: { type: string }
         - name: note_id
           in: path
           required: true
-          schema: {type: string}
+          schema: { type: string }
       responses:
         '200':
           description: Success
@@ -1162,12 +1182,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [object, id, deleted]
+                required: [ object, id, deleted ]
                 additionalProperties: false
                 properties:
-                  object: {type: string, const: contact_note}
-                  id: {type: string}
-                  deleted: {type: boolean, const: true}
+                  object: { type: string, const: contact_note }
+                  id: { type: string }
+                  deleted: { type: boolean, const: true }
         '400':
           $ref: '#/components/responses/Error400'
         '401':
@@ -1557,7 +1577,9 @@ paths:
       tags:
         - Domains
       summary: Create Domain
-      description: "Add a domain for sending or receiving email. Setup runs asynchronously; receiving requires a supported region. Requires domains:write or full_access access (write includes read)."
+      description: "Add a domain for sending or receiving email. Setup runs asynchronously; receiving
+        requires a supported region. Requires domains:write or full_access access (write includes
+        read)."
       x-opensend-scope: domains:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1604,7 +1626,9 @@ paths:
       tags:
         - Domains
       summary: List Domains
-      description: "List your domains and their verification status. Statuses are pending, verified, partially_verified, or failed. Requires domains:read or full_access access (write includes read)."
+      description: "List your domains and their verification status. Statuses are pending, verified,
+        partially_verified, or failed. Requires domains:read or full_access access (write includes
+        read)."
       x-opensend-scope: domains:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
@@ -1646,7 +1670,9 @@ paths:
       tags:
         - Domains
       summary: Retrieve Domain
-      description: "Retrieve a domain and the DNS records needed to verify it. Records include DMARC; TrackingCAA and CAA records are not returned. Requires domains:read or full_access access (write includes read)."
+      description: "Retrieve a domain and the DNS records needed to verify it. Records include DMARC;
+        TrackingCAA and CAA records are not returned. Requires domains:read or full_access access
+        (write includes read)."
       x-opensend-scope: domains:read
       parameters:
         - name: id
@@ -1690,7 +1716,9 @@ paths:
       tags:
         - Domains
       summary: Update Domain
-      description: "Update tracking, TLS, or receiving settings for a domain that has completed setup. Omitted or null settings stay unchanged; receiving requires a supported region. Requires domains:write or full_access access (write includes read)."
+      description: "Update tracking, TLS, or receiving settings for a domain that has completed setup.
+        Omitted or null settings stay unchanged; receiving requires a supported region. Requires
+        domains:write or full_access access (write includes read)."
       x-opensend-scope: domains:write
       parameters:
         - name: id
@@ -1742,7 +1770,8 @@ paths:
       tags:
         - Domains
       summary: Delete Domain
-      description: "Delete a domain from your team. Removal and related cleanup may finish after the response. Requires domains:write or full_access access (write includes read)."
+      description: "Delete a domain from your team. Removal and related cleanup may finish after the
+        response. Requires domains:write or full_access access (write includes read)."
       x-opensend-scope: domains:write
       parameters:
         - name: id
@@ -3477,7 +3506,9 @@ paths:
       tags:
         - Domains
       summary: Verify Domain
-      description: "Start DNS verification or retry a failed domain setup. Verification runs asynchronously and is limited to one request per domain every 10 seconds; earlier retries return 422. Requires domains:write or full_access access (write includes read)."
+      description: "Start DNS verification or retry a failed domain setup. Verification runs
+        asynchronously and is limited to one request per domain every 10 seconds; earlier retries
+        return 422. Requires domains:write or full_access access (write includes read)."
       x-opensend-scope: domains:write
       parameters:
         - name: id
@@ -6850,7 +6881,11 @@ paths:
       tags:
         - Domains
       summary: Claim a domain
-      description: "Start a claim for a domain that another team has already verified. The domain is recreated under your account with fresh DKIM keys, so the previous account's DNS records cannot be reused. Returns a TXT record to add to your DNS to prove ownership. Uses the same request body as creating a domain. Requires domains:write or full_access access (write includes read)."
+      description: "Start a claim for a domain that another team has already verified. The domain is
+        recreated under your account with fresh DKIM keys, so the previous account's DNS records
+        cannot be reused. Returns a TXT record to add to your DNS to prove ownership. Uses the same
+        request body as creating a domain. Requires domains:write or full_access access (write
+        includes read)."
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -6896,7 +6931,8 @@ paths:
       tags:
         - Domains
       summary: Retrieve a domain claim
-      description: "Retrieve the latest claim for the placeholder domain created by the claim. Requires domains:read or full_access access (write includes read)."
+      description: "Retrieve the latest claim for the placeholder domain created by the claim. Requires
+        domains:read or full_access access (write includes read)."
       parameters:
         - name: id
           in: path
@@ -6934,7 +6970,11 @@ paths:
       tags:
         - Domains
       summary: Verify a domain claim
-      description: "Trigger asynchronous DNS verification and ownership transfer for a domain claim. The claim stays `pending` while verification runs; poll the retrieve endpoint for status. Once `completed`, the transferred domain has new DKIM records that must be added to DNS and verified via the standard domain verify endpoint. Requires domains:write or full_access access (write includes read)."
+      description: "Trigger asynchronous DNS verification and ownership transfer for a domain claim. The
+        claim stays `pending` while verification runs; poll the retrieve endpoint for status. Once
+        `completed`, the transferred domain has new DKIM records that must be added to DNS and
+        verified via the standard domain verify endpoint. Requires domains:write or full_access
+        access (write includes read)."
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - name: id
@@ -7008,7 +7048,7 @@ paths:
       responses:
         "200":
           description: Successful request.
-          headers: &a1
+          headers:
             ratelimit-limit:
               $ref: "#/components/headers/ratelimit_limit"
             ratelimit-remaining:
@@ -8035,7 +8075,13 @@ paths:
       responses:
         "200":
           description: Successful request.
-          headers: *a1
+          headers:
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
           content:
             application/json:
               schema:
@@ -8072,7 +8118,13 @@ paths:
       responses:
         "200":
           description: Successful request.
-          headers: *a1
+          headers:
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
           content:
             application/json:
               schema:
@@ -11949,10 +12001,9 @@ paths:
       tags:
         - Media
       summary: Create a direct file upload
-      description: Requires media:write. POST the file to the Convex upload_url with
-        Content-Type, then complete using storage_id from its JSON response. Complete
-        within 15 minutes. Upload POSTs have a 2 minute timeout; per-kind size limits
-        apply.
+      description: Requires media:write. POST the file to the Convex upload_url with Content-Type, then
+        complete using storage_id from its JSON response. Complete within 15 minutes. Upload POSTs
+        have a 2 minute timeout; per-kind size limits apply.
       x-opensend-scope: media:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -12078,7 +12129,13 @@ paths:
       responses:
         "200":
           description: Successful request.
-          headers: *a1
+          headers:
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
           content:
             application/json:
               schema:
@@ -12157,7 +12214,13 @@ paths:
       responses:
         "200":
           description: Successful request.
-          headers: *a1
+          headers:
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
           content:
             application/json:
               schema:
@@ -12194,7 +12257,13 @@ paths:
       responses:
         "200":
           description: Successful request.
-          headers: *a1
+          headers:
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
           content:
             application/json:
               schema:
@@ -12229,7 +12298,13 @@ paths:
       responses:
         "200":
           description: Successful request.
-          headers: *a1
+          headers:
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
           content:
             application/json:
               schema:
@@ -12269,7 +12344,13 @@ paths:
       responses:
         "200":
           description: Successful request.
-          headers: *a1
+          headers:
+            ratelimit-limit:
+              $ref: "#/components/headers/ratelimit_limit"
+            ratelimit-remaining:
+              $ref: "#/components/headers/ratelimit_remaining"
+            ratelimit-reset:
+              $ref: "#/components/headers/ratelimit_reset"
           content:
             application/json:
               schema:
@@ -13346,7 +13427,7 @@ paths:
   /contacts/{id}/call-permission:
     get:
       operationId: whatsapp/calling/getContactCallPermission
-      tags: [WhatsApp]
+      tags: [ WhatsApp ]
       summary: Get contact calling permission
       description: Refresh permission and Meta action limits for the contact and sending number.
       x-opensend-scope: calling:read
@@ -13354,10 +13435,10 @@ paths:
         - in: path
           name: id
           required: true
-          schema: {type: string}
+          schema: { type: string }
         - in: query
           name: from
-          schema: {type: string}
+          schema: { type: string }
       responses:
         "200":
           description: Current permission and limits.
@@ -13377,17 +13458,17 @@ paths:
           $ref: "#/components/responses/Error429"
     post:
       operationId: whatsapp/calling/requestContactCallPermission
-      tags: [WhatsApp]
+      tags: [ WhatsApp ]
       summary: Request contact calling permission
-      description: Queue a permission request after checking Meta limits. Free-form requests need an
-        open messaging window; use an approved permission template outside the window.
+      description: Queue a permission request after checking Meta limits. Free-form requests need an open
+        messaging window; use an approved permission template outside the window.
       x-opensend-scope: calling:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
         - in: path
           name: id
           required: true
-          schema: {type: string}
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -13395,9 +13476,9 @@ paths:
             schema:
               type: object
               properties:
-                from: {type: string}
-                text: {type: string, maxLength: 1024}
-                template: {type: object, additionalProperties: true}
+                from: { type: string }
+                text: { type: string, maxLength: 1024 }
+                template: { type: object, additionalProperties: true }
               additionalProperties: false
       responses:
         "200":
@@ -13407,8 +13488,8 @@ paths:
               schema:
                 type: object
                 properties:
-                  id: {type: string}
-                required: [id]
+                  id: { type: string }
+                required: [ id ]
                 additionalProperties: false
         "401":
           $ref: "#/components/responses/Error401"
@@ -13479,8 +13560,8 @@ paths:
       description: Start a business-initiated call. Use bot:<id> or ivr:<id> for a managed call with
         context and variables, gateway for default media, or api with an SDP offer. to accepts a
         phone number or contact ID; contact_id accepts a CRM contact. Managed calls return an
-        explicit permission status when a call cannot be placed. Meta enforces expiry, request
-        and call quotas and country restrictions; error 138013 includes Meta's reason.
+        explicit permission status when a call cannot be placed. Meta enforces expiry, request and
+        call quotas and country restrictions; error 138013 includes Meta's reason.
       x-opensend-scope: calling:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -13501,7 +13582,7 @@ paths:
                     properties:
                       id:
                         type: string
-                    required: [id]
+                    required: [ id ]
                     additionalProperties: false
                   - $ref: "#/components/schemas/PlaceWhatsAppCallResult"
         "400":
@@ -13978,7 +14059,9 @@ paths:
       tags:
         - IVRs
       summary: create
-      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:write or full_access access (write includes read)."
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in
+        this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+        Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -14012,7 +14095,9 @@ paths:
       tags:
         - IVRs
       summary: list
-      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:read or full_access access (write includes read)."
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in
+        this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+        Requires ivrs:read or full_access access (write includes read)."
       x-opensend-scope: ivrs:read
       parameters:
         - name: limit
@@ -14024,11 +14109,12 @@ paths:
             default: 20
         - name: after
           in: query
-          schema: &a1
+          schema:
             type: string
         - name: before
           in: query
-          schema: *a1
+          schema:
+            type: string
       responses:
         "200":
           description: Success
@@ -14067,14 +14153,16 @@ paths:
       tags:
         - IVRs
       summary: get
-      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:read or full_access access (write includes read)."
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in
+        this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+        Requires ivrs:read or full_access access (write includes read)."
       x-opensend-scope: ivrs:read
       parameters:
-        - &a2
-          name: id
+        - name: id
           in: path
           required: true
-          schema: *a1
+          schema:
+            type: string
       responses:
         "200":
           description: Success
@@ -14097,10 +14185,16 @@ paths:
       tags:
         - IVRs
       summary: update
-      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:write or full_access access (write includes read)."
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in
+        this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+        Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
-        - *a2
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: false
         content:
@@ -14131,10 +14225,16 @@ paths:
       tags:
         - IVRs
       summary: remove
-      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:write or full_access access (write includes read)."
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in
+        this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+        Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
-        - *a2
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           description: Success
@@ -14146,7 +14246,8 @@ paths:
                   object:
                     type: string
                     const: ivr
-                  id: *a1
+                  id:
+                    type: string
                   deleted:
                     type: boolean
                     const: true
@@ -14173,10 +14274,16 @@ paths:
       tags:
         - IVRs
       summary: validate
-      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:read or full_access access (write includes read)."
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in
+        this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+        Requires ivrs:read or full_access access (write includes read)."
       x-opensend-scope: ivrs:read
       parameters:
-        - *a2
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: false
         content:
@@ -14195,7 +14302,8 @@ paths:
                     type: boolean
                   errors:
                     type: array
-                    items: *a1
+                    items:
+                      type: string
                 required:
                   - valid
                   - errors
@@ -14215,9 +14323,10 @@ paths:
   /ivrs/{id}/render:
     post:
       operationId: ivrs/render
-      tags: [IVRs]
+      tags: [ IVRs ]
       summary: Retry failed IVR prompts
-      description: "Re-render failed prompts with the saved team provider credential; cached ready prompts are reused. Requires ivrs:write or full_access access (write includes read)."
+      description: "Re-render failed prompts with the saved team provider credential; cached ready prompts
+        are reused. Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
         - name: id
@@ -14245,9 +14354,11 @@ paths:
   /ivrs/{id}/rotate-signing-secret:
     post:
       operationId: ivrs/rotateSigningSecret
-      tags: [IVRs]
+      tags: [ IVRs ]
       summary: Rotate IVR signing secret
-      description: "Replace the signing credential and reveal it in this write-scoped response. Save it now; subsequent reads are redacted. Supports Idempotency-Key. Requires ivrs:write or full_access access (write includes read)."
+      description: "Replace the signing credential and reveal it in this write-scoped response. Save it
+        now; subsequent reads are redacted. Supports Idempotency-Key. Requires ivrs:write or
+        full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
         - name: id
@@ -14672,21 +14783,25 @@ paths:
       tags:
         - Events
       summary: List automation event catalog
-      description: Paged system and team custom events with typed nested payload fields and contact properties. System events are included on the first page; limit bounds custom definitions (default 20, maximum 100). Subsequent pages contain custom definitions ordered by name, or search relevance. Pass next_cursor as after, keeping search unchanged. System trigger names use the opensend colon prefix.
+      description: Paged system and team custom events with typed nested payload fields and contact
+        properties. System events are included on the first page; limit bounds custom definitions
+        (default 20, maximum 100). Subsequent pages contain custom definitions ordered by name, or
+        search relevance. Pass next_cursor as after, keeping search unchanged. System trigger names
+        use the opensend colon prefix.
       x-opensend-scope: events:read
       parameters:
         - name: limit
           in: query
           description: Custom definitions per page; the first page also includes system events.
-          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
         - name: after
           in: query
           description: Opaque next_cursor returned by the previous catalog page.
-          schema: {type: string}
+          schema: { type: string }
         - name: search
           in: query
           description: Search custom names and system event labels. Keep unchanged while paging.
-          schema: {type: string, maxLength: 256}
+          schema: { type: string, maxLength: 256 }
       responses:
         '200':
           description: The team's event catalog.
@@ -14706,7 +14821,7 @@ paths:
                   has_more:
                     type: boolean
                   next_cursor:
-                    type: [string, 'null']
+                    type: [ string, 'null' ]
                   data:
                     type: array
                     items:
@@ -15309,155 +15424,162 @@ components:
       additionalProperties: false
     SendMessage:
       type: object
-      required: [channel, to]
+      required: [ channel, to ]
       properties:
-        channel: {type: string, enum: [email, whatsapp, messenger, instagram]}
+        channel: { type: string, enum: [ email, whatsapp, messenger, instagram ] }
         to:
           oneOf:
-            - {type: string}
-            - {type: array, items: {type: string}}
-        from: {type: string}
-        text: {type: string}
-        subject: {type: string}
-        html: {type: string}
+            - { type: string }
+            - { type: array, items: { type: string } }
+        from: { type: string }
+        text: { type: string }
+        subject: { type: string }
+        html: { type: string }
         reply_to:
           oneOf:
-            - {type: string}
-            - {type: array, items: {type: string}}
+            - { type: string }
+            - { type: array, items: { type: string } }
         template:
           type: object
           oneOf:
-            - required: [id]
-              not: {required: [alias]}
-            - required: [alias]
-              not: {required: [id]}
+            - required: [ id ]
+              not: { required: [ alias ] }
+            - required: [ alias ]
+              not: { required: [ id ] }
           properties:
-            id: {type: string, minLength: 1}
-            alias: {type: string, minLength: 1}
+            id: { type: string, minLength: 1 }
+            alias: { type: string, minLength: 1 }
             variables:
               type: object
-              additionalProperties: {type: [string, number]}
+              additionalProperties: { type: [ string, number ] }
         media:
           type: array
           items:
             type: object
             properties:
-              type: {type: string, enum: [image, video, audio, file]}
-              id: {type: string}
-              url: {type: string, format: uri}
-              path: {type: string, format: uri}
-              content: {type: string, contentEncoding: base64}
-              filename: {type: string}
-              content_type: {type: string}
+              type: { type: string, enum: [ image, video, audio, file ] }
+              id: { type: string }
+              url: { type: string, format: uri }
+              path: { type: string, format: uri }
+              content: { type: string, contentEncoding: base64 }
+              filename: { type: string }
+              content_type: { type: string }
         tags:
           type: array
           items:
             type: object
-            required: [name, value]
+            required: [ name, value ]
             properties:
-              name: {type: string}
-              value: {type: string}
+              name: { type: string }
+              value: { type: string }
       allOf:
         - if:
             properties:
-              channel: {enum: [whatsapp, messenger, instagram]}
+              channel: { enum: [ whatsapp, messenger, instagram ] }
           then:
             properties:
-              to: {type: string}
-              reply_to: {type: string}
+              to: { type: string }
+              reply_to: { type: string }
               subject: false
               html: false
-              media: {maxItems: 1}
+              media: { maxItems: 1 }
             oneOf:
-              - required: [text]
-                not: {anyOf: [{required: [template]}, {required: [media]}]}
-              - required: [template]
-                not: {anyOf: [{required: [text]}, {required: [media]}]}
-              - required: [media]
+              - required: [ text ]
+                not: { anyOf: [ { required: [ template ] }, { required: [ media ] } ] }
+              - required: [ template ]
+                not: { anyOf: [ { required: [ text ] }, { required: [ media ] } ] }
+              - required: [ media ]
                 properties:
-                  media: {minItems: 1}
-                not: {anyOf: [{required: [text]}, {required: [template]}]}
+                  media: { minItems: 1 }
+                not: { anyOf: [ { required: [ text ] }, { required: [ template ] } ] }
     MessageBase:
       type: object
-      required: [id, object, channel, direction, from, to, status, preview, created_at, contact_id]
+      required: [ id, object, channel, direction, from, to, status, preview, created_at, contact_id ]
       properties:
-        id: {type: string}
-        object: {type: string, const: message}
-        channel: {type: string, enum: [email, whatsapp, messenger, instagram]}
-        direction: {type: string, enum: [inbound, outbound]}
-        from: {type: string}
+        id: { type: string }
+        object: { type: string, const: message }
+        channel: { type: string, enum: [ email, whatsapp, messenger, instagram ] }
+        direction: { type: string, enum: [ inbound, outbound ] }
+        from: { type: string }
         to:
           oneOf:
-            - {type: string}
-            - {type: array, items: {type: string}}
-        status: {type: string}
-        preview: {type: string, description: Rendered template body where available, otherwise text, HTML or a channel preview.}
-        created_at: {type: string, format: date-time}
-        contact_id: {type: [string, 'null']}
-        conversation_id: {type: string}
+            - { type: string }
+            - { type: array, items: { type: string } }
+        status: { type: string }
+        preview:
+          {
+            type: string,
+            description: Rendered template body where available,
+            otherwise text,
+            HTML or a channel preview.
+          }
+        created_at: { type: string, format: date-time }
+        contact_id: { type: [ string, 'null' ] }
+        conversation_id: { type: string }
     Message:
       allOf:
         - $ref: '#/components/schemas/MessageBase'
         - oneOf:
             - type: object
-              required: [subject, html, text]
+              required: [ subject, html, text ]
               properties:
-                channel: {const: email}
-                to: {type: array, items: {type: string}}
-                subject: {type: string}
-                html: {type: [string, 'null']}
-                text: {type: [string, 'null']}
+                channel: { const: email }
+                to: { type: array, items: { type: string } }
+                subject: { type: string }
+                html: { type: [ string, 'null' ] }
+                text: { type: [ string, 'null' ] }
             - type: object
-              required: [type, conversation_id]
+              required: [ type, conversation_id ]
               properties:
-                channel: {enum: [whatsapp, messenger, instagram]}
-                to: {type: string}
-                type: {type: string}
-      description: Email and channel message events add MessageBase fields while retaining their existing email_id, message_id, tags and other event-specific fields.
+                channel: { enum: [ whatsapp, messenger, instagram ] }
+                to: { type: string }
+                type: { type: string }
+      description: Email and channel message events add MessageBase fields while retaining their existing
+        email_id, message_id, tags and other event-specific fields.
     ContactNoteAuthor:
       type: object
-      required: [kind]
+      required: [ kind ]
       additionalProperties: false
       properties:
-        kind: {type: string, enum: [user, bot, api]}
-        id: {type: string}
-        name: {type: string}
+        kind: { type: string, enum: [ user, bot, api ] }
+        id: { type: string }
+        name: { type: string }
     ContactNoteSource:
       type: object
       additionalProperties: false
       properties:
-        call_id: {type: string}
-        conversation_id: {type: string}
-        message_id: {type: string}
+        call_id: { type: string }
+        conversation_id: { type: string }
+        message_id: { type: string }
     UpdateContactNote:
       type: object
-      required: [body]
+      required: [ body ]
       properties:
-        body: {type: string, minLength: 1, maxLength: 10000}
+        body: { type: string, minLength: 1, maxLength: 10000 }
     CreateContactNote:
       type: object
-      required: [body]
+      required: [ body ]
       properties:
-        body: {type: string, minLength: 1, maxLength: 10000}
+        body: { type: string, minLength: 1, maxLength: 10000 }
         source:
           $ref: '#/components/schemas/ContactNoteSource'
     ContactNote:
       type: object
-      required: [object, id, contact_id, body, author, source, created_at, updated_at]
+      required: [ object, id, contact_id, body, author, source, created_at, updated_at ]
       additionalProperties: false
       properties:
-        object: {type: string, const: contact_note}
-        id: {type: string}
-        contact_id: {type: string}
-        body: {type: string, minLength: 1, maxLength: 10000}
+        object: { type: string, const: contact_note }
+        id: { type: string }
+        contact_id: { type: string }
+        body: { type: string, minLength: 1, maxLength: 10000 }
         author:
           $ref: '#/components/schemas/ContactNoteAuthor'
         source:
           anyOf:
             - $ref: '#/components/schemas/ContactNoteSource'
             - type: 'null'
-        created_at: {type: string, format: date-time}
-        updated_at: {type: string, format: date-time}
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
         contact:
           $ref: '#/components/schemas/EventContact'
     MessageControlResponse:
@@ -16119,8 +16241,10 @@ components:
           type: number
           minimum: -180
           maximum: 180
-        name: *a1
-        address: *a1
+        name:
+          type: string
+        address:
+          type: string
       required:
         - latitude
         - longitude
@@ -18010,7 +18134,8 @@ components:
     WhatsAppReaction:
       type: object
       properties:
-        message_id: *a1
+        message_id:
+          type: string
         emoji:
           type: string
           maxLength: 16
@@ -18045,12 +18170,16 @@ components:
     WhatsAppStoredMedia:
       type: object
       properties:
-        id: &a2
+        id:
           type:
             - string
             - "null"
-        content_type: *a1
-        filename: *a2
+        content_type:
+          type: string
+        filename:
+          type:
+            - string
+            - "null"
         size:
           type:
             - number
@@ -18060,8 +18189,14 @@ components:
             - string
             - "null"
           format: uri
-        expires_at: *a2
-        error: *a2
+        expires_at:
+          type:
+            - string
+            - "null"
+        error:
+          type:
+            - string
+            - "null"
       required:
         - id
         - content_type
@@ -18073,10 +18208,14 @@ components:
     WhatsAppPhoneNumber:
       type: object
       properties:
-        id: *a1
-        phone_number_id: *a1
-        display_phone_number: *a1
-        verified_name: *a1
+        id:
+          type: string
+        phone_number_id:
+          type: string
+        display_phone_number:
+          type: string
+        verified_name:
+          type: string
         status:
           type: string
           enum:
@@ -18094,8 +18233,14 @@ components:
             - unknown
         throughput:
           type: number
-        messaging_limit: *a2
-        waba_id: *a2
+        messaging_limit:
+          type:
+            - string
+            - "null"
+        waba_id:
+          type:
+            - string
+            - "null"
         created_at:
           type: string
           format: date-time
@@ -18113,13 +18258,23 @@ components:
     WhatsAppConversation:
       type: object
       properties:
-        id: *a1
+        id:
+          type: string
         channel:
           type: string
           const: whatsapp
-        account_id: *a2
-        channel_contact_id: *a2
-        contact_id: *a2
+        account_id:
+          type:
+            - string
+            - "null"
+        channel_contact_id:
+          type:
+            - string
+            - "null"
+        contact_id:
+          type:
+            - string
+            - "null"
         status:
           type: string
           enum:
@@ -18128,13 +18283,17 @@ components:
         last_message_at:
           type: string
           format: date-time
-        last_preview: *a1
+        last_preview:
+          type: string
         last_direction:
           type: string
           enum:
             - inbound
             - outbound
-        window_expires_at: *a2
+        window_expires_at:
+          type:
+            - string
+            - "null"
         unread:
           type: boolean
       required:
@@ -18152,7 +18311,8 @@ components:
     WhatsAppId:
       type: object
       properties:
-        id: *a1
+        id:
+          type: string
       required:
         - id
     SendWhatsAppMessage:
@@ -19615,6 +19775,18 @@ components:
             - type: string
               description: UTC PostgreSQL-style timestamp, e.g. 2026-09-29 12:00:00.000000+00.
             - type: 'null'
+        failed:
+          type: object
+          properties:
+            reason:
+              type: string
+              description: Reason for the send failure, matching email.failed webhook data.
+            provider_message:
+              type: string
+              description: Original provider error message when available.
+          required:
+            - reason
+          additionalProperties: false
       required:
         - id
         - message_id
@@ -19708,6 +19880,18 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Tag'
+        failed:
+          type: object
+          properties:
+            reason:
+              type: string
+              description: Reason for the send failure, matching email.failed webhook data.
+            provider_message:
+              type: string
+              description: Original provider error message when available.
+          required:
+            - reason
+          additionalProperties: false
       required:
         - id
         - message_id
@@ -20465,20 +20649,6 @@ components:
     ApiScope:
       type: string
       enum:
-        - knowledge:read
-        - knowledge:write
-        - bot_tools:read
-        - bot_tools:write
-        - calling:read
-        - calling:write
-        - ivrs:read
-        - ivrs:write
-        - voice_bots:read
-        - voice_bots:write
-        - voice_providers:read
-        - voice_providers:write
-        - media:read
-        - media:write
         - emails:read
         - emails:write
         - whatsapp:read
@@ -20487,6 +20657,8 @@ components:
         - messenger:write
         - instagram:read
         - instagram:write
+        - media:read
+        - media:write
         - contacts:read
         - contacts:write
         - segments:read
@@ -20507,6 +20679,18 @@ components:
         - webhooks:write
         - logs:read
         - logs:write
+        - knowledge:read
+        - knowledge:write
+        - bot_tools:read
+        - bot_tools:write
+        - calling:read
+        - calling:write
+        - ivrs:read
+        - ivrs:write
+        - voice_bots:read
+        - voice_bots:write
+        - voice_providers:read
+        - voice_providers:write
     ApiKey:
       type: object
       properties:
@@ -22173,8 +22357,9 @@ components:
           description: >-
             Send time, used only when send is true, in ISO 8601 or natural language up to 30 days
             ahead with UTC as the default timezone.
-      description: Create an email broadcast with nonempty HTML or text, an approved WhatsApp template campaign,
-        or a published Messenger/Instagram local template campaign sent only within the recipient’s 24-hour window.
+      description: Create an email broadcast with nonempty HTML or text, an approved WhatsApp template
+        campaign, or a published Messenger/Instagram local template campaign sent only within the
+        recipient’s 24-hour window.
       anyOf:
         - required: [ channel, messaging ]
           properties:
@@ -24488,7 +24673,8 @@ components:
               maxLength: 4096
           additionalProperties: false
     MessagingBroadcastConfiguration:
-      description: Published local template sent from a connected Page or Instagram account, only within the recipient’s 24-hour window. Message tags are never used.
+      description: Published local template sent from a connected Page or Instagram account, only within
+        the recipient’s 24-hour window. Message tags are never used.
       allOf:
         - $ref: '#/components/schemas/WhatsAppBroadcastConfiguration'
     WhatsAppBroadcastConfiguration:
@@ -24600,7 +24786,16 @@ components:
             contact_delete, or add_to_segment.
         config:
           type: object
-          description: Step-specific settings such as event_name and optional filters (an AND list of condition rules), template, duration or until, condition rules, contact fields, or segment_id. send_whatsapp, send_messenger and send_instagram require account_id and mode (template with template_id or text with text); variables map to strings or contact/property/value sources with optional fallback. The opensend:whatsapp.message.received, opensend:messenger.message.received and opensend:instagram.message.received system events are supported for triggers and waits. Subject overrides, structured template variables, mixed nested conditions, null comparisons, and wait filter_rule return 422, and waits need a timeout of at most 30 days to activate.
+          description: Step-specific settings such as event_name and optional filters (an AND list of
+            condition rules), template, duration or until, condition rules, contact fields, or
+            segment_id. send_whatsapp, send_messenger and send_instagram require account_id and mode
+            (template with template_id or text with text); variables map to strings or
+            contact/property/value sources with optional fallback. The
+            opensend:whatsapp.message.received, opensend:messenger.message.received and
+            opensend:instagram.message.received system events are supported for triggers and waits.
+            Subject overrides, structured template variables, mixed nested conditions, null
+            comparisons, and wait filter_rule return 422, and waits need a timeout of at most 30
+            days to activate.
     AutomationConnection:
       type: object
       description: A connection between two steps in the automation graph.
@@ -24760,7 +24955,9 @@ components:
           description: The type of automation step.
         config:
           type: object
-          description: Step settings support {{trigger.path}}, {{steps.stepKey.path}}, and {{contact.path}} references. Delay accepts duration or until. Trigger accepts filters. Send email accepts a subject override. Event_name with a human-readable timeout for waits.
+          description: Step settings support {{trigger.path}}, {{steps.stepKey.path}}, and {{contact.path}}
+            references. Delay accepts duration or until. Trigger accepts filters. Send email accepts
+            a subject override. Event_name with a human-readable timeout for waits.
       required:
         - key
         - type
@@ -28709,35 +28906,35 @@ components:
       additionalProperties: false
     PlaceWhatsAppCallResult:
       type: object
-      required: [status]
+      required: [ status ]
       properties:
         status:
           type: string
-          enum: [queued, ringing, permission_required, permission_requested, calling_limited]
-        id: {type: string}
-        permission_request_id: {type: string}
+          enum: [ queued, ringing, permission_required, permission_requested, calling_limited ]
+        id: { type: string }
+        permission_request_id: { type: string }
         permission:
           $ref: "#/components/schemas/CallPermission"
       additionalProperties: false
     PlaceCallStepConfig:
       type: object
-      required: [account_id, route]
+      required: [ account_id, route ]
       properties:
-        account_id: {type: string, minLength: 1}
-        route: {type: string, pattern: '^(bot|ivr):.+$'}
-        context: {type: string, maxLength: 4000}
+        account_id: { type: string, minLength: 1 }
+        route: { type: string, pattern: '^(bot|ivr):.+$' }
+        context: { type: string, maxLength: 4000 }
         variables:
           type: object
           maxProperties: 50
           additionalProperties:
             oneOf:
-              - {type: string}
+              - { type: string }
               - type: object
-                required: [var]
+                required: [ var ]
                 properties:
-                  var: {type: string, pattern: '^(event|contact)\.'}
+                  var: { type: string, pattern: '^(event|contact)\.' }
                 additionalProperties: false
-        request_permission: {type: boolean}
+        request_permission: { type: boolean }
       additionalProperties: false
     ConnectWhatsAppCall:
       type: object
@@ -28748,15 +28945,15 @@ components:
           type: string
         recipient:
           type: string
-        contact_id: {type: string}
-        context: {type: string, maxLength: 4000}
+        contact_id: { type: string }
+        context: { type: string, maxLength: 4000 }
         variables:
           type: object
           maxProperties: 50
-          additionalProperties: {type: string, maxLength: 2000}
-        request_permission: {type: boolean, default: false}
-        permission_text: {type: string, maxLength: 1024}
-        permission_template: {type: object, additionalProperties: true}
+          additionalProperties: { type: string, maxLength: 2000 }
+        request_permission: { type: boolean, default: false }
+        permission_text: { type: string, maxLength: 1024 }
+        permission_template: { type: object, additionalProperties: true }
         route:
           type: string
           pattern: '^(api|gateway|bot:[A-Za-z0-9._:-]{1,256}|ivr:[A-Za-z0-9._:-]{1,256})$'
@@ -28775,7 +28972,7 @@ components:
             - recipient
         - required:
             - to
-        - required: [contact_id]
+        - required: [ contact_id ]
       allOf:
         - if:
             properties:
@@ -28941,11 +29138,11 @@ components:
             - $ref: "#/components/schemas/CallFile"
             - type: "null"
         outcome:
-          type: [string, "null"]
-          enum: [answered, no_answer, rejected, failed, null]
-        attempt: {type: integer, minimum: 1}
-        purpose: {type: [string, "null"]}
-        route: {type: [string, "null"]}
+          type: [ string, "null" ]
+          enum: [ answered, no_answer, rejected, failed, null ]
+        attempt: { type: integer, minimum: 1 }
+        purpose: { type: [ string, "null" ] }
+        route: { type: [ string, "null" ] }
         error:
           type:
             - string
@@ -29144,11 +29341,11 @@ components:
             - $ref: "#/components/schemas/CallFile"
             - type: "null"
         outcome:
-          type: [string, "null"]
-          enum: [answered, no_answer, rejected, failed, null]
-        attempt: {type: integer, minimum: 1}
-        purpose: {type: [string, "null"]}
-        route: {type: [string, "null"]}
+          type: [ string, "null" ]
+          enum: [ answered, no_answer, rejected, failed, null ]
+        attempt: { type: integer, minimum: 1 }
+        purpose: { type: [ string, "null" ] }
+        route: { type: [ string, "null" ] }
         error:
           type:
             - string
@@ -29528,7 +29725,7 @@ components:
             kind:
               type: string
               const: audio
-            fileId: &a1
+            fileId:
               type: string
           required:
             - kind
@@ -29543,7 +29740,8 @@ components:
               type: string
               minLength: 1
               maxLength: 2000
-            voice: *a1
+            voice:
+              type: string
           required:
             - kind
             - text
@@ -29555,7 +29753,8 @@ components:
             kind:
               type: string
               const: submenu
-            menuId: *a1
+            menuId:
+              type: string
           required:
             - kind
             - menuId
@@ -29573,7 +29772,8 @@ components:
             kind:
               type: string
               const: bot
-            botId: *a1
+            botId:
+              type: string
           required:
             - kind
             - botId
@@ -29605,7 +29805,8 @@ components:
             url:
               type: string
               format: uri
-            secretId: *a1
+            secretId:
+              type: string
           required:
             - kind
             - url
@@ -29674,7 +29875,8 @@ components:
           enum:
             - ENABLED
             - DISABLED
-        timezone_id: *a1
+        timezone_id:
+          type: string
         weekly_operating_hours:
           type: array
           items:
@@ -29710,8 +29912,10 @@ components:
               date:
                 type: string
                 format: date
-              start_time: *a1
-              end_time: *a1
+              start_time:
+                type: string
+              end_time:
+                type: string
             required:
               - date
               - start_time
@@ -29726,32 +29930,33 @@ components:
       additionalProperties: false
     IvrDefinition:
       type: object
-      properties: &a2
+      properties:
         promptVoice:
           type: object
           properties:
-            provider: { type: string, enum: [elevenlabs, sarvam] }
+            provider: { type: string, enum: [ elevenlabs, sarvam ] }
             voice: { type: string }
             language: { type: string }
             credentialId: { type: string }
-          required: [provider, voice, language, credentialId]
+          required: [ provider, voice, language, credentialId ]
           additionalProperties: false
-        name: &a3
+        name:
           type: string
           minLength: 1
           maxLength: 256
-        language: &a4
+        language:
           type: string
           minLength: 1
           maxLength: 64
-        entryMenuId: *a1
-        menus: &a5
+        entryMenuId:
+          type: string
+        menus:
           type: array
           items:
             $ref: "#/components/schemas/IvrMenu"
           maxItems: 50
           minItems: 1
-        businessHours: &a6
+        businessHours:
           $ref: "#/components/schemas/IvrBusinessHours"
       required:
         - name
@@ -29762,10 +29967,22 @@ components:
     IvrPatch:
       type: object
       properties:
-        name: *a3
-        language: *a4
-        entryMenuId: *a1
-        menus: *a5
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        language:
+          type: string
+          minLength: 1
+          maxLength: 64
+        entryMenuId:
+          type: string
+        menus:
+          type: array
+          items:
+            $ref: "#/components/schemas/IvrMenu"
+          maxItems: 50
+          minItems: 1
         promptVoice:
           anyOf:
             - $ref: "#/components/schemas/IvrDefinition/properties/promptVoice"
@@ -29784,34 +30001,48 @@ components:
           items:
             type: object
             properties:
-              kind: { type: string, enum: [audio, tts] }
-              status: { type: string, enum: [pending_render, rendering, ready, failed] }
+              kind: { type: string, enum: [ audio, tts ] }
+              status: { type: string, enum: [ pending_render, rendering, ready, failed ] }
               text: { type: string }
-              voice: { type: [string, "null"] }
+              voice: { type: [ string, "null" ] }
               hash: { type: string }
               fileId: { type: string }
-              error: { type: [string, "null"] }
-              audio_url: { type: [string, "null"] }
-            required: [kind, status, audio_url]
+              error: { type: [ string, "null" ] }
+              audio_url: { type: [ string, "null" ] }
+            required: [ kind, status, audio_url ]
             additionalProperties: false
         promptVoice:
           type: object
           properties:
-            provider: { type: string, enum: [elevenlabs, sarvam] }
+            provider: { type: string, enum: [ elevenlabs, sarvam ] }
             voice: { type: string }
             language: { type: string }
             credentialId: { type: string }
-          required: [provider, voice, language, credentialId]
+          required: [ provider, voice, language, credentialId ]
           additionalProperties: false
         object:
           type: string
           const: ivr
-        id: *a1
-        name: *a3
-        language: *a4
-        entryMenuId: *a1
-        menus: *a5
-        businessHours: *a6
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        language:
+          type: string
+          minLength: 1
+          maxLength: 64
+        entryMenuId:
+          type: string
+        menus:
+          type: array
+          items:
+            $ref: "#/components/schemas/IvrMenu"
+          maxItems: 50
+          minItems: 1
+        businessHours:
+          $ref: "#/components/schemas/IvrBusinessHours"
         created_at:
           type: string
           format: date-time
@@ -29820,7 +30051,8 @@ components:
           format: date-time
         webhook_signing_secret:
           type: string
-          description: Full signing secret on creation or rotation only; "[redacted]" on reads, updates and render responses.
+          description: Full signing secret on creation or rotation only; "[redacted]" on reads, updates and
+            render responses.
         prompt_status:
           type: string
           enum:
@@ -29842,8 +30074,10 @@ components:
     IvrPathEntry:
       type: object
       properties:
-        menuId: *a1
-        digits: *a1
+        menuId:
+          type: string
+        digits:
+          type: string
         action:
           $ref: "#/components/schemas/IvrAction"
         at:
@@ -30007,7 +30241,9 @@ components:
         callerContext:
           type: boolean
           default: true
-          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
+          description: Look up the caller when each bot session starts and add that CRM context to the session
+            instructions. Omitted values are true, including bots saved before this field. Set false
+            to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -30160,7 +30396,9 @@ components:
         callerContext:
           type: boolean
           default: true
-          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
+          description: Look up the caller when each bot session starts and add that CRM context to the session
+            instructions. Omitted values are true, including bots saved before this field. Set false
+            to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -30312,7 +30550,9 @@ components:
         callerContext:
           type: boolean
           default: true
-          description: Look up the caller when each bot session starts and add that CRM context to the session instructions. Omitted values are true, including bots saved before this field. Set false to skip the lookup. lookup_contact still refreshes the record during the call.
+          description: Look up the caller when each bot session starts and add that CRM context to the session
+            instructions. Omitted values are true, including bots saved before this field. Set false
+            to skip the lookup. lookup_contact still refreshes the record during the call.
         disclosure:
           type: string
           minLength: 1
@@ -30699,42 +30939,42 @@ webhooks:
       operationId: webhooks/message
       summary: Shared message fields across email and Meta events
       description: >-
-        Email events and Meta message events retain their existing names and payload fields,
-        adding the common MessageBase contract. The outer created_at is the event timestamp;
-        data.created_at is the message timestamp. Email keeps email_id, message_id, subject,
-        tags as a map and delivery details; Meta keeps normalized content, tags as pairs and
-        conversation_id. Subscribe using the existing shared event catalog. Events are signed
-        with Standard Webhooks. Delivery order is not guaranteed.
+        Email events and Meta message events retain their existing names and payload fields, adding
+        the common MessageBase contract. The outer created_at is the event timestamp;
+        data.created_at is the message timestamp. Email keeps email_id, message_id, subject, tags as
+        a map and delivery details; Meta keeps normalized content, tags as pairs and
+        conversation_id. Subscribe using the existing shared event catalog. Events are signed with
+        Standard Webhooks. Delivery order is not guaranteed.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [type, created_at, data]
+              required: [ type, created_at, data ]
               properties:
                 type:
                   type: string
                   pattern: '^(email\.[a-z_]+|(whatsapp|messenger|instagram)\.message\.[a-z_]+)$'
-                created_at: {type: string, format: date-time}
+                created_at: { type: string, format: date-time }
                 data:
                   allOf:
                     - $ref: '#/components/schemas/MessageBase'
                     - type: object
                       properties:
-                        email_id: {type: string}
-                        message_id: {type: string}
-                        subject: {type: string}
+                        email_id: { type: string }
+                        message_id: { type: string }
+                        subject: { type: string }
                         tags:
                           oneOf:
-                            - {type: object, additionalProperties: {type: string}}
+                            - { type: object, additionalProperties: { type: string } }
                             - type: array
                               items:
                                 type: object
-                                required: [name, value]
+                                required: [ name, value ]
                                 properties:
-                                  name: {type: string}
-                                  value: {type: string}
+                                  name: { type: string }
+                                  value: { type: string }
             example:
               type: email.sent
               created_at: '2026-10-01T00:00:01.000Z'
@@ -30744,32 +30984,33 @@ webhooks:
                 channel: email
                 direction: outbound
                 from: support@example.com
-                to: [customer@example.com]
+                to: [ customer@example.com ]
                 status: sent
                 preview: Your order has shipped.
                 created_at: '2026-10-01T00:00:00.000Z'
                 contact_id: null
                 email_id: message-id
                 subject: Your order
-                tags: {order: '42'}
+                tags: { order: '42' }
       responses:
-        '200': {description: Event accepted}
+        '200': { description: Event accepted }
   contactNoteCreated:
     post:
       operationId: webhooks/contact/note-created
       summary: Contact note created
-      description: Sent for dashboard, API, and bot notes. The same note payload is available to contact.note_created automation triggers. Standard Webhooks signatures and retries apply.
+      description: Sent for dashboard, API, and bot notes. The same note payload is available to
+        contact.note_created automation triggers. Standard Webhooks signatures and retries apply.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [type, created_at, data]
+              required: [ type, created_at, data ]
               additionalProperties: false
               properties:
-                type: {type: string, const: contact.note_created}
-                created_at: {type: string, format: date-time}
+                type: { type: string, const: contact.note_created }
+                created_at: { type: string, format: date-time }
                 data:
                   $ref: '#/components/schemas/ContactNote'
             example:
@@ -30780,8 +31021,8 @@ webhooks:
                 id: note-example
                 contact_id: contact-example
                 body: Follow up tomorrow.
-                author: {kind: bot, id: bot-example, name: Support}
-                source: {call_id: call-example}
+                author: { kind: bot, id: bot-example, name: Support }
+                source: { call_id: call-example }
                 created_at: '2026-10-03T10:00:00.000Z'
                 updated_at: '2026-10-03T10:00:00.000Z'
       responses:
@@ -34910,10 +35151,12 @@ webhooks:
                 data:
                   type: object
                   properties:
-                    id: &a1
+                    id:
                       type: string
-                    account_id: *a1
-                    ivr_id: *a1
+                    account_id:
+                      type: string
+                    ivr_id:
+                      type: string
                     path:
                       type: array
                       items:

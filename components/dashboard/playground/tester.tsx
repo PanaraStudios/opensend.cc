@@ -1,4 +1,5 @@
 "use client"
+import { CALLING_DOCS_HREF } from "@/lib/docs-links"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { PhoneIcon } from "lucide-react"
@@ -194,12 +195,7 @@ function TeamVoiceTester({
             <Button
               variant="outline"
               nativeButton={false}
-              render={
-                <Link
-                  href="https://github.com/PanaraStudios/opensend.cc/blob/v2/docs/browser-softphone.md"
-                  target="_blank"
-                />
-              }
+              render={<Link href={CALLING_DOCS_HREF} target="_blank" />}
             >
               Calling setup documentation
             </Button>

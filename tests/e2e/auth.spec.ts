@@ -680,6 +680,20 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(owner).toHaveURL(/\/instance\/ses$/)
     await expect(owner.getByTestId("ses-settings")).toBeVisible()
     await expect(
+      owner.getByText("Manage the AWS connection used by all teams.", {
+        exact: true,
+      })
+    ).toBeVisible()
+    const settingsHeadings = await owner
+      .getByRole("heading", { level: 2 })
+      .allTextContents()
+    expect(settingsHeadings.indexOf("AWS connection")).toBeLessThan(
+      settingsHeadings.indexOf("Instance settings")
+    )
+    expect(settingsHeadings.indexOf("Instance settings")).toBeLessThan(
+      settingsHeadings.indexOf("File storage")
+    )
+    await expect(
       owner.getByText("Anonymous usage statistics", { exact: true })
     ).toBeVisible()
     const telemetry = owner.getByRole("switch", {
@@ -866,7 +880,9 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await member
       .getByRole("button", { name: "Create account", exact: true })
       .click()
-    await expect(member.locator('p[role="alert"]')).toBeVisible()
+    await expect(member.locator('p[role="alert"]')).toHaveText(
+      "This instance is invite-only. Ask a team admin for an invitation."
+    )
   })
 
   test("keeps installation settings accessible without team membership", async () => {

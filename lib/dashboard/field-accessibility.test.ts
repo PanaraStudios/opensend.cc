@@ -754,3 +754,35 @@ test("native and searchable option triggers keep readable empty-state text", asy
     )
   }
 })
+
+test("shared settings and layout frames render one card surface", async () => {
+  const { SettingsCard, Surface } =
+    await import("../../components/dashboard/primitives")
+  await render(
+    h(SettingsCard, { title: "AWS connection" }, "Content"),
+    (container) => {
+      const frame = container.querySelector('[data-slot="card-frame"]')!
+      assert.ok(frame)
+      assert.equal(frame.querySelectorAll('[data-slot="card"]').length, 1)
+      assert.doesNotMatch(frame.className, /(?:border|shadow|p-2)/)
+    }
+  )
+  await render(h(Surface, null, "Content"), (container) => {
+    assert.equal(container.querySelectorAll(".panel").length, 1)
+  })
+})
+
+test("recipient outcomes retain email suppression and cancellation instead of showing Sending", async () => {
+  const { RecipientOutcomeBadge } =
+    await import("../../components/dashboard/primitives")
+  for (const [emailStatus, label] of [
+    ["suppressed", "Suppressed"],
+    ["canceled", "Canceled"],
+    ["failed", "Failed"],
+    ["delivered", "Delivered"],
+  ] as const) {
+    await render(h(RecipientOutcomeBadge, { emailStatus }), (container) => {
+      assert.equal(container.textContent, label)
+    })
+  }
+})

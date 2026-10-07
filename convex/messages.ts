@@ -46,6 +46,7 @@ import {
 } from "../lib/dashboard/template-test"
 import { findPublished } from "./templates"
 import { mediaDownloadLink } from "./channels/downloads"
+import { channelHandle } from "../lib/meta/account-display"
 import { messageParty } from "../lib/dashboard/message-detail"
 
 /* The Messages section's Sending and Receiving logs: email and channel
@@ -327,7 +328,10 @@ export const receiving = query({
       if (!handles.has(row.accountId))
         handles.set(
           row.accountId,
-          (await ctx.db.get("channelAccounts", row.accountId))?.handle ?? ""
+          channelHandle(
+            row.channel,
+            (await ctx.db.get("channelAccounts", row.accountId))?.handle ?? ""
+          )
         )
       page.push({
         kind: "channel" as const,

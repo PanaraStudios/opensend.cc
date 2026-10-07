@@ -36,7 +36,7 @@ test("customer labels use names and handles without leaking scoped ids", () => {
   )
   assert.equal(
     messageParty({ channel: "messenger", address: "123" }),
-    "Contact"
+    "Messenger user"
   )
   assert.equal(
     messageParty({ channel: "whatsapp", address: "15551234567" }),
@@ -93,6 +93,6 @@ test("WhatsApp business-scoped recipients use a public profile instead of a fabr
   )
   assert.equal(
     messageParty({ channel: "whatsapp", address: "business-scoped-recipient" }),
-    "Contact"
+    "WhatsApp user"
   )
 })

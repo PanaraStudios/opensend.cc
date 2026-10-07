@@ -1,6 +1,97 @@
 /** Shared REST, OAuth and dashboard permission catalog. Write includes read. */
 export const API_RESOURCES = [
   {
+    id: "emails",
+    label: "Emails",
+    group: "Messaging",
+    description:
+      "Send, list, retrieve, cancel and update emails, including received email.",
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp",
+    group: "Messaging",
+    description: "Messages, media, phone numbers and conversations.",
+  },
+  {
+    id: "messenger",
+    label: "Messenger",
+    group: "Messaging",
+    description: "Messages, media, pages and conversations.",
+  },
+  {
+    id: "instagram",
+    label: "Instagram",
+    group: "Messaging",
+    description: "Messages, media, accounts and conversations.",
+  },
+  {
+    id: "media",
+    label: "Media",
+    group: "Messaging",
+    description: "Direct file uploads for messaging and imports.",
+  },
+  {
+    id: "contacts",
+    label: "Contacts",
+    group: "Audience",
+    description: "Contacts, contact properties, imports and suppressions.",
+  },
+  {
+    id: "segments",
+    label: "Segments",
+    group: "Audience",
+    description: "Segments, audiences and their contacts.",
+  },
+  {
+    id: "topics",
+    label: "Topics",
+    group: "Audience",
+    description: "Topics and subscriptions.",
+  },
+  {
+    id: "templates",
+    label: "Templates",
+    group: "Content & campaigns",
+    description: "Create, manage and publish templates.",
+  },
+  {
+    id: "broadcasts",
+    label: "Broadcasts",
+    group: "Content & campaigns",
+    description: "Create, manage and send broadcasts.",
+  },
+  {
+    id: "automations",
+    label: "Automations",
+    group: "Content & campaigns",
+    description: "Automations and their runs.",
+  },
+  {
+    id: "events",
+    label: "Events",
+    group: "Content & campaigns",
+    description: "Create, manage and send events.",
+  },
+  {
+    id: "domains",
+    label: "Domains",
+    group: "Setup",
+    description: "Domains, claims and verification.",
+  },
+  {
+    id: "webhooks",
+    label: "Webhooks",
+    group: "Setup",
+    description: "Webhook endpoints and deliveries.",
+  },
+  {
+    id: "logs",
+    label: "Logs",
+    group: "Setup",
+    description: "API request logs.",
+  },
+  {
     id: "knowledge",
     label: "Knowledge",
     group: "Calling",
@@ -35,97 +126,6 @@ export const API_RESOURCES = [
     label: "Voice providers",
     group: "Calling",
     description: "Manage encrypted AI provider keys.",
-  },
-  {
-    id: "media",
-    label: "Media",
-    group: "Messaging",
-    description: "Direct file uploads for messaging and imports.",
-  },
-  {
-    id: "emails",
-    label: "Emails",
-    group: "Messaging",
-    description:
-      "Send, list, retrieve, cancel and update emails, including received email.",
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp",
-    group: "Messaging",
-    description: "Messages, media, phone numbers and conversations.",
-  },
-  {
-    id: "messenger",
-    label: "Messenger",
-    group: "Messaging",
-    description: "Messages, media, pages and conversations.",
-  },
-  {
-    id: "instagram",
-    label: "Instagram",
-    group: "Messaging",
-    description: "Messages, media, accounts and conversations.",
-  },
-  {
-    id: "contacts",
-    label: "Contacts",
-    group: "Audience",
-    description: "Contacts, contact properties, imports and suppressions.",
-  },
-  {
-    id: "segments",
-    label: "Segments",
-    group: "Audience",
-    description: "Segments, audiences and their contacts.",
-  },
-  {
-    id: "topics",
-    label: "Topics",
-    group: "Audience",
-    description: "Topics and subscriptions.",
-  },
-  {
-    id: "templates",
-    label: "Templates",
-    group: "Content",
-    description: "Create, manage and publish templates.",
-  },
-  {
-    id: "broadcasts",
-    label: "Broadcasts",
-    group: "Content",
-    description: "Create, manage and send broadcasts.",
-  },
-  {
-    id: "automations",
-    label: "Automations",
-    group: "Content",
-    description: "Automations and their runs.",
-  },
-  {
-    id: "events",
-    label: "Events",
-    group: "Content",
-    description: "Create, manage and send events.",
-  },
-  {
-    id: "domains",
-    label: "Domains",
-    group: "Setup",
-    description: "Domains, claims and verification.",
-  },
-  {
-    id: "webhooks",
-    label: "Webhooks",
-    group: "Setup",
-    description: "Webhook endpoints and deliveries.",
-  },
-  {
-    id: "logs",
-    label: "Logs",
-    group: "Setup",
-    description: "API request logs.",
   },
 ] as const
 export type ApiResource = (typeof API_RESOURCES)[number]["id"]

@@ -69,10 +69,32 @@ export const accounts = query({
   ),
   handler: async (ctx, { organizationId }) => {
     await requireTeam(ctx, organizationId, "read")
-    return (await teamWabas(ctx, organizationId)).map(({ wabaId, name }) => ({
-      wabaId,
-      ...(name ? { name } : {}),
-    }))
+    return Promise.all(
+      (await teamWabas(ctx, organizationId)).map(
+        async ({ wabaId, name, connectionId }, index) => {
+          if (name?.trim()) return { wabaId, name }
+          const [number] = await ctx.db
+            .query("channelAccounts")
+            .withIndex("by_connectionId", (q) =>
+              q.eq("connectionId", connectionId)
+            )
+            .filter((q) =>
+              q.and(
+                q.eq(q.field("wabaId"), wabaId),
+                q.neq(q.field("status"), "disconnected")
+              )
+            )
+            .take(1)
+          return {
+            wabaId,
+            name:
+              [number?.displayName, number?.handle]
+                .filter(Boolean)
+                .join(" · ") || `Connected WhatsApp account ${index + 1}`,
+          }
+        }
+      )
+    )
   },
 })
 

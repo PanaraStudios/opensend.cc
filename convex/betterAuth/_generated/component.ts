@@ -4131,6 +4131,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       >;
     };
     policy: {
+      checkRegistration: FunctionReference<
+        "query",
+        "internal",
+        { email: string; now: number },
+        boolean,
+        Name
+      >;
       admitUser: FunctionReference<
         "mutation",
         "internal",

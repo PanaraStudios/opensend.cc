@@ -109,6 +109,9 @@ export async function broadcastMetric(
       {
         ...(sent ? { sent: true } : {}),
         ...(settled ? { settled: true, failed: type === "failed" } : {}),
+        ...(type === "failed"
+          ? { failureReason: email.error, providerError: email.providerError }
+          : {}),
       }
     )
   if (settled) await finishBroadcast(ctx, recipient.broadcastId)

@@ -3,6 +3,7 @@ import { Opensend } from "../src/resend"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parse } from "yaml"
+import { load } from "js-yaml"
 
 /**
  * Every request the SDK makes must be an operation in Opensend's OpenAPI
@@ -11,6 +12,19 @@ import { parse } from "yaml"
  * `this.resend.<method>(…)` call with its path literal, or with the literal
  * assigned to the `url`/`path` variable it passes.
  */
+
+/** Apply the anchor-uniqueness rule used by PyYAML and strict code generators. */
+function loadStrictYaml(source: string) {
+  const anchors = new Set<string>()
+  return load(source, {
+    onWarning: error => { throw error },
+    listener: (event, state) => {
+      if (event !== "close" || !("anchor" in state) || typeof state.anchor !== "string") return
+      if (anchors.has(state.anchor)) throw new Error(`Duplicate YAML anchor: ${state.anchor}`)
+      anchors.add(state.anchor)
+    },
+  })
+}
 
 const root = join(__dirname, "..")
 const spec = parse(
@@ -119,6 +133,13 @@ const NOT_EXPOSED = new Set(Object.keys(exceptions).map((op) => normalize(op)))
 describe("REST and OpenAPI binding contract", () => {
   const sdk = sdkRequests()
   const contract = contractOperations()
+
+  it("loads the checked-in YAML with a strict parser and contains no anchors or aliases", async () => {
+    const source = readFileSync(join(root, "../../openapi/opensend.yaml"), "utf8")
+    expect(source).not.toMatch(/(?:^|\s)[&*][a-zA-Z0-9_-]+(?:\s|$)/m)
+    expect(() => loadStrictYaml("first: &a1 {}\nsecond: &a1 {}\n")).toThrow(/duplicat/i)
+    expect(loadStrictYaml(source)).toHaveProperty("openapi", "3.1.0")
+  })
 
   it("finds the SDK requests", () => {
     expect(sdk.size).toBeGreaterThan(80)

@@ -115,14 +115,15 @@ export function SoftphoneActions() {
 export function SoftphoneSidebarEntry() {
   const phone = useSoftphone()
   const { setOpenMobile } = useSidebar()
+  const { callLabel, setPanelOpen } = phone
   useEffect(() => {
-    if (phone.callLabel !== "Incoming call") return
+    if (callLabel !== "Incoming call") return
     const frame = requestAnimationFrame(() => {
-      phone.setPanelOpen(false)
+      setPanelOpen(false)
       setOpenMobile(false)
     })
     return () => cancelAnimationFrame(frame)
-  }, [phone.callLabel, phone.setPanelOpen, setOpenMobile])
+  }, [callLabel, setPanelOpen, setOpenMobile])
   if (!phone.available) return null
   return (
     <SidebarMenuItem>
@@ -753,7 +754,8 @@ function TeamSoftphone({
         busy: !!currentId || working || phase === "connecting",
         available:
           !!organizationId &&
-          !!setup?.numbers.some(
+          !!setup?.configured &&
+          !!setup.numbers.some(
             (n) => n.mode === "gateway" && n.routing === "agents"
           ),
         connecting: phase === "connecting",

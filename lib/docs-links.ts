@@ -1,6 +1,9 @@
 import { pathMatches } from "./dashboard/nav"
 import { DOCS_URL } from "./site"
 
+export const CALLING_DOCS_HREF =
+  "https://github.com/PanaraStudios/opensend.cc/blob/v2/docs/browser-softphone.md"
+
 export type DocsPath = "/docs" | `/docs/${string}`
 
 /** Paths are checked against the public site's pages by docs-links.test.ts. */

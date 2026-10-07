@@ -132,6 +132,12 @@ export function ivrTests(state: () => { owner: Page; organizationId: string }) {
     await expect(
       create.getByRole("combobox", { name: "Prompt voice", exact: true })
     ).toContainText("Shubh")
+    await expect(
+      create.getByRole("button", { name: "Create", exact: true })
+    ).toBeDisabled()
+    await expect(
+      create.getByText(/Choose a prompt provider key and a voice/)
+    ).toBeVisible()
     await create
       .getByRole("combobox", { name: "Prompt provider", exact: true })
       .click()

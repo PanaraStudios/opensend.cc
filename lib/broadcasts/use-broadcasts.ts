@@ -205,7 +205,7 @@ export function useContactBroadcasts(contactId: string) {
 }
 
 /** Recipient paging uses the same loaded-page controls as email reports. */
-export function useWhatsAppBroadcastRecipients(id: string) {
+export function useBroadcastRecipients(id: string) {
   const { activeTeamId } = useWorkspace()
   const { results, ...page } = usePaginatedQuery(
     api.broadcastWhatsApp.recipients,

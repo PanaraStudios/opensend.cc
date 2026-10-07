@@ -1136,11 +1136,13 @@ export function EmailStatusBadge({ status }: { status: EmailStatus }) {
 /** Recipient settlement is internal; show the delivery status or skip cause. */
 export function RecipientOutcomeBadge({
   skipReason,
+  emailStatus,
   messageStatus,
   failed,
   sent,
 }: {
   skipReason?: SkipReason
+  emailStatus?: EmailStatus
   messageStatus?: ChannelMessageStatus
   failed?: boolean
   sent?: boolean
@@ -1152,6 +1154,7 @@ export function RecipientOutcomeBadge({
         label={skipReasonLabel(skipReason)}
       />
     )
+  if (emailStatus) return <EmailStatusBadge status={emailStatus} />
   if (messageStatus) return <ChannelMessageStatusBadge status={messageStatus} />
   if (failed) return <ChannelMessageStatusBadge status="failed" />
   if (sent) return <ChannelMessageStatusBadge status="sent" />

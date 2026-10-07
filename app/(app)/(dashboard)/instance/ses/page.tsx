@@ -7,7 +7,10 @@ export const metadata: Metadata = { title: "Amazon SES" }
 export default function InstallationSesPage() {
   return (
     <>
-      <PageHeader title="Amazon SES" />
+      <PageHeader
+        title="Amazon SES"
+        description="Manage the AWS connection used by all teams."
+      />
       <SettingsSes />
     </>
   )

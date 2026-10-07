@@ -540,9 +540,35 @@ test("permanent sender failure settles the broadcast as failed", async () => {
   await f.t.mutation(internal.emails.record, {
     id: recipient.emailId!,
     generation: 0,
-    outcome: { kind: "failed", error: "Rejected", retryable: false },
+    outcome: {
+      kind: "failed",
+      error: "Amazon SES rejected this email",
+      providerError: "MessageRejected: provider detail",
+      retryable: false,
+    },
   })
   expect((await f.read(id))?.status).toBe("failed")
+  const row = await f.t.run((ctx) =>
+    ctx.db.get("broadcastRecipients", recipient._id)
+  )
+  expect(row).toMatchObject({
+    failureReason: "Amazon SES rejected this email",
+    providerError: "MessageRejected: provider detail",
+  })
+  const outcomes = await f.owner.client.query(
+    api.broadcastWhatsApp.recipients,
+    {
+      organizationId: f.org,
+      id,
+      paginationOpts: { cursor: null, numItems: 20 },
+    }
+  )
+  expect(outcomes.page[0]).toMatchObject({
+    failed: true,
+    emailStatus: "failed",
+    failureReason: row?.failureReason,
+    providerError: row?.providerError,
+  })
 })
 async function rest(f: F) {
   const { token } = await f.owner.client.action(api.apiKeys.create, {

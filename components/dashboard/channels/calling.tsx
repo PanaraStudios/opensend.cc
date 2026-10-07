@@ -28,6 +28,7 @@ import { TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
 import { actionError } from "@/lib/action-error"
 import { FileUploadField } from "@/components/dashboard/file-upload"
+import { CALLING_DOCS_HREF } from "@/lib/docs-links"
 import { writableCallingSettings } from "@/lib/meta/calling"
 import { callOutcomeLabel } from "@/lib/dashboard/voice-playground"
 import {
@@ -137,6 +138,18 @@ export function CallingPanel({
           </Button>
         }
       >
+        <p className="text-sm text-muted-foreground">
+          Browser calls, IVRs and voice bots need a configured calling gateway.
+          Configure a TURN relay for browser audio across NAT or firewalls.{" "}
+          <a
+            className="underline"
+            href={CALLING_DOCS_HREF}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Calling setup docs
+          </a>
+        </p>
         {cached === undefined ? (
           <Skeleton className="h-40 w-full" />
         ) : (

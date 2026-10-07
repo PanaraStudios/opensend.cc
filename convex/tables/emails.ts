@@ -91,6 +91,7 @@ export const emailTables = {
     messageId: v.optional(v.string()),
     sentAt: v.optional(v.number()),
     error: v.optional(v.string()),
+    providerError: v.optional(v.string()),
     /** Recipients, sender and subject as words, for the list's search. */
     search: v.string(),
   })

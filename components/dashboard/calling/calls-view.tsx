@@ -23,15 +23,18 @@ import {
   RelativeTime,
   EmptyState,
   MetaStrip,
+  DocsButton,
 } from "@/components/dashboard/primitives"
 import { Badge } from "@/components/ui/badge"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
+import { CALLING_DOCS_HREF } from "@/lib/docs-links"
 import { PhoneIcon } from "lucide-react"
 import { SoftphoneActions } from "./softphone-provider"
 export function CallsView() {
+  const setup = useTeamQuery(api.calling.playgroundState.setup)
   const [now, setNow] = useState(0)
   useEffect(() => {
     const tick = () => setNow(Date.now())
@@ -58,6 +61,30 @@ export function CallsView() {
       tabs={PLAYGROUND_TABS}
       actions={<SoftphoneActions />}
     >
+      {setup && !setup.configured ? (
+        <EmptyState
+          size="sm"
+          icon={PhoneIcon}
+          title="Calling is not configured"
+          description="Ask your instance administrator to configure the calling gateway, its secure browser connection, and a TURN relay for browser audio across restricted networks. Then choose Media gateway and team agents in your WhatsApp channel’s Calling settings."
+        >
+          <DocsButton href={CALLING_DOCS_HREF} />
+        </EmptyState>
+      ) : setup &&
+        !setup.numbers.some(
+          (number) => number.mode === "gateway" && number.routing === "agents"
+        ) ? (
+        <EmptyState
+          size="sm"
+          icon={PhoneIcon}
+          title="Set up a softphone channel"
+          description="Choose Media gateway and route calls to team agents in your WhatsApp channel’s Calling settings to use the softphone."
+        >
+          <Button nativeButton={false} render={<Link href="/channels" />}>
+            Open Channels
+          </Button>
+        </EmptyState>
+      ) : null}
       <MetaStrip
         items={[
           {

@@ -878,3 +878,23 @@ test("dashboard template tests require approval and enqueue a rendered WhatsApp 
     },
   })
 })
+
+test("the account picker identifies an unnamed WABA by its connected number instead of an id", async () => {
+  const f = await inboundFixture()
+  await f.t.run(async (ctx) => {
+    const waba = await ctx.db.query("whatsappBusinessAccounts").first()
+    await ctx.db.patch("whatsappBusinessAccounts", waba!._id, {
+      name: undefined,
+    })
+    await ctx.db.patch("channelAccounts", f.account, {
+      displayName: "Support",
+      handle: "+15555550100",
+    })
+  })
+  const accounts = await f.owner.client.query(api.whatsapp.templates.accounts, {
+    organizationId: f.owner.team,
+  })
+  expect(accounts).toMatchObject([
+    { wabaId: WABA_ID, name: "Support · +15555550100" },
+  ])
+})

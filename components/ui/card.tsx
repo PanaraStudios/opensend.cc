@@ -3,8 +3,7 @@ import { cn } from "cn"
 
 /* Card, matched to reechlist.com. The card itself is the 14px "panel": a faint ink-cast
    gradient over the surface, a hairline ring and four stacked soft drops, 24px padding.
-   Wrap it in <CardFrame> for the 18px outer shell with the 8px gutter (pricing tiers,
-   testimonials). `highlight` flips the gradient so the cast sits at the bottom (featured tier). */
+   CardFrame is a layout wrapper; Card owns the visible surface. `highlight` flips the gradient so the cast sits at the bottom (featured tier). */
 function Card({
   className,
   size = "default",
@@ -33,15 +32,12 @@ function Card({
   )
 }
 
-/* The 18px outer shell: 10% line with a 1px white glow outside, 8px gutter, backdrop blur. */
+/* Layout wrapper. The child card owns the surface and its single border. */
 function CardFrame({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-frame"
-      className={cn(
-        "rounded-[18px] border border-border-double p-2 shadow-[0_0_0_1px_var(--border-double-glow)] backdrop-blur-[8px] *:data-[slot=card]:h-full",
-        className
-      )}
+      className={cn("min-w-0 *:data-[slot=card]:h-full", className)}
       {...props}
     />
   )

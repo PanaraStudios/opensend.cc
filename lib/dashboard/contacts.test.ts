@@ -73,7 +73,7 @@ describe("contact identity", () => {
     })
     assert.equal(
       contactIdentity({}, { ...channelIdentity, profileName: "" }).label,
-      "Unknown contact"
+      "Messenger user"
     )
     assert.equal(contactIdentity({}).label, "Unknown contact")
   })
@@ -150,7 +150,7 @@ describe("channel usernames", () => {
         channelIdentity: { channel: "messenger", externalId: "10000001" },
       }),
       {
-        label: "Unknown contact",
+        label: "Messenger user",
         secondary: "Messenger",
         kind: "channel",
         channel: "messenger",
