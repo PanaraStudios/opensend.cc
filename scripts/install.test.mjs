@@ -16,6 +16,7 @@ import { join } from "node:path"
 import { test } from "node:test"
 import { fileURLToPath } from "node:url"
 import { parse } from "./lib.mjs"
+import { assertTestCompose, testProject } from "./test-compose.mjs"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const secretKeys = [
@@ -50,7 +51,9 @@ async function fixture(t) {
     `#!${process.execPath}
 import { appendFileSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
+import { assertTestCompose } from ${JSON.stringify(join(root, "scripts/test-compose.mjs"))}
 const args = process.argv.slice(2)
+assertTestCompose(args)
 if (args.some(a => a.endsWith("generate_key"))) { console.log(process.env.TEST_ADMIN); process.exit(0) }
 appendFileSync(process.env.TEST_LOG, JSON.stringify(args) + "\\n")
 const has = (...parts) => parts.every(p => args.includes(p))
@@ -121,12 +124,16 @@ if (has("image", "inspect") && process.env.TEST_FAIL==="missing-image") process.
       ["SITE_URL", "APP_PORT", "SES_CALLBACK_ORIGIN"].includes(key)
     )
       delete env[key]
+  env.COMPOSE_PROJECT_NAME = testProject("install-config")
   const run = (args = [], extras = {}) =>
     new Promise((resolve, reject) => {
       const child = spawn(
         "sh",
         [
           join(root, "scripts/install.sh"),
+          ...(["install", "upgrade", "uninstall"].includes(args[0])
+            ? [args[0]]
+            : []),
           "--dir",
           installation,
           "--yes",
@@ -135,7 +142,9 @@ if (has("image", "inspect") && process.env.TEST_FAIL==="missing-image") process.
           "itest-a",
           "--source-url",
           `http://127.0.0.1:${server.address().port}`,
-          ...args,
+          ...(["install", "upgrade", "uninstall"].includes(args[0])
+            ? args.slice(1)
+            : args),
         ],
         { env: { ...env, ...extras }, stdio: ["ignore", "pipe", "pipe"] }
       )
@@ -711,4 +720,38 @@ test("TURN upgrade preserves an operator's STUN override", async (t) => {
     f.composeConfig().services.migrate.environment.CALL_STUN_URLS,
     stun
   )
+})
+
+test("cloud scenario persists its isolated project through rerun, upgrade and uninstall", async (t) => {
+  const f = await fixture(t)
+  const args = [
+    "--convex",
+    "cloud",
+    "--deploy-key",
+    "dev:fake-name|token",
+    "--domain",
+    "cloud.example.test",
+    "--no-start",
+  ]
+  privateOutput(await f.run(["install", ...args]), f.settings())
+  const project = f.settings().COMPOSE_PROJECT_NAME
+  assert.match(project, /^opensend-install-config-\d+-[a-f0-9]+$/)
+  assert.equal(
+    assertTestCompose(["compose", "down"], {}, f.installation),
+    project
+  )
+  privateOutput(await f.run(["install", ...args]), f.settings())
+  privateOutput(
+    await f.run(["upgrade", ...args, "--version", "itest-b"]),
+    f.settings()
+  )
+  assert.equal(f.settings().COMPOSE_PROJECT_NAME, project)
+  // Uninstall clears the calling shell's Compose variables: the saved file
+  // must still select the isolated project, even with a hostile shell value.
+  privateOutput(
+    await f.run(["uninstall"], { COMPOSE_PROJECT_NAME: "opensend" }),
+    f.settings()
+  )
+  assert.equal(f.settings().COMPOSE_PROJECT_NAME, project)
+  assert.ok(f.commands().some((args) => args.includes("down")))
 })

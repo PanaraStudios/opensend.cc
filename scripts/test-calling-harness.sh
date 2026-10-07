@@ -4,7 +4,10 @@ set -eu
 (
   export OPENSEND_TELEMETRY=1
   export OPENSEND_TELEMETRY_URL=http://127.0.0.1:9/telemetry
-  c() { docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml --profile calling --profile calling-test -p opensend-calling-test "$@"; }
+  COMPOSE_PROJECT_NAME=opensend-calling-test-$(date +%s)-$(openssl rand -hex 3)
+  export COMPOSE_PROJECT_NAME
+  c() { node scripts/test-compose.mjs --calling "$@"; }
+  until mkdir "${TMPDIR:-/tmp}/opensend-calling-harness.lock" 2>/dev/null; do sleep 30; done
   if [ ! -f .env.calling-test ]; then
     umask 077
     for name in CALL_GATEWAY_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET DRACHTIO_SECRET VOICE_AGENT_SECRET; do
@@ -14,13 +17,13 @@ set -eu
     printf 'VOICE_AGENT_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env.calling-test
   fi
   node scripts/test-stack-env.mjs .env.calling-test
-  until mkdir /private/tmp/opensend-calling-harness.lock 2>/dev/null; do sleep 30; done
+  node scripts/test-compose.mjs --save-project .env.calling-test
   finish() {
     harness_status=$?
     trap - EXIT
     if [ "$harness_status" -ne 0 ]; then c logs --tail=150 call-gateway voice-agent freeswitch || true; fi
     c down --remove-orphans || true
-    rmdir /private/tmp/opensend-calling-harness.lock
+    rmdir "${TMPDIR:-/tmp}/opensend-calling-harness.lock"
     exit "$harness_status"
   }
   trap finish EXIT

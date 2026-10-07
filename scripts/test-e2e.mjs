@@ -12,6 +12,7 @@ import { lookup } from "node:dns/promises"
 import { resolve } from "node:path"
 import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
 import { testStackEnv, writeTestStackEnv } from "./test-stack-env.mjs"
+import { guardedDockerEnv } from "./test-compose.mjs"
 import { startFakeGraph } from "../tests/e2e/fake-graph.mjs"
 Object.assign(process.env, testStackEnv)
 const project = `opensend-e2e-${Date.now()}-${randomBytes(3).toString("hex")}`
@@ -21,6 +22,9 @@ const [appPort, convexPort, sitePort, oidcPort, graphPort] = await Promise.all(
 )
 const resultDir = resolve("test-results", project)
 mkdirSync(resultDir, { recursive: true })
+Object.assign(process.env, guardedDockerEnv(resultDir), {
+  COMPOSE_PROJECT_NAME: project,
+})
 const realm = JSON.parse(readFileSync("docker/oidc-realm.json", "utf8"))
 realm.clients[0].redirectUris = [
   `http://localhost:${appPort}/api/auth/oauth2/callback/*`,
@@ -73,6 +77,7 @@ const local = existsSync(".env.docker")
   ? parse(readFileSync(".env.docker", "utf8"))
   : {}
 const values = {
+  COMPOSE_PROJECT_NAME: project,
   INSTANCE_NAME: project,
   INSTANCE_SECRET: randomBytes(32).toString("hex"),
   BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),

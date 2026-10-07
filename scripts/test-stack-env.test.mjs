@@ -21,7 +21,7 @@ for (const existing of [false, true]) {
     const directory = mkdtempSync(join(tmpdir(), "opensend-calling-env-"))
     t.after(() => rmSync(directory, { recursive: true, force: true }))
     mkdirSync(join(directory, "scripts"))
-    for (const file of ["test-stack-env.mjs", "lib.mjs"])
+    for (const file of ["test-stack-env.mjs", "test-compose.mjs", "lib.mjs"])
       copyFileSync(resolve("scripts", file), join(directory, "scripts", file))
     const bin = join(directory, "bin")
     mkdirSync(bin)
@@ -32,6 +32,7 @@ for (const existing of [false, true]) {
 const { appendFileSync } = require("node:fs")
 appendFileSync(process.env.TEST_CALLS_FILE, JSON.stringify({
   args: process.argv.slice(2),
+  COMPOSE_PROJECT_NAME: process.env.COMPOSE_PROJECT_NAME,
   OPENSEND_TELEMETRY: process.env.OPENSEND_TELEMETRY,
   OPENSEND_TELEMETRY_URL: process.env.OPENSEND_TELEMETRY_URL,
 }) + "\\n")
@@ -42,7 +43,7 @@ appendFileSync(process.env.TEST_CALLS_FILE, JSON.stringify({
     for (const command of ["mkdir", "rmdir"])
       writeFileSync(
         join(bin, command),
-        '#!/bin/sh\n[ "$1" = /private/tmp/opensend-calling-harness.lock ]\n',
+        '#!/bin/sh\n[ "$1" = "$TMPDIR/opensend-calling-harness.lock" ]\n',
         { mode: 0o700 }
       )
     const filename = join(directory, ".env.calling-test")
@@ -65,6 +66,8 @@ appendFileSync(process.env.TEST_CALLS_FILE, JSON.stringify({
           ...process.env,
           PATH: `${bin}:${process.env.PATH}`,
           TEST_CALLS_FILE: callsFile,
+          TMPDIR: directory,
+          COMPOSE_PROJECT_NAME: "opensend",
           OPENSEND_TELEMETRY: "0",
           OPENSEND_TELEMETRY_URL: "https://opensend.cc/api/telemetry",
         },
@@ -88,6 +91,17 @@ appendFileSync(process.env.TEST_CALLS_FILE, JSON.stringify({
       .split("\n")
       .map((line) => JSON.parse(line))
     assert.equal(calls.length, 4)
+    assert.match(
+      saved.COMPOSE_PROJECT_NAME,
+      /^opensend-calling-test-\d+-[a-f0-9]+$/
+    )
+    for (const call of calls) {
+      assert.equal(call.COMPOSE_PROJECT_NAME, saved.COMPOSE_PROJECT_NAME)
+      assert.equal(
+        call.args[call.args.indexOf("-p") + 1],
+        saved.COMPOSE_PROJECT_NAME
+      )
+    }
     for (const call of calls)
       for (const [key, value] of Object.entries(testStackEnv))
         assert.equal(call[key], value)
