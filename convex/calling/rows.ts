@@ -727,3 +727,50 @@ export const settleConnect = internalMutation({
     return null
   },
 })
+
+/** Claim the local terminal state before any best-effort network cleanup. */
+export const endLocally = internalMutation({
+  args: {
+    id: v.id("calls"),
+    kind: v.union(
+      v.literal("timeout"),
+      v.literal("hangup"),
+      v.literal("blocked")
+    ),
+    at: v.optional(v.number()),
+    reason: v.optional(v.string()),
+  },
+  returns: v.union(v.null(), schema.doc("calls")),
+  handler: async (
+    ctx,
+    { id, kind, at, reason }
+  ): Promise<Doc<"calls"> | null> => {
+    const row = await ctx.db.get("calls", id)
+    if (
+      !row ||
+      CALL_TERMINAL.has(row.status) ||
+      (await retirement(ctx, row.organizationId))
+    )
+      return null
+    // Acceptance wins over a timeout, but a terminal media callback cannot be
+    // superseded by a later acceptance webhook or a different server clock.
+    if (kind === "timeout" && row.status === "connected") return null
+    if (kind === "hangup" && at === undefined) return null
+    await ctx.runMutation(internal.calling.rows.finish, {
+      id,
+      status:
+        kind === "hangup"
+          ? row.connectedAt
+            ? "completed"
+            : "missed"
+          : kind === "timeout" && !row.wacid
+            ? "failed"
+            : "missed",
+      ...(reason ? { error: reason } : {}),
+      ...(kind === "timeout" && !row.wacid
+        ? { error: "Call setup timed out before Meta assigned a call id." }
+        : {}),
+    })
+    return row
+  },
+})

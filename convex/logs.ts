@@ -49,6 +49,26 @@ const cut = (body: string | undefined) =>
     : { body: body.slice(0, BODY_LIMIT), cut: true }
 
 export function responseForLog(path: string, method: string, body?: string) {
+  // Include legacy IVR read/update responses as well as creation and rotation.
+  if (body && /^\/ivrs(?:\/|$)/.test(path)) {
+    try {
+      const mask = (input: unknown): unknown => {
+        if (!input || typeof input !== "object" || Array.isArray(input))
+          return input
+        const value = input as Record<string, unknown>
+        return {
+          ...value,
+          ...("webhook_signing_secret" in value
+            ? { webhook_signing_secret: "[redacted]" }
+            : {}),
+          ...(Array.isArray(value.data) ? { data: value.data.map(mask) } : {}),
+        }
+      }
+      return JSON.stringify(mask(JSON.parse(body)))
+    } catch {
+      return "[redacted]"
+    }
+  }
   if (method === "POST" && /^\/emails\/[^/]+\/share$/.test(path))
     return "[redacted]"
   // Responses that carry a secret: key and webhook creation, secret

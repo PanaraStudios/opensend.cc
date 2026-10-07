@@ -1,11 +1,12 @@
 "use node"
+import { embedText } from "../../lib/net/embedding"
 import { v } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Doc } from "../_generated/dataModel"
 import { decryptSecret } from "../secrets"
 import { publicFetch } from "../../lib/net/public-fetch"
-import { chunkText, embedText } from "../../lib/bot-toolkit"
+import { chunkText } from "../../lib/bot-toolkit"
 import { extractKnowledgeText } from "../../lib/net/knowledge-text"
 export const ingest = internalAction({
   args: { id: v.id("knowledgeDocuments"), revision: v.string() },

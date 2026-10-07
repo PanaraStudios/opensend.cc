@@ -1,3 +1,4 @@
+import * as embeddingNet from "../services/call-gateway/src/net/public-fetch"
 import SwaggerParser from "@apidevtools/swagger-parser"
 import Ajv2020 from "ajv/dist/2020"
 import { resolve } from "node:path"
@@ -156,10 +157,11 @@ test("knowledge re-indexing consumes a team quota before scheduling paid work", 
 
 test("knowledge search caps provider calls per team across dashboard and REST", async () => {
   const f = await setup()
-  const embedding = vi.fn(async () =>
-    Response.json({ embedding: { values: Array(768).fill(1) } })
-  )
-  vi.stubGlobal("fetch", embedding)
+  const embedding = vi
+    .spyOn(embeddingNet, "publicFetch")
+    .mockImplementation(async () =>
+      Response.json({ embedding: { values: Array(768).fill(1) } })
+    )
   for (let index = 0; index < 20; index++)
     await f.owner.client.action(api.knowledge.search.dashboardSearch, {
       organizationId: f.organizationId,
@@ -180,11 +182,11 @@ test("knowledge search caps provider calls per team across dashboard and REST", 
 test("knowledge ingestion uses team credentials, atomically replaces revisions and reports real failures", async () => {
   const f = await setup(),
     doc = await f.doc()
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () =>
-      Response.json({ embedding: { values: Array(768).fill(1) } })
-    )
+  vi.spyOn(embeddingNet, "publicFetch").mockImplementation(
+    async (_url, options) => {
+      expect(options).toMatchObject({ timeoutMs: 10000, maxBytes: 64 * 1024 })
+      return Response.json({ embedding: { values: Array(768).fill(1) } })
+    }
   )
   await f.t.action(internal.knowledge.ingest.ingest, {
     id: doc._id,
@@ -238,11 +240,8 @@ test("knowledge ingestion uses team credentials, atomically replaces revisions a
       )
     )[0].text
   ).toBe("Updated manual")
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () => new Response("Never expose provider details", { status: 429 })
-    )
+  vi.spyOn(embeddingNet, "publicFetch").mockResolvedValue(
+    new Response("Never expose provider details", { status: 429 })
   )
   const failed = await f.doc()
   await f.t.action(internal.knowledge.ingest.ingest, {
@@ -300,11 +299,11 @@ test("vector search filters by combined organization and KB and rejects foreign 
     await ctx.db.patch("knowledgeDocuments", first._id, { status: "ready" })
     return [a, b, c]
   })
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () =>
-      Response.json({ embedding: { values: Array(768).fill(1) } })
-    )
+  vi.spyOn(embeddingNet, "publicFetch").mockImplementation(
+    async (_url, options) => {
+      expect(options).toMatchObject({ timeoutMs: 10000, maxBytes: 64 * 1024 })
+      return Response.json({ embedding: { values: Array(768).fill(1) } })
+    }
   )
   const found = await f.owner.client.action(
     api.knowledge.search.dashboardSearch,
@@ -916,11 +915,11 @@ test("toolkit REST request and response bodies validate against the published Op
     "PATCH",
     { text: "Updated reference" }
   )
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () =>
-      Response.json({ embedding: { values: Array(768).fill(1) } })
-    )
+  vi.spyOn(embeddingNet, "publicFetch").mockImplementation(
+    async (_url, options) => {
+      expect(options).toMatchObject({ timeoutMs: 10000, maxBytes: 64 * 1024 })
+      return Response.json({ embedding: { values: Array(768).fill(1) } })
+    }
   )
   await check(
     "/knowledge-bases/{id}/search",

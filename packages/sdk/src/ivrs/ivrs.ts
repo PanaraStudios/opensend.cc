@@ -46,6 +46,16 @@ export class Ivrs {
       options
     )
   }
+  rotateSigningSecret(
+    id: string,
+    options: PostOptions & IdempotentRequest = {}
+  ) {
+    return this.resend.post<Ivr>(
+      `/ivrs/${encodeURIComponent(id)}/rotate-signing-secret`,
+      {},
+      options
+    )
+  }
   render(id: string, options: PostOptions = {}) {
     return this.resend.post<Ivr>(
       `/ivrs/${encodeURIComponent(id)}/render`,
