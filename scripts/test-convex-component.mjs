@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import {
   cpSync,
@@ -23,6 +23,11 @@ import {
   writeComponentFixtures,
 } from "./convex-component-fixtures.mjs"
 import { sesFixtureNotification } from "../tests/e2e/ses-fixture-data.mjs"
+import {
+  convexCliCommand,
+  redactOutput,
+  runCommand,
+} from "./convex-component-process.mjs"
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 if (resolve(process.cwd()) !== root)
@@ -41,6 +46,7 @@ const apiKey = `os_${randomBytes(24).toString("hex")}`
 const webhookSecret = `whsec_${randomBytes(32).toString("base64")}`
 const instanceSecret = randomBytes(32).toString("hex")
 const exampleSecret = randomBytes(32).toString("hex")
+const secrets = new Set([apiKey, webhookSecret, instanceSecret, exampleSecret])
 let env
 let compose
 let exampleEnv
@@ -50,58 +56,32 @@ let exitStatus = 1
 let interrupted = false
 
 // Async commands keep signal handlers and the deadline heartbeat responsive.
-function execute(
-  command,
-  args,
-  { cwd = root, capture = false, childEnv = env, quiet = false } = {}
-) {
+function execute(command, args, options = {}) {
   if (interrupted) return Promise.reject(new Error("Interrupted"))
-  return new Promise((resolveResult, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      env: childEnv,
-      stdio: [
-        "ignore",
-        capture || quiet ? "pipe" : "inherit",
-        quiet ? "pipe" : "inherit",
-      ],
-    })
-    activeChild = child
-    let output = ""
-    let errors = ""
-    child.stdout?.on("data", (chunk) => {
-      output += chunk
-    })
-    child.stderr?.on("data", (chunk) => {
-      errors += chunk
-    })
-    const heartbeat = setInterval(
-      () => console.log(`WAIT ${command} ${args[0]} (${project})`),
-      30_000
-    )
-    child.once("error", (error) => {
-      clearInterval(heartbeat)
+  return runCommand(command, args, {
+    cwd: root,
+    childEnv: env,
+    secrets: [...secrets],
+    heartbeatText: `WAIT ${options.label ?? "subprocess"} (${project})`,
+    onStart: (child) => {
+      activeChild = child
+    },
+    onEnd: () => {
       activeChild = undefined
-      reject(error)
-    })
-    // Wait for stdout/stderr to close before parsing captured CLI JSON.
-    child.once("close", (code) => {
-      clearInterval(heartbeat)
-      activeChild = undefined
-      if (code === 0) resolveResult(output.trim())
-      // Do not include command arguments: env set / seed carry test credentials.
-      else
-        reject(
-          new Error(
-            `${command} ${args[0]} failed (${code})${quiet ? `: ${errors}` : ""}`
-          )
-        )
-    })
+    },
+    ...options,
   })
 }
 const docker = (args) => execute("docker", [...compose, ...args])
-const cli = (args, options = {}) =>
-  execute("pnpm", ["exec", "convex", ...args], { capture: true, ...options })
+const cli = (args, options = {}) => {
+  const invocation = convexCliCommand(root, args)
+  return execute(invocation.command, invocation.args, {
+    label: "Convex CLI",
+    capture: true,
+    quiet: true,
+    ...options,
+  })
+}
 const runProduct = async (name, args) =>
   JSON.parse(
     (await cli(["run", name, JSON.stringify(args)], {
@@ -257,6 +237,9 @@ try {
     MIGRATE_IMAGE: `${project}-migrate`,
     OPENSEND_BACKEND_ONLY: "1",
   }
+  for (const [key, value] of Object.entries(values))
+    if (/secret|password|token|(?:api|admin|encryption).?key/i.test(key))
+      secrets.add(value)
   writeTestStackEnv(filename, values)
   writeFileSync(
     composeOverride,
@@ -312,6 +295,7 @@ volumes:
   setupStarted = true
   await execute("node", ["scripts/setup.mjs"])
   const saved = parse(readFileSync(filename, "utf8"))
+  secrets.add(saved.CONVEX_SELF_HOSTED_ADMIN_KEY)
   env = {
     ...env,
     CONVEX_SELF_HOSTED_URL: `http://127.0.0.1:${productPort}`,
@@ -332,13 +316,13 @@ volumes:
     ],
     { capture: true }
   )
+  secrets.add(exampleKey)
   exampleEnv = {
     ...isolatedEnv(env),
     CONVEX_SELF_HOSTED_URL: `http://127.0.0.1:${examplePort}`,
     CONVEX_SELF_HOSTED_ADMIN_KEY: exampleKey,
-    // Apply the consumer policy to later pnpm exec/run commands too, including
-    // their automatic dependency checks. Environment/global strict defaults
-    // must not undo the explicit install policy.
+    // Environment/global strict defaults must not undo the consumer's explicit
+    // install policy. All Convex calls bypass package-manager dependency checks.
     pnpm_config_strict_dep_builds: "false",
     pnpm_config_ignore_scripts: "false",
     pnpm_config_dangerously_allow_all_builds: "false",
@@ -440,7 +424,15 @@ volumes:
     ].sort()
   )
   await cli(["deploy", "--yes"], { cwd: example, childEnv: exampleEnv })
-  await execute("pnpm", ["typecheck"], { cwd: example, childEnv: exampleEnv })
+  await execute(
+    process.execPath,
+    [join(example, "node_modules/typescript/bin/tsc"), "-p", "convex"],
+    {
+      cwd: example,
+      childEnv: exampleEnv,
+      label: "consumer typecheck",
+    }
+  )
   // Resolve the executable/config from the checkout but lint from the consumer
   // cwd, so ESLint includes the temporary files rather than ignoring them as
   // outside its base path. No lint dependencies are added to the consumer.
@@ -564,7 +556,7 @@ volumes:
   pass("cleanup")
   exitStatus = 0
 } catch (error) {
-  console.error(`FAIL ${error.message}`)
+  console.error(`FAIL ${redactOutput(error.message, [...secrets])}`)
   if (compose && env)
     await docker([
       "logs",
@@ -600,7 +592,9 @@ volumes:
       removeTestInstance(filename, project, compose)
       pass("owned containers and volumes removed")
     } catch (error) {
-      console.error(`FAIL teardown: ${error.message}`)
+      console.error(
+        `FAIL teardown: ${redactOutput(error.message, [...secrets])}`
+      )
       exitStatus = 1
     }
   }
