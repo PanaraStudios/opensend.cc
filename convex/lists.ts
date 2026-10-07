@@ -32,11 +32,11 @@ export function matchesSearch(search: string | undefined) {
     https://docs.convex.dev/search/text-search#limits
     Never scan beyond the caller's budget or infer exhaustion from an empty page.
     Preserve cursor/split metadata so the existing pager can keep loading. */
-export type SearchBudget = {
+export type SearchBudget<T = unknown> = {
   rows: number
   bytes: number
   /** Reserve downstream reads for each kept row, before hydration starts. */
-  bytesPerMatch?: number
+  bytesPerMatch?: number | ((row: T) => number)
 }
 
 type ListQuery<T extends NonNullable<unknown>> = QueryStream<T> & {
@@ -52,7 +52,7 @@ class SearchStream<T extends NonNullable<unknown>> extends QueryStream<T> {
   constructor(
     private rows: QueryStream<T>,
     private keep: (row: T) => boolean | Promise<boolean>,
-    private bytesPerMatch: number
+    private bytesPerMatch: number | ((row: T) => number)
   ) {
     super()
   }
@@ -63,7 +63,12 @@ class SearchStream<T extends NonNullable<unknown>> extends QueryStream<T> {
   > {
     for await (const [row, key, bytes] of this.rows.iterWithKeys(true)) {
       const kept = row !== null && (await this.keep(row))
-      yield [kept ? row : null, key, bytes + (kept ? this.bytesPerMatch : 0)]
+      const reserved = kept
+        ? typeof this.bytesPerMatch === "function"
+          ? this.bytesPerMatch(row)
+          : this.bytesPerMatch
+        : 0
+      yield [kept ? row : null, key, bytes + reserved]
     }
   }
 
@@ -96,7 +101,7 @@ export async function filteredPage<T extends NonNullable<unknown>>(
   rows: ListQuery<T> | QueryStream<T>,
   paginationOpts: PaginationOptions,
   keep: (row: T) => boolean | Promise<boolean>,
-  budget: SearchBudget,
+  budget: SearchBudget<T>,
   search?: string
 ): Promise<PaginationResult<T>> {
   if (!search?.trim()) {
@@ -134,7 +139,7 @@ export async function teamPage<T extends TeamTable>(
   organizationId: string,
   paginationOpts: PaginationOptions,
   keep: (row: Doc<T>) => boolean,
-  budget: SearchBudget,
+  budget: SearchBudget<Doc<T>>,
   search?: string
 ) {
   // Each of these tables has the same `by_organizationId` index.

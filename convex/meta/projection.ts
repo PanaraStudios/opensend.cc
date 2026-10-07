@@ -12,6 +12,7 @@ import { retirement } from "../teamLifecycle"
 import { CHANNEL_QUALITIES } from "../tables/channels"
 import { HIGH_THROUGHPUT_MPS } from "../../lib/meta/whatsapp-account"
 import { acceptChannelMessage } from "../channels/messages"
+import { enqueueMediaFetch } from "../channels/mediaState"
 import { hydratedChannelMessage } from "../channels/payload"
 import { live, wabaByWabaId } from "./connect"
 import { templateWebhook } from "../whatsapp/templates"
@@ -73,8 +74,11 @@ const accountByExternalId = async (
   (
     await ctx.db
       .query("channelAccounts")
-      .withIndex("by_channel_and_externalId", (q) =>
-        q.eq("channel", channel).eq("externalId", id)
+      .withIndex("by_channel_and_externalId_and_disconnectedAt", (q) =>
+        q
+          .eq("channel", channel)
+          .eq("externalId", id)
+          .eq("disconnectedAt", undefined)
       )
       .take(20)
   ).find(live) ?? null
@@ -156,7 +160,7 @@ async function receive(
     webhookEventId: event._id,
   })
   for (const file of files)
-    await ctx.scheduler.runAfter(0, internal.channels.media.fetch, {
+    await enqueueMediaFetch(ctx, {
       messageId,
       mediaId: file.mediaId,
     })
@@ -245,11 +249,9 @@ async function status(
   event: Doc<"metaWebhookEvents">
 ) {
   const { data, status: next, at } = item
-  if (
-    account.channel !== "whatsapp" &&
-    STATUS_RANK[next] <= STATUS_RANK[message.status]
-  )
-    return message
+  // Meta can rebundle the same observation under a new body hash. Only an
+  // advancing milestone may update evidence, metrics, or the customer outbox.
+  if (STATUS_RANK[next] <= STATUS_RANK[message.status]) return message
   const content = await ctx.db
     .query("channelMessageContents")
     .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
@@ -291,7 +293,7 @@ async function status(
     webhookEventId: event._id,
     details: JSON.stringify(data),
   })
-  // Every status stays on the timeline; customer events describe that observation.
+  // Customer events describe the advancing milestone.
   const payload = await hydratedChannelMessage(
     ctx,
     { ...current, status: next },
@@ -325,11 +327,17 @@ export const project = internalMutation({
     id: v.id("metaWebhookEvents"),
     attempt: v.optional(v.number()),
     statusIndexes: v.optional(v.array(v.number())),
+    cursor: v.optional(v.number()),
   },
   returns: v.null(),
-  handler: async (ctx, { id, attempt = 0, statusIndexes }) => {
+  handler: async (ctx, { id, attempt = 0, statusIndexes, cursor = 0 }) => {
     const event = await ctx.db.get("metaWebhookEvents", id)
-    if (!event || (event.projectedAt !== undefined && !statusIndexes))
+    if (
+      !event ||
+      (!statusIndexes &&
+        (event.projectedAt !== undefined ||
+          (event.projectionCursor ?? 0) !== cursor))
+    )
       return null
     const root = object(JSON.parse(event.body))
     const retired = new Map<string, boolean>()
@@ -403,6 +411,9 @@ export const project = internalMutation({
     const pendingIndexes = statusIndexes ? new Set(statusIndexes) : null
     const unmatched: number[] = []
     for (const [index, item] of items.entries()) {
+      // Ten messages leave headroom for contacts, counts, media and outbox
+      // writes. The raw event and progress commit with the continuation.
+      if (!pendingIndexes && (index < cursor || index >= cursor + 10)) continue
       if (
         pendingIndexes &&
         (!pendingIndexes.has(index) ||
@@ -493,7 +504,8 @@ export const project = internalMutation({
           cursor: null,
         })
     }
-    for (const change of statusIndexes ? [] : changes) {
+    const more = !statusIndexes && cursor + 10 < items.length
+    for (const change of statusIndexes || more ? [] : changes) {
       if (oneOf(change.field, TEMPLATE_WEBHOOK_FIELDS))
         await templateWebhook(
           ctx,
@@ -520,8 +532,20 @@ export const project = internalMutation({
         "Dropping unmatched Meta statuses after retries",
         unmatched.length
       )
-    if (!statusIndexes)
-      await ctx.db.patch("metaWebhookEvents", id, { projectedAt: Date.now() })
+    if (!statusIndexes) {
+      await ctx.db.patch(
+        "metaWebhookEvents",
+        id,
+        more
+          ? { projectionCursor: cursor + 10 }
+          : { projectedAt: Date.now(), projectionCursor: undefined }
+      )
+      if (more)
+        await ctx.scheduler.runAfter(0, internal.meta.projection.project, {
+          id,
+          cursor: cursor + 10,
+        })
+    }
     return null
   },
 })
@@ -673,7 +697,6 @@ export const watermark = internalMutation({
       .order("desc")
       .paginate({ cursor: args.cursor, numItems: 100 })
     let pending = false
-    let stopped = false
     for (const message of page.page) {
       if (
         message.direction !== "outbound" ||
@@ -684,10 +707,8 @@ export const watermark = internalMutation({
       if (
         message.status !== "failed" &&
         STATUS_RANK[message.status] >= STATUS_RANK[args.next]
-      ) {
-        stopped = true
-        break
-      }
+      )
+        continue
       if (!message.externalId && message.status === "queued") {
         pending = true
         continue
@@ -719,7 +740,7 @@ export const watermark = internalMutation({
         ...args,
         attempt: (args.attempt ?? 0) + 1,
       })
-    else if (!stopped && !page.isDone)
+    else if (!page.isDone)
       await ctx.scheduler.runAfter(0, internal.meta.projection.watermark, {
         ...args,
         cursor: page.continueCursor,

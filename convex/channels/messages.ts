@@ -17,7 +17,10 @@ import { live } from "../meta/connect"
 import { teamRow } from "../lists"
 import { decryptSecret } from "../secrets"
 import { invalid, notFound } from "../api/caller"
-import { broadcastMessageMetric } from "../broadcastMetrics"
+import {
+  broadcastMessageMetric,
+  broadcastRecipientProblem,
+} from "../broadcastMetrics"
 import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
 import {
@@ -26,6 +29,7 @@ import {
   recordWhatsAppPhone,
 } from "./identity"
 import { hydratedChannelMessage } from "./payload"
+import { enqueueMediaFetch } from "./mediaState"
 import {
   whatsappMessageMedia,
   validateWhatsAppMediaReference,
@@ -93,8 +97,11 @@ export async function findChannelAccount(
         (
           await ctx.db
             .query("channelAccounts")
-            .withIndex("by_channel_and_externalId", (q) =>
-              q.eq("channel", channel).eq("externalId", from)
+            .withIndex("by_organizationId_and_channel_and_externalId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("channel", channel)
+                .eq("externalId", from)
             )
             .take(20)
         ).find((a) => a.organizationId === organizationId && live(a)) ?? null,
@@ -580,7 +587,7 @@ export async function acceptChannelMessage(
         )
         .unique()
       if (!upload || upload.accountId !== message.accountId)
-        await ctx.scheduler.runAfter(0, internal.channels.media.fetch, {
+        await enqueueMediaFetch(ctx, {
           messageId: message._id,
           mediaId: file.mediaId,
         })
@@ -669,6 +676,27 @@ export const claim = internalMutation({
       (await retirement(ctx, message.organizationId))
     )
       return null
+    const problem = await broadcastRecipientProblem(ctx, message)
+    const run = message.automationRunId
+      ? await ctx.db.get("automationRuns", message.automationRunId)
+      : null
+    const automationContact = run?.contactId
+      ? await ctx.db.get("contacts", run.contactId)
+      : null
+    if (
+      problem ||
+      (message.automationRunId &&
+        (!automationContact ||
+          automationContact.organizationId !== message.organizationId ||
+          automationContact.unsubscribed))
+    ) {
+      await fail(
+        ctx,
+        message,
+        "The recipient is no longer eligible for this message."
+      )
+      return null
+    }
     let access: Awaited<ReturnType<typeof channelAccountAccess>>
     try {
       access = await channelAccountAccess(

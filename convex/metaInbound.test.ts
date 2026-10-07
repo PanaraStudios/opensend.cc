@@ -2,7 +2,7 @@
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import { internal, api } from "./_generated/api"
 import type { Doc } from "./_generated/dataModel"
-import { insertRow } from "./counts"
+import { insertRow, patchRow } from "./counts"
 import { upsertContact } from "./audience"
 import {
   inboundFixture,
@@ -19,6 +19,8 @@ import { mediaDownloadLink } from "./channels/downloads"
 import { upsertChannelThread } from "./channels/identity"
 import { signedFileLink } from "./fileDownloads"
 import { limitedBody, BodyTooLarge } from "./ses/web"
+import * as metaApp from "./meta/app"
+import { hydratedChannelMessage } from "./channels/payload"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -107,6 +109,234 @@ const statusPayload = (id: string, status: string, extra = {}) =>
       },
     ],
   })
+
+test("rebundled WhatsApp statuses emit each advancing milestone only once", async () => {
+  const f = await inboundFixture()
+  const message = await outbound(f, "wamid.rebundled")
+  for (const [status, observation] of [
+    ["delivered", 1],
+    ["delivered", 2],
+    ["read", 3],
+    ["delivered", 4],
+    ["read", 5],
+  ] as const)
+    await project(f, statusPayload("wamid.rebundled", status, { observation }))
+  const data = await rows(f)
+  expect(data.messages.find((row) => row._id === message._id)?.status).toBe(
+    "read"
+  )
+  expect(
+    data.timeline
+      .filter((row) => row.messageId === message._id)
+      .map((row) => row.type)
+  ).toEqual(["delivered", "read"])
+  expect(
+    data.events
+      .filter((row) => row.data.id === message._id)
+      .map((row) => row.type)
+  ).toEqual(["whatsapp.message.delivered", "whatsapp.message.read"])
+})
+
+test("large Meta batches project in bounded transactions and replay once", async () => {
+  const f = await inboundFixture()
+  const body = envelope({
+    metadata: { phone_number_id: PHONE_ID },
+    messages: Array.from({ length: 60 }, (_, i) => ({
+      from: SENDER,
+      id: `wamid.batch.${i}`,
+      timestamp: String(Math.floor(Date.now() / 1000)),
+      type: "text",
+      text: { body: `Message ${i}` },
+    })),
+  })
+  expect((await post(f, body)).status).toBe(200)
+  const event = (await f.t.run((ctx) =>
+    ctx.db.query("metaWebhookEvents").first()
+  ))!
+  await f.t.run((ctx) =>
+    ctx.runMutation(
+      internal.meta.projection.project,
+      { id: event._id },
+      { transactionLimits: { documentsRead: 400 } }
+    )
+  )
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  const data = await rows(f)
+  expect(data.messages).toHaveLength(60)
+  expect(new Set(data.messages.map((row) => row.externalId)).size).toBe(60)
+  expect(data.conversations[0].unreadCount).toBe(60)
+  expect(
+    data.events.filter((row) => row.type === "whatsapp.message.received")
+  ).toHaveLength(60)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", event._id)))
+      ?.projectedAt
+  ).toBeDefined()
+})
+
+test.each(["unavailable channel", "interrupted worker"] as const)(
+  "inbound media terminates after %s instead of staying pending",
+  async (failure) => {
+    const f = await inboundFixture()
+    await project(
+      f,
+      envelope({
+        metadata: { phone_number_id: PHONE_ID },
+        messages: [
+          {
+            from: SENDER,
+            id: "wamid.media-pending",
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            type: "image",
+            image: { id: "media-pending", mime_type: "image/png" },
+          },
+        ],
+      })
+    )
+    if (failure === "unavailable channel")
+      await f.t.run(async (ctx) => {
+        const account = (await ctx.db.get("channelAccounts", f.account))!
+        await ctx.db.patch("metaConnections", account.connectionId, {
+          status: "error",
+        })
+      })
+    else
+      vi.spyOn(metaApp, "findMetaApp").mockRejectedValue(
+        new Error("Worker interrupted before download")
+      )
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+    const media = (await rows(f)).contents[0].media![0]
+    expect(media.error).toEqual(expect.any(String))
+    expect(media.fileId).toBeUndefined()
+    expect(media.storageId).toBeUndefined()
+  }
+)
+
+test("a send response links a BSUID's phone to the existing CRM contact across threads", async () => {
+  const f = await inboundFixture()
+  const known = await f.t.run((ctx) =>
+    upsertContact(
+      ctx,
+      f.owner.team,
+      { phone: `+${SENDER}`, firstName: "Known customer" },
+      { properties: [], segmentIds: [] }
+    )
+  )
+  const recipient = "business-user"
+  const links = await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    await patchRow(ctx, "channelAccounts", account._id, {
+      registeredAt: Date.now(),
+    })
+    const id = await createChannelMessage(
+      ctx,
+      {
+        channel: "whatsapp",
+        from: f.account,
+        body: {
+          recipient,
+          type: "template",
+          template: { name: "external_template", language: "en_US" },
+        },
+      },
+      { organizationId: f.owner.team, source: "api" }
+    )
+    const message = (await ctx.db.get("channelMessages", id))!
+    const second = await insertRow(ctx, "channelAccounts", {
+      organizationId: f.owner.team,
+      channel: "whatsapp",
+      connectionId: account.connectionId,
+      externalId: "second-number",
+      displayName: "Second number",
+      handle: "+15550783882",
+      status: "active",
+      throughputMps: 80,
+    })
+    const thread = await upsertChannelThread(
+      ctx,
+      (await ctx.db.get("channelAccounts", second))!,
+      {
+        externalId: recipient,
+        userId: recipient,
+        at: Date.now(),
+        direction: "outbound",
+        preview: "History",
+      }
+    )
+    await acceptChannelMessage(
+      ctx,
+      message,
+      "wamid.phone-learned",
+      Date.now(),
+      JSON.stringify({
+        contacts: [{ user_id: recipient, wa_id: SENDER }],
+      })
+    )
+    return { message, secondThread: thread.conversationId }
+  })
+  const immediate = await rows(f)
+  expect(
+    immediate.identities.find(
+      (row) => row._id === links.message.channelContactId
+    )?.contactId
+  ).toBe(known.id)
+  expect(
+    immediate.conversations.find(
+      (row) => row._id === links.message.conversationId
+    )?.contactId
+  ).toBe(known.id)
+  expect(
+    immediate.events.find((row) => row.type === "whatsapp.message.sent")?.data
+      .contact_id
+  ).toBe(known.id)
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("conversations", links.secondThread)))
+      ?.contactId
+  ).toBe(known.id)
+})
+
+test("delayed old reactions cannot displace the latest observation from a bounded page", async () => {
+  const f = await inboundFixture()
+  await project(f, incoming("wamid.reaction-target"))
+  const payload = await f.t.run(async (ctx) => {
+    const target = (await ctx.db.query("channelMessages").first())!
+    for (let i = 0; i < 102; i++) {
+      const messageId = await ctx.db.insert("channelMessages", {
+        organizationId: target.organizationId,
+        channel: "whatsapp",
+        accountId: target.accountId,
+        conversationId: target.conversationId,
+        channelContactId: target.channelContactId,
+        direction: "inbound",
+        from: SENDER,
+        to: PHONE_ID,
+        type: "reaction",
+        status: "received",
+        preview: "[reaction]",
+        externalId: `wamid.reaction.${i}`,
+        reactionTargetExternalId: target.externalId,
+        observedAt: Date.now() - i * 1000,
+        generation: 1,
+        attempts: 0,
+      })
+      await ctx.db.insert("channelMessageContents", {
+        messageId,
+        payload: JSON.stringify({
+          reaction: {
+            message_id: target.externalId,
+            emoji: i === 0 ? "👍" : "❤️",
+          },
+        }),
+      })
+    }
+    return hydratedChannelMessage(ctx, target, Date.now())
+  })
+  expect(payload.reactions).toEqual([
+    expect.objectContaining({ emoji: "👍", external_id: "wamid.reaction.0" }),
+  ])
+})
 
 test("missing, wrong and altered signatures refuse storage; raw bytes are capped", async () => {
   const f = await inboundFixture()
@@ -212,9 +442,19 @@ test("a text creates phone-only audience, identity, conversation, timeline and b
     text: "Does it come in another color?",
     created_at: expect.any(String),
   })
-  expect(data.events.filter(event => event.type === "whatsapp.message.received")).toHaveLength(1)
-  expect(data.events.some(event => event.type === "custom:opensend:whatsapp.message.received")).toBe(false)
-  expect(event.data).toMatchObject({ contact_id: data.contacts[0]._id, contact: { id: data.contacts[0]._id }, message: { text: "Does it come in another color?" } })
+  expect(
+    data.events.filter((event) => event.type === "whatsapp.message.received")
+  ).toHaveLength(1)
+  expect(
+    data.events.some(
+      (event) => event.type === "custom:opensend:whatsapp.message.received"
+    )
+  ).toBe(false)
+  expect(event.data).toMatchObject({
+    contact_id: data.contacts[0]._id,
+    contact: { id: data.contacts[0]._id },
+    message: { text: "Does it come in another color?" },
+  })
   const count = await f.owner.client.query(api.contacts.list, {
     organizationId: f.owner.team,
     paginationOpts: { numItems: 10, cursor: null },
@@ -301,7 +541,7 @@ test("statuses never regress; failed is final and stores errors, pricing and con
   })
   const data = await rows(f)
   expect(data.timeline.filter((e) => e.messageId === message._id)).toHaveLength(
-    5
+    2
   )
   expect(
     JSON.parse(data.timeline.find((e) => e.type === "failed")!.details!)
@@ -493,38 +733,24 @@ test("transient media failures retry; oversized media is final; deletion races r
   })
   await project(f, payload)
   const messageId = (await rows(f)).messages[0]._id
+  let requests = 0
   const stub = fakeGraph([
     {
       path: "/media-2",
       respond: () =>
-        Response.json(
-          { error: { code: 1, message: "Temporary", is_transient: true } },
-          { status: 500 }
-        ),
+        ++requests === 1
+          ? Response.json(
+              { error: { code: 1, message: "Temporary", is_transient: true } },
+              { status: 500 }
+            )
+          : {
+              url: "https://media.example.test/file",
+              file_size: 101 * 1024 * 1024,
+            },
     },
   ])
-  await f.t.action(internal.channels.media.fetch, {
-    messageId,
-    mediaId: "media-2",
-  })
-  expect(
-    (
-      await f.t.run((ctx) =>
-        ctx.db.system.query("_scheduled_functions").collect()
-      )
-    ).some((job) => job.args[0].attempt === 1)
-  ).toBe(true)
-  stub.spy.mockResolvedValue(
-    Response.json({
-      url: "https://media.example.test/file",
-      file_size: 101 * 1024 * 1024,
-    })
-  )
-  await f.t.action(internal.channels.media.fetch, {
-    messageId,
-    mediaId: "media-2",
-    attempt: 5,
-  })
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  expect(stub.to("/media-2")).toHaveLength(2)
   expect((await rows(f)).contents[0].media![0].error).toContain(
     "104857600 bytes"
   )
@@ -883,17 +1109,23 @@ test("carousel media combines retained files, Meta uploads and links without ref
     const message = (await ctx.db.get("channelMessages", id))!
     await acceptChannelMessage(ctx, message, "wamid.carousel", Date.now())
   })
-  const jobs = await f.t.run((ctx) =>
-    ctx.db.system.query("_scheduled_functions").collect()
-  )
-  const mediaIds = jobs
-    .flatMap((job) =>
-      job.args.map((args) => (args as { mediaId?: string }).mediaId)
-    )
-    .filter(Boolean)
-  expect(mediaIds).toContain("link:2")
-  expect(mediaIds).not.toContain(fileId)
-  expect(mediaIds).not.toContain("meta-upload")
+  const stub = fakeGraph([
+    {
+      path: "/image.png",
+      respond: () =>
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { "content-type": "image/png" },
+        }),
+    },
+  ])
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  expect(stub.calls.map((call) => call.path)).toEqual(["/image.png"])
+  const downloaded = (await rows(f)).contents.find(
+    (row) => row.messageId === id
+  )!.media!
+  expect(
+    downloaded.find((media) => media.mediaId === "link:2")?.fileId
+  ).toBeDefined()
   await expect(
     f.t.run((ctx) =>
       createChannelMessage(

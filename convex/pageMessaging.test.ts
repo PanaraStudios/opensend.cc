@@ -98,6 +98,32 @@ async function setup(open = true) {
   return { ...f, token, call, message, send }
 }
 
+test.each(["messenger", "instagram"] as const)(
+  "%s watermarks reach older messages past an already-read newer message",
+  async (channel) => {
+    const f = await setup()
+    const first = await f.send(channel)
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100))
+    const newer = await f.send(channel)
+    await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100))
+    await f.t.run(async (ctx) => {
+      const { patchRow } = await import("./counts")
+      await patchRow(ctx, "channelMessages", newer, { status: "read" })
+    })
+    await project(f, pageEnvelope(channel, { read: { watermark: Date.now() } }))
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+    expect((await f.message(first))?.status).toBe("read")
+    expect((await f.message(newer))?.status).toBe("read")
+    const events = await f.t.run((ctx) =>
+      ctx.db
+        .query("channelMessageEvents")
+        .withIndex("by_messageId_and_at", (q) => q.eq("messageId", first))
+        .collect()
+    )
+    expect(events.filter((row) => row.type === "read")).toHaveLength(1)
+  }
+)
+
 test("Facebook Login exchanges, debugs, lists Pages, subscribes with the Page token and stores encrypted Page/IG accounts", async () => {
   const f = await metaFixture()
   const result = await f.member.client.action(

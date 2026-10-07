@@ -37,6 +37,12 @@ import {
   whatsappBroadcast,
 } from "./tables/broadcasts"
 import { teamRow } from "./audience"
+import {
+  publicRecipientValue,
+  publicRecipient,
+  readPageDocuments,
+  recipientMessageStatuses,
+} from "./broadcastReadModel"
 import { parseMailbox } from "../lib/dashboard/email-send"
 import { MAX_SCHEDULE } from "./emails"
 import { TEMPLATE_BODY_LIMIT } from "./templates"
@@ -527,7 +533,7 @@ const historyFilters = v.object({
   contactId: v.optional(v.id("contacts")),
 })
 const broadcastHistoryItem = schema.doc("broadcasts").extend({
-  recipient: schema.doc("broadcastRecipients"),
+  recipient: publicRecipientValue,
   messageStatus: v.optional(channelMessageStatusValue),
 })
 
@@ -557,22 +563,20 @@ export const history = query({
       )
       .order("desc")
       .paginate(args.paginationOpts)
+    const broadcasts = await readPageDocuments(
+      ctx,
+      "broadcasts",
+      result.page.map((r) => r.broadcastId)
+    )
+    const statuses = recipientMessageStatuses(ctx, args.organizationId)
     const page = await Promise.all(
       result.page.map(async (recipient) => {
-        const [row, message] = await Promise.all([
-          ctx.db.get("broadcasts", recipient.broadcastId),
-          recipient.messageId
-            ? ctx.db.get("channelMessages", recipient.messageId)
-            : null,
-        ])
+        const row = broadcasts.get(recipient.broadcastId)
         return row?.organizationId === args.organizationId
           ? {
               ...row,
-              recipient,
-              messageStatus:
-                message?.organizationId === args.organizationId
-                  ? message.status
-                  : undefined,
+              recipient: publicRecipient(recipient),
+              messageStatus: await statuses(recipient),
             }
           : null
       })

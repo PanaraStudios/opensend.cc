@@ -13,6 +13,7 @@ import {
 } from "./channels/payload"
 import {
   renderedChannelTemplate,
+  TEMPLATE_HYDRATION_BYTES,
   type TemplatePageCache,
 } from "./channels/templates"
 import { channelStrategies } from "../lib/meta/payloads"
@@ -188,7 +189,11 @@ export const list = query({
         (status === undefined || row.status === status) &&
         (unread === undefined || row.unread === unread) &&
         matches(row.search, row.lastPreview),
-      { rows: 512, bytes: 2 * 1024 * 1024 },
+      {
+        rows: 512,
+        bytes: 2 * 1024 * 1024,
+        bytesPerMatch: TEMPLATE_HYDRATION_BYTES,
+      },
       search
     )
     const templateCache: TemplatePageCache = new Map()

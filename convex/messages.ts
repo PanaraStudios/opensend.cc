@@ -1,6 +1,7 @@
 import { CHANNELS, CHANNEL_IDS, type LogChannel } from "../lib/channels"
 import {
   renderedChannelTemplate,
+  TEMPLATE_HYDRATION_BYTES,
   type TemplatePageCache,
 } from "./channels/templates"
 import { hydratedChannelMessage } from "./channels/payload"
@@ -109,6 +110,17 @@ const isChannelMessage = (
   row: Doc<"emails" | "receivedEmails" | "channelMessages">
 ): row is Doc<"channelMessages"> => "conversationId" in row
 
+// Email rows need no later body read; channel rows hydrate a contact, and
+// templates also read historical content and potentially a published body.
+const searchHydrationBytes = (
+  row: Doc<"emails" | "receivedEmails" | "channelMessages">
+) =>
+  isChannelMessage(row)
+    ? row.type === "template"
+      ? TEMPLATE_HYDRATION_BYTES
+      : 2 * 1024
+    : 0
+
 const emptyPage = { page: [], isDone: true, continueCursor: "" }
 
 async function logParty(ctx: QueryCtx, message: Doc<"channelMessages">) {
@@ -195,7 +207,7 @@ export const sending = query({
         (isChannelMessage(row)
           ? matches(row.from, row.to, row.preview)
           : matches(row.from, ...row.to, row.subject)),
-      EMAIL_SEARCH_BUDGET,
+      { ...EMAIL_SEARCH_BUDGET, bytesPerMatch: searchHydrationBytes },
       search
     )
     const templateCache: TemplatePageCache = new Map()
@@ -297,7 +309,11 @@ export const receiving = query({
         isChannelMessage(row)
           ? matches(row.from, row.to, row.preview)
           : matches(row.from, row.subject, ...row.to),
-      { rows: 100, bytes: 1024 * 1024 },
+      {
+        rows: 100,
+        bytes: 1024 * 1024,
+        bytesPerMatch: searchHydrationBytes,
+      },
       search
     )
     const handles = new Map<Id<"channelAccounts">, string>()

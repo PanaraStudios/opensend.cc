@@ -555,7 +555,23 @@ export async function purgeContactRows(
     .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
     .take(limit - members.length - choices.length)
   for (const row of notes) await ctx.db.delete("contactNotes", row._id)
-  return members.length + choices.length + notes.length < limit
+  let processed = members.length + choices.length + notes.length
+  // Channel identities and message history outlive the CRM row. Detach the
+  // optional link without removing their windows, messages or preferences.
+  const identities = await ctx.db
+    .query("channelContacts")
+    .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
+    .take(limit - processed)
+  for (const row of identities)
+    await ctx.db.patch("channelContacts", row._id, { contactId: undefined })
+  processed += identities.length
+  const threads = await ctx.db
+    .query("conversations")
+    .withIndex("by_contactId", (q) => q.eq("contactId", contactId))
+    .take(limit - processed)
+  for (const row of threads)
+    await patchRow(ctx, "conversations", row._id, { contactId: undefined })
+  return processed + threads.length < limit
 }
 
 /** Refuses a list that is already at its per-team limit. */
