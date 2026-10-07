@@ -910,3 +910,15 @@ retried), reading raw `message/rfc822` from Convex storage. MIME parsing, the
 Receiving list, received-email webhooks, and durable received-mail retention are
 left for that wave. Back up Convex file storage with the database; S3 is not the
 mail archive.
+
+
+### Custom event catalog upgrade (F8)
+
+Use the normal installer upgrade command. The migrate image deploys the name
+search index and automatically starts the resumable custom-event counter
+backfill in bounded batches. No manual migration or second deployment is needed.
+Existing teams may briefly see “Custom event counts are being initialized”
+when adding a definition; existing definitions, sends, updates and deletes
+remain available. New definitions are refused until the count is complete,
+then the 10,000-type cap applies. REST catalog responses keep
+`object: "event_catalog"` and `data`, adding `has_more` and `next_cursor`.

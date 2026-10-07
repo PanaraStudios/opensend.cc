@@ -5,3 +5,4 @@ export * from './list-events.interface';
 export * from './remove-event.interface';
 export * from './send-event.interface';
 export * from './update-event.interface';
+export * from './catalog-events.interface';

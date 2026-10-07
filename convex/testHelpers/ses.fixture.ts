@@ -4,6 +4,7 @@ import { convexTest } from "convex-test"
 import workflowTest from "@convex-dev/workflow/test"
 import rateLimiterTest from "@convex-dev/rate-limiter/test"
 import aggregateTest from "@convex-dev/aggregate/test"
+import { runToCompletion } from "@convex-dev/migrations"
 import migrationsTest from "@convex-dev/migrations/test"
 import { POLICY_REVISION, teamTenantName } from "../ses/contracts"
 import { insertRow } from "../counts"
@@ -36,6 +37,7 @@ const COUNT_COMPONENTS = [
   "emailMetricCounts",
   "emailDomainCounts",
   "automationCounts",
+  "automationEventCounts",
   "automationRunCounts",
   "automationStepCounts",
   "contactImportCounts",
@@ -69,6 +71,14 @@ export async function authFixture() {
   rateLimiterTest.register(t)
   for (const name of COUNT_COMPONENTS) aggregateTest.register(t, name)
   migrationsTest.register(t)
+  // Fresh installations have no legacy definitions to backfill.
+  await t.action(async (ctx) => {
+    await runToCompletion(
+      ctx,
+      components.migrations,
+      internal.migrations.countAutomationEvents
+    )
+  })
   async function account(name: string, bootstrap = false) {
     const user = await t.mutation(components.betterAuth.adapter.create, {
       input: {

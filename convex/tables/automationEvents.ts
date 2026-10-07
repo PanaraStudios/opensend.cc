@@ -28,6 +28,10 @@ export const automationEventTables = {
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_name", ["organizationId", "name"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["organizationId"],
+    })
     .searchIndex("search_searchText", {
       searchField: "searchText",
       filterFields: ["organizationId"],

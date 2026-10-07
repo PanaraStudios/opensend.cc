@@ -1,7 +1,12 @@
 import type { PostOptions } from "../common/interfaces"
-import type { CatalogEvent } from "./catalog"
-import type { Response } from "../interfaces"
-import { buildPaginationUrl } from "../common/utils/build-pagination-query"
+import type {
+  CatalogEventsOptions,
+  CatalogEventsResponse,
+} from "./interfaces/catalog-events.interface"
+import {
+  buildPaginationQuery,
+  buildPaginationUrl,
+} from "../common/utils/build-pagination-query"
 import { parseEventToApiOptions } from "../common/utils/parse-automation-to-api-options"
 import type { Resend } from "../resend"
 import type {
@@ -36,10 +41,14 @@ import type {
 export class Events {
   constructor(private readonly resend: Resend) {}
 
-  async catalog(): Promise<
-    Response<{ object: "event_catalog"; data: CatalogEvent[] }>
-  > {
-    return this.resend.get("/events/catalog")
+  async catalog(
+    options: CatalogEventsOptions = {}
+  ): Promise<CatalogEventsResponse> {
+    const params = new URLSearchParams(buildPaginationQuery(options))
+    if (options.search !== undefined) params.set("search", options.search)
+    const query = params.toString()
+    const url = query ? `/events/catalog?${query}` : "/events/catalog"
+    return this.resend.get(url)
   }
 
   async send(

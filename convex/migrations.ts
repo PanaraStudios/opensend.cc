@@ -18,6 +18,12 @@ const backfill = <T extends CountedTable>(table: T) =>
     migrateOne: (ctx, doc) => countRow(ctx, table, doc),
   })
 
+export const countAutomationEvents = backfill("automationEvents")
+/** The one-shot migrate image starts this after deploying the functions.
+ * The component resumes bounded batches without delaying the app restart. */
+export const initializeEventCounts = migrations.runner(
+  internal.migrations.countAutomationEvents
+)
 export const countAutomations = backfill("automations")
 export const countAutomationRuns = backfill("automationRuns")
 export const countAutomationRunSteps = backfill("automationRunSteps")
@@ -98,6 +104,7 @@ export const dropWebhookStats = migrations.define({
 })
 
 export const backfillCounts = migrations.runner([
+  internal.migrations.countAutomationEvents,
   internal.migrations.countContactImports,
   internal.migrations.countReceivedEmails,
   internal.migrations.parseStoredInbound,

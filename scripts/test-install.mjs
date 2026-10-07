@@ -14,6 +14,7 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { freePort, parse } from "./lib.mjs"
 import { guardedDockerEnv, testProject } from "./test-compose.mjs"
+import { waitForLogStream } from "./test-log-stream.mjs"
 
 // These tests use a Docker shim plus real Compose config parsing, with no daemon,
 // Meta, SES, media services or public network required.
@@ -473,6 +474,7 @@ try {
     { env: composeEnv, stdio: ["ignore", "pipe", "inherit"] }
   )
   logs.stdout.on("data", (chunk) => (logText += chunk))
+  await waitForLogStream(logs)
   const account = {
     name: "Installer Admin",
     email: "installer@example.test",

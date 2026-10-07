@@ -26,13 +26,19 @@ it.each(SYSTEM_EVENT_NAMES)(
 )
 
 it("fetches the typed catalog and preserves nested schemas and note triggers", async () => {
-  const body = { object: "event_catalog", data: SYSTEM_EVENT_CATALOG }
+  const body = {
+    object: "event_catalog",
+    has_more: false,
+    next_cursor: null,
+    data: SYSTEM_EVENT_CATALOG,
+  }
   const fetcher = vi.fn<typeof fetch>(async () => Response.json(body))
   vi.stubGlobal("fetch", fetcher)
   const client = new Resend("fixture-token")
   const result = await client.events.catalog()
   expect(result.error).toBeNull()
   expect(result.data).toEqual(body)
+  expect(result.data?.object).toBe("event_catalog")
   expect(fetcher.mock.calls[0][0]).toBe(
     "https://api.opensend.test/events/catalog"
   )
@@ -62,4 +68,25 @@ it("returns catalog errors without discarding the SDK response shape", async () 
   const result = await new Resend("fixture-token").events.catalog()
   expect(result.data).toBeNull()
   expect(result.error).toMatchObject({ message: "Missing events:read" })
+})
+
+it("encodes catalog pagination and server search without changing field names", async () => {
+  const body = {
+    object: "event_catalog",
+    has_more: true,
+    next_cursor: "next page",
+    data: [],
+  }
+  const fetcher = vi.fn<typeof fetch>(async () => Response.json(body))
+  vi.stubGlobal("fetch", fetcher)
+  const result = await new Resend("fixture-token").events.catalog({
+    limit: 3,
+    after: "previous page",
+    search: "paid & shipped",
+  })
+  expect(fetcher.mock.calls[0][0]).toBe(
+    "https://api.opensend.test/events/catalog?limit=3&after=previous+page&search=paid+%26+shipped"
+  )
+  expect(result.data).toEqual(body)
+  expect(result.data?.object).toBe("event_catalog")
 })
