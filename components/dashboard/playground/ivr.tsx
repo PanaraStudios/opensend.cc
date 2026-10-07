@@ -655,7 +655,10 @@ function IvrForm({ row }: { row: IvrResource }) {
           </Alert>
         ) : null}
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <main aria-label="Call flow" className="flex min-w-0 flex-col gap-4">
+          <section
+            aria-label="Call flow"
+            className="flex min-w-0 flex-col gap-4"
+          >
             <div className="flex h-[78vh] min-h-96 min-w-0">
               <FlowEditor
                 catalog={ivrCatalog}
@@ -784,7 +787,7 @@ function IvrForm({ row }: { row: IvrResource }) {
                 </AlertDescription>
               </Alert>
             ) : null}
-          </main>
+          </section>
           <FlowPanel
             selection={selected}
             open={editing}

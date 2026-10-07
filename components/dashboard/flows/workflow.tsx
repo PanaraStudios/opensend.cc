@@ -201,6 +201,9 @@ export function WorkflowCanvas<Node extends { key: string }>({
       <div
         ref={canvas}
         data-testid="workflow"
+        tabIndex={0}
+        role="region"
+        aria-label="Workflow canvas"
         /* The graph is always larger than the frame (see below), so the
            canvas always scrolls: dragging and the wheel move it, and its
            scrollbars stay hidden. */

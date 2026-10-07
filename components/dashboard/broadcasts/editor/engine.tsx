@@ -168,6 +168,12 @@ export function useEmailEngine({
     /* The editor screen only ever renders in the browser, after the saved
        state has loaded, so there is no server pass to stay in step with. */
     immediatelyRender: true,
+    editorProps: {
+      attributes: {
+        "aria-label": "Email content",
+        "aria-multiline": "true",
+      },
+    },
     onUpdate,
   })
 }

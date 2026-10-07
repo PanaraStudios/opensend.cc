@@ -7,6 +7,7 @@ import { computeAccessibleName } from "dom-accessibility-api"
 const window = new Window({ url: "http://localhost:3000" })
 for (const key of [
   "window",
+  "self",
   "document",
   "navigator",
   "HTMLElement",
@@ -14,6 +15,7 @@ for (const key of [
   "HTMLTextAreaElement",
   "Element",
   "Node",
+  "NodeFilter",
   "MutationObserver",
   "ResizeObserver",
   "getComputedStyle",
@@ -54,14 +56,14 @@ function field(label: string, ...controls: React.ReactNode[]) {
 
 async function render(
   children: React.ReactNode,
-  check: (container: HTMLDivElement) => void
+  check: (container: HTMLDivElement) => void | Promise<void>
 ) {
   const container = document.createElement("div")
   document.body.append(container)
   const root = createRoot(container)
   try {
     await act(async () => root.render(children))
-    check(container)
+    await check(container)
   } finally {
     await act(async () => root.unmount())
     container.remove()
@@ -371,6 +373,187 @@ test("select options retain item names inside a named field", async () => {
       assert.deepEqual(
         names(document.body as HTMLDivElement, '[role="option"]'),
         ["Add provider key…", "Existing provider"]
+      )
+    }
+  )
+})
+
+test("shared icon controls retain names through trigger render composition", async () => {
+  const { MoreMenu, CopyButton } =
+    await import("../../components/dashboard/primitives")
+  await render(
+    h(
+      "div",
+      null,
+      h(MoreMenu, null, "Edit"),
+      h(CopyButton, { value: "Customer reference" })
+    ),
+    (container) => {
+      assert.deepEqual(names(container, "button"), ["More options", "Copy"])
+    }
+  )
+})
+
+test("searchable triggers keep their visible control names", async () => {
+  const { SearchableSelect } =
+    await import("../../components/dashboard/primitives")
+  const { Button } = await import("../../components/ui/button")
+  await render(
+    h(SearchableSelect, {
+      value: "",
+      items: [],
+      search: { onChange: () => {}, placeholder: "Search segments…" },
+      trigger: () => h(Button, null, "Add to segment"),
+    }),
+    async (container) => {
+      assert.deepEqual(names(container, "button"), ["Add to segment"])
+      await act(async () =>
+        container.querySelector<HTMLButtonElement>("button")!.click()
+      )
+      assert.equal(
+        computeAccessibleName(document.querySelector('[role="dialog"]')!),
+        "Search segments…"
+      )
+    }
+  )
+})
+
+test("auth framing supplies one main containing the form and branding", async () => {
+  const { AuthPageFrame } = await import("../../components/auth/page-frame")
+  await render(
+    h(AuthPageFrame, null, h("h1", null, "Connect application")),
+    (container) => {
+      assert.equal(container.querySelectorAll("main").length, 1)
+      assert.ok(container.querySelector("main h1"))
+      assert.ok(container.querySelector("main a[href='/']"))
+    }
+  )
+})
+
+test("the shared workflow canvas is a named keyboard scroll target", async () => {
+  const { WorkflowCanvas } =
+    await import("../../components/dashboard/flows/workflow")
+  await render(
+    h(WorkflowCanvas, {
+      trigger: "Trigger",
+      steps: [],
+      branches: () => [],
+      renderStep: () => null,
+    }),
+    (container) => {
+      const canvas = container.querySelector<HTMLElement>(
+        '[data-testid="workflow"]'
+      )!
+      assert.equal(canvas.tabIndex, 0)
+      assert.equal(computeAccessibleName(canvas), "Workflow canvas")
+    }
+  )
+})
+
+test("popover dialogs inherit a trigger name, while a title or explicit name takes precedence", async () => {
+  const { Popover, PopoverTrigger, PopoverContent, PopoverTitle } =
+    await import("../../components/ui/popover")
+  for (const [title, explicit, expected] of [
+    [undefined, undefined, "Review"],
+    ["Ready to send?", undefined, "Ready to send?"],
+    [undefined, "Delivery review", "Delivery review"],
+  ]) {
+    await render(
+      h(
+        Popover,
+        { defaultOpen: true },
+        h(PopoverTrigger, null, "Review"),
+        h(
+          PopoverContent,
+          { "aria-label": explicit },
+          title ? h(PopoverTitle, null, title) : "Audience checks"
+        )
+      ),
+      () => {
+        assert.equal(
+          computeAccessibleName(
+            document.querySelector('[data-slot="popover-content"]')!
+          ),
+          expected
+        )
+      }
+    )
+  }
+})
+
+test("shared scroll wells and table wrappers are named keyboard targets and empty headers name actions", async () => {
+  const { Table, TableHead, TableHeader, TableRow, TableBody, TableCell } =
+    await import("../../components/ui/table")
+  const { JsonSection } = await import("../../components/dashboard/primitives")
+  await render(
+    h(
+      "div",
+      null,
+      h(
+        Table,
+        { "aria-label": "Request headers" },
+        h(
+          TableHeader,
+          null,
+          h(TableRow, null, h(TableHead, null, "Header"), h(TableHead))
+        ),
+        h(
+          TableBody,
+          null,
+          h(
+            TableRow,
+            null,
+            h(TableCell, null, "Content type"),
+            h(TableCell, null, "View")
+          )
+        )
+      ),
+      h(JsonSection, {
+        title: "Resolved inputs",
+        value: { customer: "Example" },
+      })
+    ),
+    (container) => {
+      assert.deepEqual(names(container, "th"), ["Header", "Actions"])
+      assert.equal(
+        container.querySelector("th:last-child span")?.className,
+        "sr-only"
+      )
+      assert.deepEqual(names(container, '[role="group"]'), [
+        "Request headers scroll area",
+        "Resolved inputs",
+      ])
+      for (const region of container.querySelectorAll<HTMLElement>(
+        '[role="group"]'
+      ))
+        assert.equal(region.tabIndex, 0)
+    }
+  )
+})
+
+test("portaled dropdown menu content is contained by a named landmark", async () => {
+  const {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuItem,
+  } = await import("../../components/ui/dropdown-menu")
+  await render(
+    h(
+      DropdownMenu,
+      { defaultOpen: true },
+      h(DropdownMenuTrigger, null, "Add channel"),
+      h(DropdownMenuContent, null, h(DropdownMenuItem, null, "Email domain"))
+    ),
+    () => {
+      const menu = document.querySelector('[role="menu"]')!
+      assert.equal(
+        computeAccessibleName(menu.closest('[role="region"]')!),
+        "Menu"
+      )
+      assert.equal(
+        computeAccessibleName(menu.querySelector('[role="menuitem"]')!),
+        "Email domain"
       )
     }
   )

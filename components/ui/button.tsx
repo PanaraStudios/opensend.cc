@@ -134,4 +134,4 @@ function buttonText(children: React.ReactNode): string {
     .join("")
 }
 
-export { Button, buttonVariants }
+export { Button, buttonVariants, buttonText }

@@ -4,12 +4,50 @@ import * as React from "react"
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { cn } from "cn"
 
+const PopoverName = React.createContext<{
+  name: string
+  setName: (name: string) => void
+}>({ name: "", setName: () => {} })
+
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+  const [name, setName] = React.useState("")
+  return (
+    <PopoverName.Provider value={{ name, setName }}>
+      <PopoverPrimitive.Root data-slot="popover" {...props} />
+    </PopoverName.Provider>
+  )
 }
 
-function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
+function PopoverTrigger({ ref, ...props }: PopoverPrimitive.Trigger.Props) {
+  const { setName } = React.useContext(PopoverName)
+  const triggerRef = React.useCallback(
+    (node: HTMLButtonElement | null) => {
+      if (node) {
+        const labelledBy = node
+          .getAttribute("aria-labelledby")
+          ?.split(/\s+/)
+          .map((id) => node.ownerDocument.getElementById(id)?.textContent ?? "")
+          .join(" ")
+          .trim()
+        setName(
+          node.getAttribute("aria-label") ||
+            labelledBy ||
+            node.textContent?.trim() ||
+            ""
+        )
+      }
+      if (typeof ref === "function") return ref(node)
+      if (ref) ref.current = node
+    },
+    [ref, setName]
+  )
+  return (
+    <PopoverPrimitive.Trigger
+      ref={triggerRef}
+      data-slot="popover-trigger"
+      {...props}
+    />
+  )
 }
 
 function PopoverContent({
@@ -25,6 +63,7 @@ function PopoverContent({
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "anchor"
   >) {
+  const { name } = React.useContext(PopoverName)
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner
@@ -42,6 +81,8 @@ function PopoverContent({
             className
           )}
           {...props}
+          // A registered PopoverTitle's aria-labelledby takes precedence.
+          aria-label={props["aria-label"] ?? (name || undefined)}
         />
       </PopoverPrimitive.Positioner>
     </PopoverPrimitive.Portal>

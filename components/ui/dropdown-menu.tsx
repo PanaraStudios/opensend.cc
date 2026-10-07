@@ -32,6 +32,8 @@ function DropdownMenuContent({
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner
+        role="region"
+        aria-label={props["aria-label"] ?? "Menu"}
         className="isolate z-50 outline-none"
         align={align}
         alignOffset={alignOffset}
