@@ -219,6 +219,31 @@ async function setup() {
   return { ...f, call }
 }
 
+test("bounded mutation bodies return the documented 413 before invoking resource handlers", async () => {
+  const f = await setup()
+  const oversized = "x".repeat(1_048_576)
+  for (const [path, method] of [
+    ["/knowledge-bases", "POST"],
+    ["/knowledge-bases/{id}", "PATCH"],
+    ["/bot-tools/{id}", "DELETE"],
+    ["/ivrs/{id}/rotate-signing-secret", "POST"],
+    ["/domains/{id}/verify", "POST"],
+    ["/whatsapp/conversations/{id}/typing", "POST"],
+  ]) {
+    const result = await f.call(
+      path.replace("{id}", "fixture-id"),
+      method,
+      oversized
+    )
+    const body = await response(path, method, result, 413)
+    expect(body).toEqual({
+      statusCode: 413,
+      name: "validation_error",
+      message: "The request body is too large.",
+    })
+  }
+})
+
 describe("OpenAPI contract", () => {
   test("WhatsApp send, media and all read route responses validate against their schemas", async () => {
     vi.stubEnv("SSO_ENCRYPTION_KEY", "test-sso-encryption-key-".repeat(3))

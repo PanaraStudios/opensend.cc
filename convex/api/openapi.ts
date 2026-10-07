@@ -1,6 +1,11 @@
 /** Documentation enrichment only: REST handlers and wire schemas are unchanged.
  * Pass the parsed openapi/opensend.yaml document to buildOpenApi before export.
  */
+import {
+  API_SCOPES,
+  scopeDescription,
+  type ApiScope,
+} from "../../lib/api-scopes"
 type ObjectValue = Record<string, unknown>
 export type OpenApiDocument = ObjectValue & {
   paths: Record<string, Record<string, OpenApiOperation>>
@@ -269,14 +274,27 @@ function contentExamples(
 }
 export function buildOpenApi(source: OpenApiDocument): OpenApiDocument {
   const document = structuredClone(source)
-  for (const methods of Object.values(document.paths))
+  for (const [path, methods] of Object.entries(document.paths))
     for (const [method, operation] of Object.entries(methods)) {
       if (!["get", "post", "patch", "delete", "put"].includes(method)) continue
       if (!operation.summary || !operation["x-opensend-scope"])
         throw new Error(
           "Every REST operation requires a summary and x-opensend-scope"
         )
-      operation.description ||= `${operation.summary}. Requires ${operation["x-opensend-scope"]} access (write includes read). Responses use the documented resource schema; failures return statusCode, name and message.`
+      const scope = operation["x-opensend-scope"]
+      if (scope !== "full_access" && !API_SCOPES.includes(scope as ApiScope))
+        throw new Error(`Unknown OpenAPI scope: ${scope}`)
+      operation.description ||= `${operation.summary}. Responses use the documented resource schema; failures return statusCode, name and message.`
+      // Full-access fallbacks on unified message routes have dynamic scopes,
+      // described by their authored text. Static resource scopes use the catalog.
+      const dynamicScope =
+        scope === "full_access" &&
+        (path === "/messages" || path === "/messages/{id}")
+      if (!dynamicScope) {
+        const permission = scopeDescription(scope as ApiScope | "full_access")
+        if (!operation.description.includes(permission))
+          operation.description += ` ${permission}`
+      }
       operation.parameters = operation.parameters?.map((input) => {
         const parameter = resolve(document, input)
         if (
@@ -297,14 +315,7 @@ export function buildOpenApi(source: OpenApiDocument): OpenApiDocument {
       }
       operation.responses = Object.fromEntries(
         Object.entries(operation.responses).map(([status, input]) => {
-          // The base contract accidentally points these 413 responses at Error400.
-          // Reuse the existing 413 schema; the route already returns statusCode: 413.
-          const response = resolve(
-            document,
-            status === "413" && input.$ref === "#/components/responses/Error400"
-              ? { $ref: "#/components/responses/Error413" }
-              : input
-          )
+          const response = resolve(document, input)
           contentExamples(document, response, status)
           return [status, response]
         })

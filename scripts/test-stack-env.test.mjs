@@ -90,7 +90,20 @@ appendFileSync(process.env.TEST_CALLS_FILE, JSON.stringify({
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line))
-    assert.equal(calls.length, 4)
+    assert.equal(calls.length, 6)
+    const backendProbes = calls.filter((call) =>
+      call.args.includes("--entrypoint")
+    )
+    assert.equal(backendProbes.length, 2)
+    for (const probe of backendProbes) {
+      assert.equal(probe.args[probe.args.indexOf("--entrypoint") + 1], "node")
+      assert.ok(probe.args.includes("convex"))
+    }
+    assert.ok(
+      backendProbes[1].args.some((arg) =>
+        arg.endsWith("test-calling-recordings.mjs:/test-recordings.mjs:ro")
+      )
+    )
     assert.match(
       saved.COMPOSE_PROJECT_NAME,
       /^opensend-calling-test-\d+-[a-f0-9]+$/

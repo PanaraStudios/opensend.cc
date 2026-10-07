@@ -236,11 +236,14 @@ for the exact links shown by this version.
   the microphone area. Verify the selected relay candidate in browser WebRTC
   diagnostics. Coturn denies private peers, so FreeSWITCH must advertise its
   reachable public RTP address.
-- **Missing recordings:** FreeSWITCH stores WAVs in `calling-recordings`. The current
-  Convex recording action requires `CALL_GATEWAY_RECORDINGS_DIR` on its Node
-  action runtime, which this compose stack does not mount. Recording ingestion
-  needs separate runtime wiring; keep recordings backed up and do not assume
-  the installer uploads them. See [calling media](../convex/calling/media.ts).
+- **Missing recordings:** FreeSWITCH stores finalized WAVs in `calling-recordings`.
+  The self-hosted Convex service mounts this volume read-only at `/recordings`,
+  and migrate sets `CALL_GATEWAY_RECORDINGS_DIR=/recordings` in the deployment.
+  Check that setting and `docker compose logs convex call-gateway freeswitch`.
+  The signed `recording_ready` callback schedules upload to the team's configured
+  Convex/S3 file storage. Gateway WAV ingestion requires the self-hosted backend;
+  Convex Cloud Node actions cannot mount this Docker volume. Keep the volume
+  backed up separately. See [calling media](../convex/calling/media.ts).
 
 ## Install with the script
 
