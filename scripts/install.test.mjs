@@ -36,6 +36,10 @@ const secretKeys = [
 async function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), "opensend-install-config-"))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const realDocker = spawnSync("sh", ["-c", "command -v docker"], {
+    encoding: "utf8",
+  }).stdout.trim()
+  assert.ok(realDocker, "Docker CLI is needed for Compose configuration tests")
   const bin = join(dir, "bin")
   mkdirSync(bin)
   const log = join(dir, "commands.jsonl")
@@ -44,25 +48,30 @@ async function fixture(t) {
   writeFileSync(
     join(bin, "docker"),
     `#!${process.execPath}
-import { readFileSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs"
+import { appendFileSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
 const args = process.argv.slice(2)
 if (args.some(a => a.endsWith("generate_key"))) { console.log(process.env.TEST_ADMIN); process.exit(0) }
 appendFileSync(process.env.TEST_LOG, JSON.stringify(args) + "\\n")
 const has = (...parts) => parts.every(p => args.includes(p))
 if (has("version", "--short")) console.log(process.env.TEST_COMPOSE_VERSION || "2.39.0")
-if (has("config", "--images")) {
-  const contents = readFileSync(args[args.indexOf("--env-file")+1], "utf8")
-  const env = Object.fromEntries(contents.trim().split("\\n").map(l => [l.slice(0,l.indexOf("=")),l.slice(l.indexOf("=")+1)]))
-  console.log(args.at(-1)==="convex" ? "test-backend:old" : env.MIGRATE_IMAGE || "test-migrate:"+env.OPENSEND_VERSION)
+// Forward config to real Compose: service selection includes dependencies.
+if (has("config")) {
+  const result = spawnSync(process.env.TEST_REAL_DOCKER, args, { stdio: "inherit" })
+  process.exit(result.status ?? 1)
 }
 if (has("ps", "convex") && process.env.TEST_NO_CONTAINER!=="1") console.log("test-convex-container")
-if (has("config", "--services")) {
-  const contents = readFileSync(args[args.indexOf("--env-file")+1], "utf8")
-  console.log(contents.includes("OPENSEND_CONVEX=cloud") ? "app\\nmigrate" : "convex\\napp\\nmigrate")
-}
-if (has("config") && !has("--services") && !has("--images")) console.log("name: old-project")
+if (has("ps", "migrate") && process.env.TEST_NO_CONTAINER!=="1" && process.env.TEST_NO_MIGRATE_CONTAINER!=="1") console.log("test-log-container\\ntest-migrate-container")
 if (has("volume", "ls") && process.env.TEST_VOLUME==="1") console.log("original-project_convex-data")
-if (args[0]==="inspect") console.log(args.join(" ").includes("Mounts") ? "original-project_convex-data" : "test-image-id")
+if (args[0]==="inspect") {
+  const format=args[args.indexOf("--format")+1]
+  const container=args.at(-1)
+  if (format.includes("Mounts")) console.log("original-project_convex-data")
+  else if (format.includes("oneoff")) console.log(container==="test-log-container" ? "True" : "False")
+  else console.log(container==="test-migrate-container" ? "test-migrate-image-id" : "test-image-id")
+}
+// Docker rejects a newline-separated list supplied as one image argument.
+if (has("image", "inspect") && args.some(a => /[\\r\\n]/.test(a))) process.exit(8)
 if (args[0]==="run" && has("--mount")) {
   if (process.env.TEST_FAIL==="backup") process.exit(7)
   const mount=args.find(a => a.startsWith("type=bind,src="))
@@ -101,6 +110,7 @@ if (has("image", "inspect") && process.env.TEST_FAIL==="missing-image") process.
     PATH: `${bin}:${process.env.PATH}`,
     TEST_ADMIN: randomBytes(32).toString("hex"),
     TEST_LOG: log,
+    TEST_REAL_DOCKER: realDocker,
   }
   for (const key of Object.keys(env))
     if (
@@ -333,7 +343,7 @@ test("v1 upgrade backs up the actual volume before pull/deploy/restart and retai
       "type=volume,src=original-project_convex-data,dst=/data,readonly"
     )
   )
-  assert.ok(calls[backup].includes("test-migrate:old"))
+  assert.ok(calls[backup].includes("test-migrate-image-id"))
   assert.ok(!calls.some((c) => c.includes("--volumes") || c.includes("down")))
   const backups = join(f.installation, "backups")
   const saved = join(backups, readdirSync(backups)[0])
@@ -464,6 +474,24 @@ test("upgrade after compose down finds and backs up the retained volume", async 
         )
       )
   )
+})
+
+test("backup without a migrate container selects only its saved service image", async (t) => {
+  const f = await fixture(t)
+  await f.run(["--no-start"], { MIGRATE_IMAGE: "test-migrate:old" })
+  f.clear()
+  privateOutput(
+    await f.run(["--upgrade", "--version", "itest-b"], {
+      TEST_NO_MIGRATE_CONTAINER: "1",
+      MIGRATE_IMAGE: "test-migrate:new",
+    }),
+    f.settings()
+  )
+  const calls = f.commands()
+  const backup = calls.find((c) => c.includes("--mount"))
+  assert.ok(backup.includes("test-migrate:old"))
+  assert.ok(!backup.includes("test-migrate:new"))
+  assert.ok(!calls.some((c) => c.includes("--images") && c.includes("migrate")))
 })
 
 test("cloud upgrades export before deploy and abort on export failure", async (t) => {
