@@ -352,6 +352,59 @@ importers:
         specifier: 3.19.14
         version: 3.19.14
 
+  packages/convex:
+    dependencies:
+      '@convex-dev/workpool':
+        specifier: 0.4.12
+        version: 0.4.12(convex-helpers@0.1.122(@standard-schema/spec@1.1.0)(convex@1.45.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1))(convex@1.45.0(react@19.2.4))(react@19.2.4)
+      '@opensendcc/sdk':
+        specifier: workspace:^
+        version: link:../sdk
+      standardwebhooks:
+        specifier: 1.1.1
+        version: 1.1.1
+    devDependencies:
+      '@edge-runtime/vm':
+        specifier: 5.0.0
+        version: 5.0.0
+      '@types/node':
+        specifier: ^20
+        version: 20.19.43
+      convex:
+        specifier: ^1.45.0
+        version: 1.45.0(react@19.2.4)
+      convex-test:
+        specifier: 0.0.58
+        version: 0.0.58(convex@1.45.0(react@19.2.4))
+      eslint:
+        specifier: ^9
+        version: 9.39.5(jiti@2.7.0)
+      eslint-config-next:
+        specifier: 16.2.6
+        version: 16.2.6(@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vite:
+        specifier: 6.4.1
+        version: 6.4.1(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1)
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@edge-runtime/vm@5.0.0)(@types/node@20.19.43)(happy-dom@20.14.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1)
+
+  packages/convex/example:
+    dependencies:
+      '@opensendcc/convex':
+        specifier: workspace:*
+        version: link:..
+      convex:
+        specifier: ^1.45.0
+        version: 1.45.0(react@19.2.4)
+    devDependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
   packages/mcp:
     dependencies:
       '@modelcontextprotocol/express':
@@ -8177,6 +8230,14 @@ snapshots:
     transitivePeerDependencies:
       - react
 
+  '@convex-dev/workpool@0.4.12(convex-helpers@0.1.122(@standard-schema/spec@1.1.0)(convex@1.45.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1))(convex@1.45.0(react@19.2.4))(react@19.2.4)':
+    dependencies:
+      '@convex-dev/batch-worker': 0.2.2(convex@1.45.0(react@19.2.4))(react@19.2.4)
+      convex: 1.45.0(react@19.2.4)
+      convex-helpers: 0.1.122(@standard-schema/spec@1.1.0)(convex@1.45.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1)
+    transitivePeerDependencies:
+      - react
+
   '@date-fns/tz@1.5.0': {}
 
   '@dotenvx/dotenvx@1.75.1':
@@ -13939,7 +14000,7 @@ snapshots:
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1)
+      vite: 6.4.1(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1)
     transitivePeerDependencies:
       - '@types/node'
       - jiti

@@ -1,0 +1,16 @@
+{
+  "name": "opensend-convex-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p convex",
+    "lint": "eslint convex"
+  },
+  "dependencies": {
+    "@opensendcc/convex": "workspace:*",
+    "convex": "^1.45.0"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

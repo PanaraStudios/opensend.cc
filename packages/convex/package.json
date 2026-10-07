@@ -1,0 +1,71 @@
+{
+  "name": "@opensendcc/convex",
+  "version": "0.1.0",
+  "description": "Durable OpenSend email delivery, retries, and signed webhooks for Convex.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    },
+    "./test": "./src/test.ts",
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./_generated/component": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    }
+  },
+  "types": "./dist/client/index.d.ts",
+  "module": "./dist/client/index.js",
+  "scripts": {
+    "build": "pnpm run build:codegen && tsc -p tsconfig.build.json",
+    "build:codegen": "convex codegen --component-dir ./src/component",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p example/convex --noEmit",
+    "lint": "eslint ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PanaraStudios/opensend.cc.git",
+    "directory": "packages/convex"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "convex": "^1.45.0"
+  },
+  "dependencies": {
+    "@opensendcc/sdk": "workspace:^",
+    "@convex-dev/workpool": "0.4.12",
+    "standardwebhooks": "1.1.1"
+  },
+  "devDependencies": {
+    "convex": "^1.45.0",
+    "convex-test": "0.0.58",
+    "@edge-runtime/vm": "5.0.0",
+    "@types/node": "^20",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.6",
+    "typescript": "^5",
+    "vite": "6.4.1",
+    "vitest": "3.2.4"
+  }
+}
