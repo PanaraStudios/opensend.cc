@@ -263,12 +263,29 @@ test("calling and TURN flags reach Compose, services and backend, without starti
   const env = f.settings()
   privateOutput(result, env)
   assert.equal(env.COMPOSE_PROFILES, "calling,calling-turn")
+  assert.equal(env.OPENSEND_CALLING, "yes")
   assert.equal(env.CALL_AGENT_WSS_URL, "wss://calling.example.test:8443")
   assert.equal(env.CALL_STUN_URLS, "stun:calling.example.test:3479")
   assert.equal(env.JANUS_PUBLIC_IP, "192.0.2.10")
   assert.equal(env.FREESWITCH_PUBLIC_IP, env.JANUS_PUBLIC_IP)
   for (const key of secretKeys) assert.match(env[key], /^[a-f0-9]{64}$/)
   const config = f.composeConfig()
+  assert.deepEqual(
+    config.services.convex.volumes.find(
+      (mount) => mount.target === "/recordings"
+    ),
+    {
+      type: "volume",
+      source: "calling-recordings",
+      target: "/recordings",
+      read_only: true,
+      volume: { nocopy: true },
+    }
+  )
+  assert.equal(
+    config.services.migrate.environment.CALL_GATEWAY_RECORDINGS_DIR,
+    "/recordings"
+  )
   for (const name of [
     "janus",
     "freeswitch",
@@ -751,6 +768,10 @@ test("cloud scenario persists its isolated project through rerun, upgrade and un
     "--no-start",
   ]
   privateOutput(await f.run(["install", ...args]), f.settings())
+  assert.equal(
+    f.composeConfig().services.migrate.environment.CALL_GATEWAY_RECORDINGS_DIR,
+    undefined
+  )
   const project = f.settings().COMPOSE_PROJECT_NAME
   assert.match(project, /^opensend-install-config-\d+-[a-f0-9]+$/)
   assert.equal(

@@ -302,9 +302,28 @@ finalization, and may arrive after `hangup`. Never reopen a terminated call beca
 of an out-of-order callback.
 
 Recording files persist in `calling-recordings`; the receiver gets a path, **not
-a public URL**. A later storage uploader with access to this volume must consume
-the finalized file and invoke the existing storage helper. Upload/storage code is
-outside 8b, and was deliberately not added to `convex/` or `lib/`.
+a public URL**. The signed `recording_ready` callback schedules
+`calling/media:gatewayRecording`, which streams the finalized WAV into the team's
+configured Convex/S3 file storage. Compose mounts the volume read-only into the
+self-hosted `convex` service at `/recordings`; migrate sets
+`CALL_GATEWAY_RECORDINGS_DIR=/recordings` in the Convex deployment automatically.
+The mount uses `nocopy` so FreeSWITCH initializes the volume's ownership.
+
+The pinned backend image runs Node actions inside that container as root, as
+verified from both architecture image configurations and its
+[Dockerfile](https://github.com/get-convex/convex-backend/blob/b7cce5a2331854895d36b683d1eab17c47ef13a9/self-hosted/docker-build/Dockerfile.backend).
+FreeSWITCH runs as UID 10002 with umask 077, keeping WAVs private (mode 0600);
+the backend user can read them without relaxing those permissions. If you override
+the backend image or user, ensure that user can read UID 10002's files.
+
+Gateway WAV ingestion requires the self-hosted backend. Convex Cloud actions cannot
+mount this volume; leave `CALL_GATEWAY_RECORDINGS_DIR` unset there so the recording
+action reports its existing configuration error. Meta-hosted media downloads are
+separate from these gateway WAVs. Back up the recording volume separately.
+
+The Linux calling harness also streams the WAVs using the backend image's Node
+binary and verifies that this mount rejects writes. Its callback receiver is a
+fake backend, so storage ingestion remains covered by `convex/calling.test.ts`.
 
 Callbacks retry transport failures, HTTP 429 and 5xx up to five attempts (5-second
 attempt timeout, exponential 250 ms backoff). Other 4xx stop retrying and failures

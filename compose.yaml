@@ -18,6 +18,13 @@ services:
       DOCUMENT_RETENTION_DELAY: ${DOCUMENT_RETENTION_DELAY:-172800}
     volumes:
       - convex-data:/convex/data
+      # Node actions run in this container. Let FreeSWITCH initialize ownership.
+      - type: volume
+        source: calling-recordings
+        target: /recordings
+        read_only: true
+        volume:
+          nocopy: true
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -80,6 +87,7 @@ services:
       SMTP_HOST: ${SMTP_HOST:-}
       CALL_GATEWAY_URL: ${CALL_GATEWAY_URL:-}
       CALL_GATEWAY_SECRET: ${CALL_GATEWAY_SECRET:-}
+      CALL_GATEWAY_RECORDINGS_DIR: /recordings
       CALL_AGENT_WSS_URL: ${CALL_AGENT_WSS_URL:-}
       CALL_AGENT_QUEUES: ${CALL_AGENT_QUEUES:-}
       CALL_STUN_URLS: ${CALL_STUN_URLS:-}

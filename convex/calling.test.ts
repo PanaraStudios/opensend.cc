@@ -1084,7 +1084,10 @@ test("gateway BIC passes the answer before routing, missed calls emit events and
     filename = `${crypto.randomUUID()}.wav`
   try {
     vi.stubEnv("CALL_GATEWAY_RECORDINGS_DIR", root)
-    await writeFile(join(root, filename), "finalized WAV fixture")
+    // Match FreeSWITCH's private recording permissions.
+    await writeFile(join(root, filename), "finalized WAV fixture", {
+      mode: 0o600,
+    })
     const data = {
         version: 1,
         eventId: crypto.randomUUID(),
@@ -1104,13 +1107,29 @@ test("gateway BIC passes the answer before routing, missed calls emit events and
         })
       ).status
     ).toBe(200)
+    vi.stubEnv("CALL_GATEWAY_RECORDINGS_DIR", "")
     await f.t.action(internal.calling.media.gatewayRecording, {
       id: created.id,
     })
     expect(
       (await f.t.run((ctx) => ctx.db.get("calls", created.id)))?.recording
-        ?.storageId
-    ).toBeTruthy()
+        ?.error
+    ).toBe(
+      "Mount the gateway recording volume and configure CALL_GATEWAY_RECORDINGS_DIR on Convex Node actions."
+    )
+    vi.stubEnv("CALL_GATEWAY_RECORDINGS_DIR", root)
+    await f.t.action(internal.calling.media.gatewayRecording, {
+      id: created.id,
+    })
+    const recording = (await f.t.run((ctx) => ctx.db.get("calls", created.id)))
+      ?.recording
+    expect(recording?.storageId).toBeTruthy()
+    expect(recording?.error).toBeUndefined()
+    expect(
+      await f.t.run(async (ctx) =>
+        (await ctx.storage.get(recording!.storageId!))?.text()
+      )
+    ).toBe("finalized WAV fixture")
   } finally {
     await rm(root, { recursive: true, force: true })
   }

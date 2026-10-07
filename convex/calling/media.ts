@@ -5,7 +5,7 @@ import { realpath, stat } from "node:fs/promises"
 import { basename, resolve, dirname } from "node:path"
 import { Readable } from "node:stream"
 import { v } from "convex/values"
-import { internalAction } from "../_generated/server"
+import { env, internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { kindValue } from "./mediaState"
 import { graph, metaFetch } from "../meta/graph"
@@ -102,7 +102,7 @@ export const gatewayRecording = internalAction({
     )
       return null
     try {
-      const root = process.env.CALL_GATEWAY_RECORDINGS_DIR
+      const root = env.CALL_GATEWAY_RECORDINGS_DIR
       if (!root)
         throw new Error(
           "Mount the gateway recording volume and configure CALL_GATEWAY_RECORDINGS_DIR on Convex Node actions."
