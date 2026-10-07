@@ -3,6 +3,50 @@
 // Allowlisted rules are still scanned and recorded; only failure gating changes.
 export const A11Y_RULE_ALLOWLIST: ReadonlySet<string> = new Set([])
 
+export const A11Y_FULL_TAGS = [
+  "wcag2a",
+  "wcag2aa",
+  "wcag21a",
+  "wcag21aa",
+  "best-practice",
+]
+
+// Both rules in the full tags depend on theme colours. Inline links must also
+// be distinguishable from surrounding text (WCAG 1.4.1), not just the background.
+export const A11Y_THEME_RULES = ["color-contrast", "link-in-text-block"]
+
+// Full mobile scans only for visited states with different rendered structure.
+// Profile covers the shared mobile shell once, including its sidebar trigger.
+// Closed menus/sheets remain unvisited, as in the existing visual tour.
+export const A11Y_MOBILE_STATES: ReadonlyMap<string, string> = new Map([
+  [
+    "profile",
+    "Shared shell replaces desktop navigation with a mobile sidebar trigger.",
+  ],
+  [
+    "playground-inbox",
+    "Mobile list replaces the desktop resizable list/thread panes.",
+  ],
+  [
+    "playground-ivr-editor",
+    "FlowPanel replaces the desktop aside with a mobile sheet.",
+  ],
+  [
+    "playground-voice-bot-detail",
+    "Mobile Settings trigger replaces the desktop settings rail.",
+  ],
+])
+
+export function a11yScanMode(scene: {
+  screen: string
+  theme: "light" | "dark"
+  width: number
+}): "full" | "theme" | "skip" {
+  if (scene.width === 390)
+    return A11Y_MOBILE_STATES.has(scene.screen) ? "full" : "skip"
+  return scene.theme === "light" ? "full" : "theme"
+}
+
 export function blocksA11yTour(
   finding: { ruleId: string; impact: string | null },
   allowlist: ReadonlySet<string> = A11Y_RULE_ALLOWLIST

@@ -1,12 +1,19 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { performance } from "node:perf_hooks"
 import { expect, test, type ConsoleMessage, type Page } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { backendRows, client, importFixture } from "./ses-fixtures"
 import { beginOAuth, selectOAuthTeam } from "./oauth-flow"
-import { A11Y_RULE_ALLOWLIST, blocksA11yTour } from "./a11y-policy"
+import {
+  A11Y_FULL_TAGS,
+  A11Y_THEME_RULES,
+  A11Y_RULE_ALLOWLIST,
+  a11yScanMode,
+  blocksA11yTour,
+} from "./a11y-policy"
 
 type Screen = { name: string; open: (page: Page) => Promise<void> }
 type Scene = {
@@ -55,8 +62,8 @@ async function choose(page: Page, label: string, option: string) {
  * Fixture imports are guarded by assertTestOwnership in ses-fixtures.ts. */
 export function screensTourTests(state: TourState) {
   test("screens tour: every v2 screen in light/dark at 1280/390", async () => {
-    // The per-scene axe pass adds work to the full visual tour on the QA host.
-    test.setTimeout(30 * 60_000)
+    // Keep the visual tour plus targeted axe passes within the QA host budget.
+    test.setTimeout(20 * 60_000)
     const { owner, organizationId, sendingDomainId } = state()
     // Copy the real owner's session into a fresh context, without trace scripts
     // left by earlier tests, and isolate the tour's theme/viewport changes.
@@ -687,6 +694,8 @@ export function screensTourTests(state: TourState) {
       runtime.push(`pageerror: ${error.message}`)
     page.on("console", onConsole)
     page.on("pageerror", onError)
+    let axeTimeMs = 0
+    const axeScans = { full: 0, theme: 0 }
     try {
       for (const width of [1280, 390]) {
         await page.setViewportSize({ width, height: 960 })
@@ -820,46 +829,50 @@ export function screensTourTests(state: TourState) {
                 detail: openingError,
                 screenshot,
               })
-            // Scan even when a scene's readiness/assertion failed, and keep scan
-            // errors as failures so a broken axe run cannot silently pass.
-            try {
-              const result = await new AxeBuilder({ page })
-                .withTags([
-                  "wcag2a",
-                  "wcag2aa",
-                  "wcag21a",
-                  "wcag21aa",
-                  "best-practice",
-                ])
-                .analyze()
-              for (const violation of result.violations) {
-                for (const node of violation.nodes) {
-                  findings.push({
-                    screen: screen.name,
-                    theme,
-                    width,
-                    kind: "a11y",
-                    detail: {
-                      ruleId: violation.id,
-                      impact: violation.impact ?? null,
-                      // Includes frame/shadow ancestry without logging page HTML.
-                      target: node.target.flat().join(" > ").slice(0, 240),
-                      summary: node.failureSummary,
-                      allowlisted: A11Y_RULE_ALLOWLIST.has(violation.id),
-                    },
-                    screenshot,
-                  })
+            // Scan scheduled states even after a readiness failure. Scan errors
+            // still fail the tour; mobile states with shared structure skip axe.
+            const scanMode = a11yScanMode({ screen: screen.name, theme, width })
+            if (scanMode !== "skip") {
+              const axeStarted = performance.now()
+              axeScans[scanMode]++
+              try {
+                const builder = new AxeBuilder({ page })
+                const result = await (
+                  scanMode === "full"
+                    ? builder.withTags(A11Y_FULL_TAGS)
+                    : builder.withRules(A11Y_THEME_RULES)
+                ).analyze()
+                for (const violation of result.violations) {
+                  for (const node of violation.nodes) {
+                    findings.push({
+                      screen: screen.name,
+                      theme,
+                      width,
+                      kind: "a11y",
+                      detail: {
+                        ruleId: violation.id,
+                        impact: violation.impact ?? null,
+                        // Includes frame/shadow ancestry without logging page HTML.
+                        target: node.target.flat().join(" > ").slice(0, 240),
+                        summary: node.failureSummary,
+                        allowlisted: A11Y_RULE_ALLOWLIST.has(violation.id),
+                      },
+                      screenshot,
+                    })
+                  }
                 }
+              } catch (error) {
+                findings.push({
+                  screen: screen.name,
+                  theme,
+                  width,
+                  kind: "a11y-scan-error",
+                  detail: String(error),
+                  screenshot,
+                })
+              } finally {
+                axeTimeMs += performance.now() - axeStarted
               }
-            } catch (error) {
-              findings.push({
-                screen: screen.name,
-                theme,
-                width,
-                kind: "a11y-scan-error",
-                detail: String(error),
-                screenshot,
-              })
             }
             const evidence = await page.evaluate(() => {
               const overflow =
@@ -973,6 +986,10 @@ export function screensTourTests(state: TourState) {
         }
       }
     } finally {
+      console.log(
+        `[screens tour] axe total: ${(axeTimeMs / 1000).toFixed(1)}s ` +
+          `(${axeScans.full} full scans, ${axeScans.theme} theme scans; includes scan errors)`
+      )
       page.off("console", onConsole)
       page.off("pageerror", onError)
       await context.close()
