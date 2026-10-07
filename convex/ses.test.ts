@@ -954,6 +954,8 @@ import {
   TEST_CERT_PEM,
 } from "./testHelpers/snsFixture"
 test("verifies real RSA signatures and rejects altered SNS payloads", () => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-09-28T12:00:00.000Z"))
   for (const message of [
     SIGNED_NOTIFICATION_V1,
     SIGNED_NOTIFICATION_V2,
@@ -1071,6 +1073,8 @@ test("regional provisioning resumes, preserves policies, and allowlists the topi
 })
 
 test("signed SNS notifications deduplicate and forged or foreign envelopes never enter the database", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-09-28T12:00:00.000Z"))
   const f = await awsFixture()
   await f.t.mutation(internal.ses.state.patchRegion, {
     id: f.region._id,
@@ -1169,6 +1173,8 @@ test("connection validation rejects the wrong account and failed rotations leave
 })
 
 test("signed subscription confirmation sets readiness only for the configured endpoint", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-09-28T12:00:00.000Z"))
   const f = await awsFixture()
   await f.t.mutation(internal.ses.state.patchRegion, {
     id: f.region._id,

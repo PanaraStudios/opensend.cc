@@ -1,4 +1,5 @@
 "use client"
+import { TelemetrySettings } from "@/components/dashboard/settings-telemetry"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -186,11 +187,9 @@ export function InstallationWizard() {
           {copy[step].description}
         </p>
       </header>
-      <section
-        key={step}
-        aria-label={copy[step].title}
-        className="flex flex-col gap-5"
-      >
+      {/* The h1 above already names this step; a duplicate region name would
+          also collide with field labels that share the step title. */}
+      <section key={step} className="flex flex-col gap-5">
         {step === "welcome" && (
           <>
             <ItemGroup className="gap-2">
@@ -230,6 +229,7 @@ export function InstallationWizard() {
             />
           </>
         )}
+        {step === "aws" && <TelemetrySettings setup />}
         {step === "aws" &&
           (installation?.accountId && !editingConnection ? (
             <>

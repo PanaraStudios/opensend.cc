@@ -178,6 +178,16 @@ async function signup(
   await expect(page.getByRole("status")).toContainText("verification link")
 }
 
+const telemetryShots = async (page: Page, name: string) => {
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme })
+    await page.screenshot({
+      path: `${process.env.OPENSEND_TEST_RESULTS}/telemetry-${name}-${theme}.png`,
+    })
+  }
+  await page.emulateMedia({ colorScheme: "light" })
+}
+
 test.describe.serial("Docker self-hosted authentication", () => {
   test.beforeAll(async ({ browser }) => {
     expect(process.env.OPENSEND_ENV_FILE).toContain(".env.playwright")
@@ -260,6 +270,31 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(
       owner.getByLabel("Secret access key", { exact: true })
     ).toBeVisible()
+    const setupTelemetry = owner.getByRole("switch", {
+      name: "Share anonymous usage statistics",
+      exact: true,
+    })
+    await expect(setupTelemetry).toBeVisible()
+    await expect(setupTelemetry).toBeEnabled()
+    await expect(setupTelemetry).toBeChecked()
+    await telemetryShots(owner, "setup")
+    await setupTelemetry.click()
+    await expect(setupTelemetry).not.toBeChecked()
+    await owner.reload()
+    await expect(setupTelemetry).toBeEnabled()
+    await expect(setupTelemetry).not.toBeChecked()
+    await owner
+      .getByRole("button", { name: "View what's sent", exact: true })
+      .click()
+    const setupPayload = owner.getByRole("dialog", {
+      name: "Anonymous statistics payload",
+      exact: true,
+    })
+    await expect(setupPayload.locator("pre")).toContainText('"schema": 1')
+    await owner.keyboard.press("Escape")
+    await expect(setupPayload).toBeHidden()
+    await setupTelemetry.click()
+    await expect(setupTelemetry).toBeChecked()
     const credentialsHelpButton = owner.getByRole("button", {
       name: "Help with AWS credentials",
     })
@@ -634,6 +669,65 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await owner.getByRole("option", { name: "Amazon SES", exact: true }).click()
     await expect(owner).toHaveURL(/\/instance\/ses$/)
     await expect(owner.getByTestId("ses-settings")).toBeVisible()
+    await expect(
+      owner.getByText("Anonymous usage statistics", { exact: true })
+    ).toBeVisible()
+    const telemetry = owner.getByRole("switch", {
+      name: "Share anonymous usage statistics",
+      exact: true,
+    })
+    await expect(telemetry).toBeEnabled()
+    await expect(telemetry).toBeChecked()
+    await telemetry.scrollIntoViewIfNeeded()
+    await telemetryShots(owner, "settings")
+    await telemetry.click()
+    await expect(telemetry).not.toBeChecked()
+    await expect
+      .poll(async () => (await c.query(api.telemetry.settings)).enabled)
+      .toBe(false)
+    await owner.reload()
+    await expect(telemetry).toBeEnabled()
+    await expect(telemetry).not.toBeChecked()
+    await telemetry.click()
+    await expect(telemetry).toBeChecked()
+    await expect
+      .poll(async () => (await c.query(api.telemetry.settings)).enabled)
+      .toBe(true)
+    await owner
+      .getByRole("button", { name: "View what's sent", exact: true })
+      .click()
+    const telemetryDialog = owner.getByRole("dialog", {
+      name: "Anonymous statistics payload",
+      exact: true,
+    })
+    await expect(telemetryDialog).toBeVisible()
+    await expect(telemetryDialog.locator("pre")).toContainText('"schema": 1')
+    await telemetryShots(owner, "payload")
+    const telemetryJson = telemetryDialog.locator("pre")
+    await expect(telemetryJson).toContainText('"schema": 1')
+    const payloadJson = (await telemetryJson.textContent())!
+    const payload = JSON.parse(payloadJson)
+    expect(payload.schema).toBe(1)
+    expect(payload.deployment.calling).toBe(false)
+    for (const field of [
+      "whatsappAccounts",
+      "messengerPages",
+      "instagramAccounts",
+      "channelMessages24h",
+      "calls30d",
+      "ivrs",
+      "voiceBots",
+    ])
+      expect(payload.usage[field]).toBe("0")
+    for (const privateValue of [
+      ownerEmail,
+      "onboarding.example.test",
+      "Playwright Team",
+    ])
+      expect(payloadJson).not.toContain(privateValue)
+    expect(payloadJson).not.toMatch(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+    await owner.keyboard.press("Escape")
+    await expect(telemetryDialog).toBeHidden()
     await expect(owner.getByTestId("installation-wizard")).toHaveCount(0)
     await expect(owner.getByText(/Step \d+ of \d+/)).toHaveCount(0)
     await expect(
@@ -1571,20 +1665,38 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await save.getByLabel("Client secret").fill("isolated-test-secret")
     await save.getByRole("button", { name: "Save connection" }).click()
     await expect(
+      owner.getByText("Connection saved. Test sign-in before enabling SSO.")
+    ).toBeVisible()
+    await expect(
       owner.getByRole("switch", { name: /Enable SSO/ })
     ).toBeDisabled()
+    // Keep the app session, but require an IdP login so the outbound leg cannot
+    // silently redirect back between assertions. A /profile navigation alone
+    // can be satisfied by a late event from the initial page load.
+    const issuer = new URL(process.env.OPENSEND_OIDC_URL!)
+    await ownerContext.clearCookies({ domain: issuer.hostname })
     await owner.goto("/profile")
-    const connected = owner.waitForEvent("framenavigated", {
-      predicate: (frame) =>
-        frame === owner.mainFrame() &&
-        new URL(frame.url()).pathname === "/profile",
-    })
     await owner
       .getByRole("button", { name: "Continue with SSO", exact: true })
       .click()
-    await connected
-    await owner.waitForLoadState("domcontentloaded")
+    await expect(owner).toHaveURL(
+      (url) =>
+        url.origin === issuer.origin &&
+        url.pathname === `${issuer.pathname}/protocol/openid-connect/auth`
+    )
+    await owner.getByLabel("Username or email").fill("oidc-owner")
+    await owner
+      .getByLabel("Password", { exact: true })
+      .fill("isolated-oidc-password")
+    await owner.getByRole("button", { name: "Sign In", exact: true }).click()
+    await expect(owner).toHaveURL(`${base}/profile`)
+    await expect(
+      owner.getByRole("heading", { name: "Profile", exact: true })
+    ).toBeVisible()
     await owner.goto("/settings/sso")
+    await expect(
+      owner.getByText("Connection test passed.", { exact: true })
+    ).toBeVisible()
     await expect(
       owner.getByRole("switch", { name: /Enable SSO/ })
     ).toBeEnabled()

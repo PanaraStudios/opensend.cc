@@ -249,6 +249,7 @@ function BroadcastReport({ item }: { item: Broadcast }) {
             />
           ) : (
             <ResourceTable
+              framed={false}
               headers={
                 <>
                   <Th>Email</Th>

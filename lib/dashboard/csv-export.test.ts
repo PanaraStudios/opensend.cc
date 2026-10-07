@@ -19,3 +19,32 @@ describe("csvLine", () => {
     )
   })
 })
+
+it("defuses formulas after leading whitespace or controls without altering ordinary cells (S11)", () => {
+  for (const prefix of [
+    "",
+    " ",
+    "\n",
+    "\t",
+    "\r\n",
+    "\u0000",
+    "\u001f",
+    "\u007f",
+    "\u0085",
+    "\u00a0",
+    " \t\n",
+  ]) {
+    for (const formula of ["=1+1", "+1", "-2", "@cmd"]) {
+      const value = `${prefix}${formula}`
+      const escaped = `'${value}`
+      const expected = /[",\r\n]/.test(escaped)
+        ? `"${escaped.replace(/"/g, '""')}"`
+        : escaped
+      assert.equal(csvLine([value]), `${expected}\r\n`)
+    }
+  }
+  assert.equal(
+    csvLine([" ordinary ", "\tname", "\nname", "hello=world", "", " "]),
+    ' ordinary ,\tname,"\nname",hello=world,, \r\n'
+  )
+})

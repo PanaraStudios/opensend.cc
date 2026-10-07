@@ -15,6 +15,36 @@ vi.mock("better-auth/api", async (original) => ({
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
+  vi.useRealTimers()
+})
+
+test("OIDC discovery failures consume the team's allowance before authentication middleware", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  const f = await fixture()
+  const fetcher = vi
+    .spyOn(transport, "publicFetch")
+    .mockResolvedValue(new Response(null, { status: 503 }))
+  const ctx = {
+    runQuery: vi.fn().mockResolvedValue({ issuer: "https://identity.example" }),
+    runMutation: (
+      ref: typeof internal.oidc.reserveDiscovery,
+      args: { organizationId: string }
+    ) => f.t.mutation(ref, args),
+    runAction: (
+      _ref: unknown,
+      args: {
+        url: string
+        method: "GET" | "POST"
+        headers: Record<string, string>
+      }
+    ) => f.t.action(internal.publicHttp.request, args),
+  } as unknown as ActionCtx
+  for (let index = 0; index < 10; index++)
+    await expect(loadProvider(ctx, f.owner.team)).rejects.toThrow(
+      /Could not load/
+    )
+  await expect(loadProvider(ctx, f.owner.team)).rejects.toThrow(/Too many/)
+  expect(fetcher).toHaveBeenCalledTimes(10)
 })
 
 test("OIDC discovery, code exchange and JWKS all cross the pinned Node transport", async () => {
@@ -76,6 +106,10 @@ test("OIDC discovery, code exchange and JWKS all cross the pinned Node transport
   )
   const ctx = {
     runQuery: vi.fn().mockResolvedValue(connection),
+    runMutation: (
+      ref: typeof internal.oidc.reserveDiscovery,
+      args: { organizationId: string }
+    ) => f.t.mutation(ref, args),
     runAction,
   } as unknown as ActionCtx
   const { provider } = await loadProvider(ctx, f.owner.team)
@@ -103,7 +137,7 @@ test("OIDC discovery, code exchange and JWKS all cross the pinned Node transport
     `${issuer}/keys`,
   ])
   expect(runAction).toHaveBeenCalledTimes(3)
-  const body = new URLSearchParams(fetcher.mock.calls[1][1]!.body)
+  const body = new URLSearchParams(fetcher.mock.calls[1][1]!.body as string)
   expect(body.get("code_verifier")).toBe("verifier")
   expect(body.get("client_secret")).toBe("client-secret")
   expect(body.get("redirect_uri")).toBe("https://app.example/callback")
@@ -119,6 +153,10 @@ test("OIDC redirects fail closed and cannot silently invoke the library fetch", 
   )
   const ctx = {
     runQuery: vi.fn().mockResolvedValue({ issuer: "https://identity.example" }),
+    runMutation: (
+      ref: typeof internal.oidc.reserveDiscovery,
+      args: { organizationId: string }
+    ) => f.t.mutation(ref, args),
     runAction: (
       _ref: unknown,
       args: {

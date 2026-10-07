@@ -70,3 +70,5 @@ Questions: info@panarastudios.in
 ## Self-hosted authentication
 
 Run `pnpm setup` to start the Docker stack. See [self-hosting](docs/self-hosting.md) for setup, account verification, OIDC, backups, and recovery.
+
+Anonymous usage statistics are on by default, with an installation admin switch and a server environment override. See [anonymous usage statistics](docs/telemetry.md) for the exact payload and how to turn sharing off.

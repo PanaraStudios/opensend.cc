@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as telemetry from "../telemetry.js";
 import type * as access from "../access.js";
 import type * as accountRecovery from "../accountRecovery.js";
 import type * as api_audience from "../api/audience.js";
@@ -165,6 +166,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  telemetry: typeof telemetry;
   access: typeof access;
   accountRecovery: typeof accountRecovery;
   "api/audience": typeof api_audience;

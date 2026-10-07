@@ -239,9 +239,10 @@ describe("webhook REST parity", () => {
       }),
     ])
     vi.setSystemTime(Date.now() + 24 * 3600_000)
+    const afterExpiry = await f.delivery(created.id)
     expect(
       await f.t.mutation(internal.webhooks.claimAttempt, {
-        id: delivery._id,
+        id: afterExpiry._id,
         attempt: 0,
       })
     ).not.toHaveProperty("previousSecret")

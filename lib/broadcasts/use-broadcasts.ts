@@ -61,7 +61,10 @@ export function useBroadcast(id: string) {
   )
   return React.useMemo(
     () =>
-      result === undefined
+      result === undefined ||
+      (result &&
+        !["draft", "canceled"].includes(result.row.status) &&
+        stats === undefined)
         ? undefined
         : result === null
           ? null

@@ -25,6 +25,9 @@ export function domainClaimTests(
   state: () => { owner: Page; organizationId: string }
 ) {
   test("claims another team's verified domain, shows blocked/expired states, and publishes new DNS records", async () => {
+    // Multiple provisioning/cleanup workflows and admin CLI calls can consume
+    // the suite's 90s budget on a shared Docker host after the assertions pass.
+    test.setTimeout(120_000)
     const { owner, organizationId } = state()
     const backend = await client(owner)
     const name = "claim-wave9.example.test"

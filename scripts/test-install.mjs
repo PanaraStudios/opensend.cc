@@ -14,6 +14,7 @@ import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { freePort, parse } from "./lib.mjs"
+import { testStackEnv, writeTestStackEnv } from "./test-stack-env.mjs"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const installer = resolve(root, "scripts/install.sh")
@@ -49,6 +50,7 @@ for (const key of Object.keys(composeEnv))
     ].includes(key)
   )
     delete composeEnv[key]
+Object.assign(composeEnv, testStackEnv)
 let server
 let logs
 let logText = ""
@@ -196,6 +198,7 @@ try {
     COMPOSE_PROJECT_NAME: project,
   }
   const configuration = resolve(temporary, "configuration")
+  writeTestStackEnv(resolve(configuration, ".env"))
   await execute("sh", ["-s", "--", "install"], {
     input: readFileSync(installer),
     stdio: ["pipe", "inherit", "inherit"],
@@ -224,6 +227,7 @@ try {
   // Fake credentials only: cloud dry runs must never start migrate or contact Convex.
   for (const useCaddy of [true, false]) {
     const cloudDirectory = resolve(temporary, useCaddy ? "cloud" : "cloud-eu")
+    writeTestStackEnv(resolve(cloudDirectory, ".env"))
     const cloudArgs = [
       "--dir",
       cloudDirectory,
@@ -417,9 +421,15 @@ try {
         stdio: ["ignore", "inherit", "inherit"],
       }
     )
+  writeTestStackEnv(resolve(directory, ".env"))
   await install("install", "itest-a")
   await healthy()
   const initial = settings()
+  assert.equal(initial.OPENSEND_TELEMETRY, testStackEnv.OPENSEND_TELEMETRY)
+  assert.equal(
+    initial.OPENSEND_TELEMETRY_URL,
+    testStackEnv.OPENSEND_TELEMETRY_URL
+  )
   assert.equal(statSync(resolve(directory, ".env")).mode & 0o777, 0o600)
   assert.equal(initial.COMPOSE_PROJECT_NAME, project)
   assert.equal(

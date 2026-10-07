@@ -9,6 +9,7 @@ import { api } from "@/convex/_generated/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { regionLabel } from "@/lib/dashboard/format"
 
 export function TeamSesStatus({ organizationId }: { organizationId: string }) {
   const tenants = useQuery(api.tenants.list, { organizationId })
@@ -71,7 +72,7 @@ export function TenantCleanup() {
           {rows.map((row) => (
             <div key={row._id} className="flex flex-col gap-2">
               <p className="break-all">
-                {row.name} · {row.region}
+                {row.teamName} · {regionLabel(row.region)}
               </p>
               <p>{row.error}</p>
               <AsyncForm

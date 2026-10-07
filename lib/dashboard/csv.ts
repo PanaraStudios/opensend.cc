@@ -74,7 +74,9 @@ export function parseUnsubscribed(value: string): boolean | undefined {
 export function csvLine(cells: readonly string[]): string {
   return `${cells
     .map((cell) => {
-      const safe = /^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell
+      // Inspect past whitespace and controls, but preserve the original value.
+      const formula = cell.replace(/^[\s\u0000-\u001f\u007f-\u009f]+/, "")
+      const safe = /^[=+\-@]/.test(formula) ? `'${cell}` : cell
       return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
     })
     .join(",")}\r\n`

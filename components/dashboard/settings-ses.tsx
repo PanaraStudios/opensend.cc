@@ -1,4 +1,5 @@
 "use client"
+import { TelemetrySettings } from "./settings-telemetry"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
 import { KeyRoundIcon, PencilIcon, ShieldIcon } from "lucide-react"
@@ -134,6 +135,7 @@ export function SettingsSes() {
           </p>
         )}
       </SettingsCard>
+      <TelemetrySettings />
       <SystemSender />
       <TenantReputation />
       <TenantCleanup />

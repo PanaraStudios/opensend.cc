@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   actionShortcut,
+  shortcutEventKey,
   isMacPlatform,
   matchesShortcut,
   NAVIGATION_SHORTCUTS,
@@ -109,4 +110,19 @@ test("shared action scopes bind only existing actions", () => {
     assert.equal(actionShortcut("create", label), null)
   assert.equal(actionShortcut(null, "Create API key"), null)
   assert.equal(actionShortcut("create", "Edit template"), null)
+})
+
+test("keydown events without a key are ignored before case conversion", () => {
+  for (const eventKey of [undefined, null, "", 42]) {
+    assert.equal(shortcutEventKey(eventKey), null)
+    assert.equal(
+      matchesShortcut(
+        { ...key("g"), key: eventKey } as ShortcutKey,
+        "g",
+        false
+      ),
+      false
+    )
+  }
+  assert.equal(shortcutEventKey("G"), "g")
 })

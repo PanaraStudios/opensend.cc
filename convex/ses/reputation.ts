@@ -45,8 +45,7 @@ export const list = query({
         )
         return {
           tenant,
-          name:
-            typeof team?.name === "string" ? team.name : tenant.organizationId,
+          name: typeof team?.name === "string" ? team.name : "Deleted team",
           volume: totals[0],
           bounced: totals[1],
           complained: totals[2],

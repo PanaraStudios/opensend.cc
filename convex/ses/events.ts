@@ -13,7 +13,7 @@ export const receive = internalAction({
       arn: message.TopicArn,
     })
     if (!region) throw new Error("Unknown SNS topic")
-    await verifySns(message)
+    if (!(await verifySns(message))) return null
     if (message.Type === "SubscriptionConfirmation") {
       const installation = await ctx.runQuery(
         internal.installation.connection,

@@ -14,12 +14,19 @@ export function isMacPlatform(platform: string) {
   return /Mac|iPhone|iPad|iPod/i.test(platform)
 }
 
+/** Extensions and synthetic events can dispatch keydown without KeyboardEvent.key. */
+export function shortcutEventKey(key: unknown): string | null {
+  return typeof key === "string" && key.length > 0 ? key.toLowerCase() : null
+}
+
 export function matchesShortcut(
   event: ShortcutKey,
   shortcut: string,
   mac: boolean
 ) {
+  const eventKey = shortcutEventKey(event.key)
   if (
+    eventKey === null ||
     event.isComposing ||
     event.keyCode === 229 ||
     event.repeat ||
@@ -32,7 +39,7 @@ export function matchesShortcut(
     return false
   // Shift is only meaningful for printable symbols, notably '?' on US keyboards.
   if (event.shiftKey && key !== "?") return false
-  return event.key.toLowerCase() === key.toLowerCase()
+  return eventKey === key.toLowerCase()
 }
 
 export const SEQUENCE_TIMEOUT = 1000

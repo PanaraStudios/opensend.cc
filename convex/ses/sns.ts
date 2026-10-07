@@ -6,6 +6,7 @@ import {
   GetSubscriptionAttributesCommand,
   type SNSClient,
 } from "@aws-sdk/client-sns"
+import { SNS_MAX_MESSAGE_AGE_MS } from "./contracts"
 import { limitedBody } from "./web"
 
 export type SnsMessage = Record<string, string> & {
@@ -13,6 +14,7 @@ export type SnsMessage = Record<string, string> & {
   TopicArn: string
   MessageId: string
   Message: string
+  Timestamp: string
 }
 export function parseSns(raw: string): SnsMessage {
   const value: unknown = JSON.parse(raw)
@@ -112,17 +114,25 @@ async function certificate(url: string) {
   if (!response.ok) throw new Error("Unable to fetch SNS certificate")
   return limitedBody(response, 32768)
 }
-/** Throws unless SNS signed the message. Call it only for a topic of ours,
-    so a foreign envelope never makes us fetch anything. */
+/** Throws unless SNS signed the message. Returns false for expired notifications
+    so handlers acknowledge them without side effects or provider retries.
+    Call only for a topic of ours so foreign envelopes never cause a fetch. */
 export async function verifySns(message: SnsMessage) {
   const url = certificateUrl(message)
   const cached = certificates.get(url)
   const pem = cached ?? (await certificate(url))
   verifySignature(message, pem)
+  const timestamp = Date.parse(message.Timestamp)
+  if (!Number.isFinite(timestamp)) throw new Error("Invalid SNS timestamp")
+  if (timestamp < Date.now() - SNS_MAX_MESSAGE_AGE_MS) {
+    console.warn("Skipping expired SNS message")
+    return false
+  }
   if (!cached) {
     if (certificates.size >= 16) certificates.clear()
     certificates.set(url, pem)
   }
+  return true
 }
 /** Confirms a verified SubscriptionConfirmation through the API, never by
     following its SubscribeURL, and checks the subscription is the one we

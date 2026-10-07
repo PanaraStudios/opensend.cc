@@ -578,11 +578,20 @@ export const replay = mutation({
 /** The outbox consumer: one delivery per enabled webhook of the event's team
     that listens for its type. Every endpoint gets the same message id. */
 export const deliverEvent = internalMutation({
-  args: { id: v.id("events") },
+  args: {
+    id: v.id("events"),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
   returns: v.null(),
-  handler: async (ctx, { id }) => {
+  handler: async (ctx, { id, cursor = null }) => {
     const event = await ctx.db.get("events", id)
-    if (!event || (await retirement(ctx, event.organizationId))) return null
+    if (
+      !event ||
+      event.webhooksDeliveredAt !== undefined ||
+      (event.webhookCursor ?? null) !== cursor ||
+      (await retirement(ctx, event.organizationId))
+    )
+      return null
     const listeners = await ctx.db
       .query("webhookSubscriptions")
       .withIndex("by_organizationId_and_event_and_enabled", (q) =>
@@ -591,13 +600,15 @@ export const deliverEvent = internalMutation({
           .eq("event", event.type)
           .eq("enabled", true)
       )
-      .take(WEBHOOK_LIMIT)
+      // Event payloads can approach the document limit; copying one to 100
+      // endpoints in one transaction exceeds the write budget.
+      .paginate({ cursor, numItems: 5 })
     const payload = {
       type: event.type,
       created_at: new Date(event._creationTime).toISOString(),
       data: event.data,
     }
-    for (const { webhookId } of listeners)
+    for (const { webhookId } of listeners.page)
       await send(ctx, {
         organizationId: event.organizationId,
         webhookId,
@@ -605,6 +616,18 @@ export const deliverEvent = internalMutation({
         event: event.type,
         payload,
         replay: false,
+      })
+    await ctx.db.patch(
+      "events",
+      id,
+      listeners.isDone
+        ? { webhooksDeliveredAt: Date.now(), webhookCursor: undefined }
+        : { webhookCursor: listeners.continueCursor }
+    )
+    if (!listeners.isDone)
+      await ctx.scheduler.runAfter(0, internal.webhooks.deliverEvent, {
+        id,
+        cursor: listeners.continueCursor,
       })
     return null
   },
@@ -631,6 +654,7 @@ export const claimAttempt = internalMutation({
     if (
       !delivery ||
       delivery.attempts !== args.attempt ||
+      delivery.attemptStartedAt !== undefined ||
       (await retirement(ctx, delivery.organizationId))
     )
       return null
