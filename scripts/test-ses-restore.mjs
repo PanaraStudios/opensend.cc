@@ -2,15 +2,19 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { randomBytes } from "node:crypto"
 import { resolve } from "node:path"
 import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
+import { guardedDockerEnv, testProject } from "./test-compose.mjs"
 const sourceFile = process.argv[2]
 if (!sourceFile?.includes(".env.playwright-opensend-e2e-"))
   throw new Error("Supply an isolated test instance environment file")
 const source = parse(readFileSync(sourceFile, "utf8"))
 if (!source.INSTANCE_NAME?.startsWith("opensend-e2e-"))
   throw new Error("Refusing non-test export")
-const name = `opensend-e2e-restore-${Date.now()}`
+const name = testProject("e2e-restore")
 const directory = resolve("test-results", name)
 mkdirSync(directory, { recursive: true })
+Object.assign(process.env, guardedDockerEnv(directory), {
+  COMPOSE_PROJECT_NAME: name,
+})
 const original = resolve(directory, "source.zip")
 const restored = resolve(directory, "restored.zip")
 const targetFile = resolve(`.env.playwright-${name}`)
@@ -18,6 +22,7 @@ const port = await freePort()
 const sitePort = await freePort()
 const target = {
   ...source,
+  COMPOSE_PROJECT_NAME: name,
   INSTANCE_NAME: name,
   INSTANCE_SECRET: randomBytes(32).toString("hex"),
   CONVEX_PORT: port,
@@ -53,7 +58,13 @@ try {
       "--path",
       original,
     ],
-    { env: { ...process.env, OPENSEND_ENV_FILE: sourceFile } }
+    {
+      env: {
+        ...process.env,
+        COMPOSE_PROJECT_NAME: source.INSTANCE_NAME,
+        OPENSEND_ENV_FILE: sourceFile,
+      },
+    }
   )
   run("node", ["scripts/setup.mjs"], { env })
   run(
