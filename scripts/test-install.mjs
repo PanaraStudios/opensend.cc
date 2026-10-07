@@ -1,5 +1,4 @@
 import assert from "node:assert/strict"
-import { randomBytes } from "node:crypto"
 import { spawn, spawnSync } from "node:child_process"
 import {
   copyFileSync,
@@ -14,6 +13,7 @@ import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { freePort, parse } from "./lib.mjs"
+import { guardedDockerEnv, testProject } from "./test-compose.mjs"
 
 // These tests use a Docker shim plus real Compose config parsing, with no daemon,
 // Meta, SES, media services or public network required.
@@ -31,13 +31,13 @@ if (process.argv.includes("--config-only")) process.exit(0)
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const installer = resolve(root, "scripts/install.sh")
-const project = `opensend-install-${Date.now()}-${randomBytes(3).toString("hex")}`
+const project = testProject("install")
 const temporary = mkdtempSync(resolve(tmpdir(), `${project}-`))
 const directory = resolve(temporary, "installation")
 const assets = resolve(temporary, "assets")
 const tags = []
 const logContainer = `${project}-logs`
-const composeEnv = { ...process.env }
+const composeEnv = guardedDockerEnv(temporary)
 // Compose interpolates the calling shell before reading .env. Keep the test
 // installation's saved images, ports and origins authoritative in every check.
 for (const key of Object.keys(composeEnv))
@@ -241,6 +241,10 @@ try {
   // Fake credentials only: cloud dry runs must never start migrate or contact Convex.
   for (const useCaddy of [true, false]) {
     const cloudDirectory = resolve(temporary, useCaddy ? "cloud" : "cloud-eu")
+    const cloudEnv = {
+      ...composeEnv,
+      COMPOSE_PROJECT_NAME: `${project}-${useCaddy ? "cloud" : "cloud-eu"}`,
+    }
     const cloudArgs = [
       "--dir",
       cloudDirectory,
@@ -274,12 +278,16 @@ try {
               "https://fake-name.eu.convex.site",
             ]),
       ],
-      { env: composeEnv }
+      { env: cloudEnv }
     )
     const cloudSettings = () =>
       parse(readFileSync(resolve(cloudDirectory, ".env"), "utf8"))
     const initialCloud = cloudSettings()
     assert.equal(statSync(resolve(cloudDirectory, ".env")).mode & 0o777, 0o600)
+    assert.equal(
+      initialCloud.COMPOSE_PROJECT_NAME,
+      cloudEnv.COMPOSE_PROJECT_NAME
+    )
     assert.equal(initialCloud.OPENSEND_CONVEX, "cloud")
     assert.equal(initialCloud.CONVEX_DEPLOY_KEY, "dev:fake-name|token")
     assert.equal(
@@ -320,10 +328,10 @@ try {
           "--project-directory",
           cloudDirectory,
           "-p",
-          `${project}-cloud`,
+          cloudEnv.COMPOSE_PROJECT_NAME,
           ...args,
         ],
-        { env: composeEnv, stdio: ["ignore", "pipe", "inherit"] }
+        { env: cloudEnv, stdio: ["ignore", "pipe", "inherit"] }
       )
     const config = JSON.parse(
       await cloudCompose(["--profile", "smtp", "config", "--format", "json"])
@@ -383,7 +391,7 @@ try {
         "--deploy-key",
         "prod:other|different",
       ],
-      { env: composeEnv }
+      { env: cloudEnv }
     )
     assert.deepEqual(
       cloudSettings(),
@@ -393,7 +401,7 @@ try {
     await execute(
       "sh",
       [installer, "upgrade", ...cloudArgs, "--version", "itest-b"],
-      { env: composeEnv }
+      { env: cloudEnv }
     )
     assert.deepEqual(
       cloudSettings(),
@@ -401,7 +409,7 @@ try {
       "upgrade remembers cloud mode and secrets"
     )
     await execute("sh", [installer, "uninstall", "--dir", cloudDirectory], {
-      env: composeEnv,
+      env: cloudEnv,
     })
   }
   console.log(
