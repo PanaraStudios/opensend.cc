@@ -17,6 +17,7 @@ import { test } from "node:test"
 import { fileURLToPath } from "node:url"
 import { parse } from "./lib.mjs"
 import { assertTestCompose, testProject } from "./test-compose.mjs"
+import { configureTestStack, testStackEnv } from "./test-stack-env.mjs"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const secretKeys = [
@@ -754,4 +755,42 @@ test("cloud scenario persists its isolated project through rerun, upgrade and un
   )
   assert.equal(f.settings().COMPOSE_PROJECT_NAME, project)
   assert.ok(f.commands().some((args) => args.includes("down")))
+})
+
+test("fresh telemetry install prepares Compose before seeding env and preserves configuration", async (t) => {
+  const f = await fixture(t)
+  const filename = join(f.installation, ".env")
+  await configureTestStack(filename, async () => {
+    const result = await f.run(["--no-start"], testStackEnv)
+    assert.equal(result.code, 0, result.output)
+    assert.ok(
+      !f
+        .commands()
+        .some(
+          (args) =>
+            args.includes("ps") || args.includes("up") || args.includes("stop")
+        )
+    )
+  })
+  const prepared = f.settings()
+  assert.equal(prepared.OPENSEND_TELEMETRY, "1")
+  assert.equal(prepared.OPENSEND_TELEMETRY_URL, "http://127.0.0.1:9/telemetry")
+  assert.match(prepared.COMPOSE_PROJECT_NAME, /^opensend-install-config-/)
+  const config = f.composeConfig()
+  assert.equal(
+    config.services.migrate.environment.OPENSEND_TELEMETRY_URL,
+    testStackEnv.OPENSEND_TELEMETRY_URL
+  )
+  const result = await f.run([], { ...testStackEnv, TEST_NO_CONTAINER: "1" })
+  assert.equal(result.code, 0, result.output)
+  assert.match(
+    result.output,
+    /No existing Convex data volume; starting the prepared configuration/
+  )
+  assert.deepEqual(f.settings(), prepared)
+  assert.ok(
+    !f
+      .commands()
+      .some((args) => args.includes("--mount") || args.includes("stop"))
+  )
 })

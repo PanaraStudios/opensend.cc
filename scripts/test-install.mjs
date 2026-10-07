@@ -13,7 +13,11 @@ import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { freePort, parse } from "./lib.mjs"
-import { testStackEnv, writeTestStackEnv } from "./test-stack-env.mjs"
+import {
+  configureTestStack,
+  testStackEnv,
+  writeTestStackEnv,
+} from "./test-stack-env.mjs"
 Object.assign(process.env, testStackEnv)
 import { guardedDockerEnv, testProject } from "./test-compose.mjs"
 
@@ -66,6 +70,7 @@ for (const key of Object.keys(composeEnv))
   )
     delete composeEnv[key]
 Object.assign(composeEnv, testStackEnv)
+composeEnv.COMPOSE_PROJECT_NAME = project
 let server
 let logs
 let logText = ""
@@ -213,7 +218,9 @@ try {
     COMPOSE_PROJECT_NAME: project,
   }
   const configuration = resolve(temporary, "configuration")
-  writeTestStackEnv(resolve(configuration, ".env"))
+  writeTestStackEnv(resolve(configuration, ".env"), {
+    COMPOSE_PROJECT_NAME: `${project}-config`,
+  })
   await execute("sh", ["-s", "--", "install"], {
     input: readFileSync(installer),
     stdio: ["pipe", "inherit", "inherit"],
@@ -245,11 +252,13 @@ try {
   // Fake credentials only: cloud dry runs must never start migrate or contact Convex.
   for (const useCaddy of [true, false]) {
     const cloudDirectory = resolve(temporary, useCaddy ? "cloud" : "cloud-eu")
-    writeTestStackEnv(resolve(cloudDirectory, ".env"))
     const cloudEnv = {
       ...composeEnv,
       COMPOSE_PROJECT_NAME: `${project}-${useCaddy ? "cloud" : "cloud-eu"}`,
     }
+    writeTestStackEnv(resolve(cloudDirectory, ".env"), {
+      COMPOSE_PROJECT_NAME: cloudEnv.COMPOSE_PROJECT_NAME,
+    })
     const cloudArgs = [
       "--dir",
       cloudDirectory,
@@ -421,7 +430,7 @@ try {
     "PASS cloud dry configuration, regional URLs, rerun, upgrade and uninstall"
   )
 
-  const install = (command, version) =>
+  const install = (command, version, noStart = false) =>
     execute(
       "sh",
       [
@@ -429,6 +438,7 @@ try {
         command,
         "--dir",
         directory,
+        ...(noStart ? ["--no-start"] : []),
         "--local",
         "--caddy",
         "no",
@@ -447,7 +457,9 @@ try {
         stdio: ["ignore", "inherit", "inherit"],
       }
     )
-  writeTestStackEnv(resolve(directory, ".env"))
+  await configureTestStack(resolve(directory, ".env"), () =>
+    install("install", "itest-a", true)
+  )
   await install("install", "itest-a")
   await healthy()
   const initial = settings()
