@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import test, { type TestContext } from "node:test"
 import { parse } from "../scripts/lib.mjs"
+import { testStackEnv } from "../scripts/test-stack-env.mjs"
 
 async function fixture(t: TestContext) {
   const directory = await mkdtemp(join(tmpdir(), "opensend-telemetry-install-"))
@@ -74,6 +75,11 @@ esac
   const address = server.address()
   assert.ok(address && typeof address !== "string")
   const installation = join(directory, "installation")
+  await mkdir(installation)
+  await writeFile(
+    join(installation, ".env"),
+    `OPENSEND_TELEMETRY_URL=${testStackEnv.OPENSEND_TELEMETRY_URL}\n`
+  )
   return {
     directory,
     execute,
@@ -113,6 +119,10 @@ for (const mode of ["self", "cloud"]) {
     await f.install("install", cloud)
     const initial = await f.settings()
     assert.equal(initial.OPENSEND_TELEMETRY, "1")
+    assert.equal(
+      initial.OPENSEND_TELEMETRY_URL,
+      testStackEnv.OPENSEND_TELEMETRY_URL
+    )
     assert.equal(initial.OPENSEND_INSTALL_METHOD, "script")
     assert.equal(
       initial.OPENSEND_ARCH,
@@ -124,6 +134,10 @@ for (const mode of ["self", "cloud"]) {
     assert.equal((await f.settings()).OPENSEND_TELEMETRY, "0")
     await f.install("upgrade", ["--telemetry", "yes"])
     assert.equal((await f.settings()).OPENSEND_TELEMETRY, "1")
+    assert.equal(
+      (await f.settings()).OPENSEND_TELEMETRY_URL,
+      testStackEnv.OPENSEND_TELEMETRY_URL
+    )
     assert.equal(
       (await f.settings()).BETTER_AUTH_SECRET,
       initial.BETTER_AUTH_SECRET
@@ -139,10 +153,15 @@ test("source setup persists telemetry defaults and preserves an existing hard of
     OPENSEND_ENV_FILE: filename,
     OPENSEND_BACKEND_ONLY: "1",
     OPENSEND_SKIP_BUILD: "1",
+    ...testStackEnv,
   }
   await f.execute(process.execPath, ["scripts/setup.mjs"], env)
   const defaults = parse(await readFile(filename, "utf8"))
   assert.equal(defaults.OPENSEND_TELEMETRY, "1")
+  assert.equal(
+    defaults.OPENSEND_TELEMETRY_URL,
+    testStackEnv.OPENSEND_TELEMETRY_URL
+  )
   assert.equal(defaults.OPENSEND_INSTALL_METHOD, "source")
   await writeFile(
     filename,
