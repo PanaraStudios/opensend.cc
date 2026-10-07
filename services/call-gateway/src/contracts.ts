@@ -28,6 +28,7 @@ export type CallbackPayload =
   | { event: "answer_ready"; answerSdp: string }
   | { event: "offer_ready"; offerSdp: string }
   | { event: "media_up" }
+  | { event: "heartbeat" }
   | { event: "hangup"; reason: string }
   | { event: "recording_ready"; recordingFile: string }
 export type GatewayCallback = CallbackPayload & {

@@ -1,4 +1,5 @@
 import { outboundInstructions } from "../../lib/calling/outbound"
+import { recordActivity } from "../calling/activity"
 import { insertTranscript, toolLimitReached } from "./transcriptCounts"
 import {
   saveCollectedField,
@@ -395,6 +396,13 @@ export const event = internalMutation({
     )
       return null
     if (
+      (data.type === "transcript" && string(object(data.transcript).text)) ||
+      (data.type === "media" &&
+        (Number(data.received) > 0 || Number(data.sent) > 0)) ||
+      (data.type === "playback_done" && Number(data.playedMs) > 0)
+    )
+      await recordActivity(ctx, call)
+    if (
       data.type === "state" &&
       call.botConfig &&
       ["hangup", "agent"].includes(string(data.state))
@@ -406,7 +414,13 @@ export const event = internalMutation({
     )
       throw notFound("Bot call")
     if (data.type === "bot_completed") {
-      if (call.botEndedAt) return null
+      // Terminal reconciliation may settle billing before the gateway's final
+      // summary arrives. Enrich that settled session once without charging it again.
+      if (
+        call.botEndedAt &&
+        (!CALL_TERMINAL.has(call.status) || !call.botCompletionPending)
+      )
+        return null
       const at = Math.min(Date.now(), Number(data.endedAt ?? data.timestamp)),
         outcome = string(data.outcome)
       if (
@@ -433,16 +447,18 @@ export const event = internalMutation({
       }
       await ctx.db.patch("calls", call._id, {
         botActive: false,
-        botEndedAt: at,
-        botDuration:
-          (call.botDuration ?? 0) +
-          Math.min(
-            call.botConfig!.maxDurationSeconds,
-            Math.max(
-              0,
-              (at - (call.botSessionStartedAt ?? call.botStartedAt!)) / 1000
-            )
-          ),
+        botEndedAt: call.botEndedAt ?? at,
+        botCompletionPending: false,
+        botDuration: call.botEndedAt
+          ? call.botDuration
+          : (call.botDuration ?? 0) +
+            Math.min(
+              call.botConfig!.maxDurationSeconds,
+              Math.max(
+                0,
+                (at - (call.botSessionStartedAt ?? call.botStartedAt!)) / 1000
+              )
+            ),
         botOutcome,
         botSummary: string(data.summary).slice(0, 4000),
         botUsage: totalUsage,

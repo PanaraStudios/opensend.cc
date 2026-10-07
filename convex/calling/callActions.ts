@@ -128,7 +128,7 @@ export const cleanup = internalAction({
   args: { id: v.id("calls") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    await cleanupCall(ctx, id)
+    await cleanupCall(ctx, id).catch(() => undefined)
     return null
   },
 })
