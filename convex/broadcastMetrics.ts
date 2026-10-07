@@ -178,12 +178,16 @@ export async function readBroadcastStats(ctx: QueryCtx, id: Id<"broadcasts">) {
 /** Preferences may change while SES pacing keeps a recipient in the queue. */
 export async function broadcastRecipientProblem(
   ctx: MutationCtx,
-  email: Doc<"emails">
+  email: Doc<"emails"> | Doc<"channelMessages">
 ) {
   if (!email.broadcastId) return null
   const recipient = await ctx.db
     .query("broadcastRecipients")
-    .withIndex("by_emailId", (q) => q.eq("emailId", email._id))
+    .withIndex("channel" in email ? "by_messageId" : "by_emailId", (q) =>
+      "channel" in email
+        ? q.eq("messageId", email._id)
+        : q.eq("emailId", email._id)
+    )
     .unique()
   if (!recipient) return "audience"
   const broadcast = await ctx.db.get("broadcasts", recipient.broadcastId)
@@ -202,11 +206,23 @@ export async function broadcastRecipientProblem(
   if (
     !contact ||
     contact.organizationId !== email.organizationId ||
-    !contact.email ||
-    contact.email !== recipient.email ||
+    (!("channel" in email) &&
+      (!contact.email || contact.email !== recipient.email)) ||
     contact.unsubscribed
   )
     return "unsubscribed"
+  if ("channel" in email && email.channel === "whatsapp") {
+    const template = broadcast.whatsapp
+      ? await ctx.db.get("templates", broadcast.whatsapp.templateId)
+      : null
+    if (template?.whatsapp?.category === "MARKETING") {
+      const identity = await ctx.db.get(
+        "channelContacts",
+        email.channelContactId
+      )
+      if (identity?.marketingOptOut) return "marketing_opt_out"
+    }
+  }
   if (
     topic &&
     effectiveTopicSubscription(

@@ -9,6 +9,9 @@ export const eventTables = {
     /** A system event (`email.delivered`…) or a team's custom event name. */
     type: v.string(),
     data: v.record(v.string(), v.any()),
+    /** Durable customer webhook fan-out progress; replays do not resend it. */
+    webhookCursor: v.optional(v.string()),
+    webhooksDeliveredAt: v.optional(v.number()),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_type", ["organizationId", "type"]),

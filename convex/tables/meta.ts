@@ -51,11 +51,14 @@ export const metaTables = {
     /** The token's granted permissions; Meta lists a handful. */
     scopes: v.array(v.string()),
     status: metaConnectionStatusValue,
+    /** Fences disconnect continuations across reconnects. */
+    disconnectGeneration: v.optional(v.number()),
     checkedAt: v.optional(v.number()),
     error: v.optional(v.string()),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_businessId", ["businessId"])
+    .index("by_organizationId_and_businessId", ["organizationId", "businessId"])
     .index("by_status", ["status"]),
   /** A WhatsApp Business Account belongs to exactly one team. */
   whatsappBusinessAccounts: defineTable({
@@ -80,6 +83,8 @@ export const metaTables = {
     body: v.string(),
     receivedAt: v.number(),
     projectedAt: v.optional(v.number()),
+    /** Next messaging item to project from a large delivery. */
+    projectionCursor: v.optional(v.number()),
     error: v.optional(v.string()),
   })
     .index("by_bodyHash", ["bodyHash"])

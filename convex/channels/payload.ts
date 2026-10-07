@@ -209,10 +209,12 @@ export async function hydratedChannelMessage(
   if (message.channel === "whatsapp" && message.externalId) {
     const observations = await ctx.db
       .query("channelMessages")
-      .withIndex("by_accountId_and_reactionTargetExternalId", (q) =>
-        q
-          .eq("accountId", message.accountId)
-          .eq("reactionTargetExternalId", message.externalId)
+      .withIndex(
+        "by_accountId_and_reactionTargetExternalId_and_observedAt",
+        (q) =>
+          q
+            .eq("accountId", message.accountId)
+            .eq("reactionTargetExternalId", message.externalId)
       )
       .order("desc")
       .take(100)
