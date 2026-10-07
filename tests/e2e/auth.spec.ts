@@ -178,6 +178,16 @@ async function signup(
   await expect(page.getByRole("status")).toContainText("verification link")
 }
 
+const telemetryShots = async (page: Page, name: string) => {
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme })
+    await page.screenshot({
+      path: `${process.env.OPENSEND_TEST_RESULTS}/telemetry-${name}-${theme}.png`,
+    })
+  }
+  await page.emulateMedia({ colorScheme: "light" })
+}
+
 test.describe.serial("Docker self-hosted authentication", () => {
   test.beforeAll(async ({ browser }) => {
     expect(process.env.OPENSEND_ENV_FILE).toContain(".env.playwright")
@@ -267,6 +277,7 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(setupTelemetry).toBeVisible()
     await expect(setupTelemetry).toBeEnabled()
     await expect(setupTelemetry).toBeChecked()
+    await telemetryShots(owner, "setup")
     await setupTelemetry.click()
     await expect(setupTelemetry).not.toBeChecked()
     await owner.reload()
@@ -667,6 +678,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     })
     await expect(telemetry).toBeEnabled()
     await expect(telemetry).toBeChecked()
+    await telemetry.scrollIntoViewIfNeeded()
+    await telemetryShots(owner, "settings")
     await telemetry.click()
     await expect(telemetry).not.toBeChecked()
     await expect
@@ -688,6 +701,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
       exact: true,
     })
     await expect(telemetryDialog).toBeVisible()
+    await expect(telemetryDialog.locator("pre")).toContainText('"schema": 1')
+    await telemetryShots(owner, "payload")
     const telemetryJson = telemetryDialog.locator("pre")
     await expect(telemetryJson).toContainText('"schema": 1')
     const payloadJson = (await telemetryJson.textContent())!
