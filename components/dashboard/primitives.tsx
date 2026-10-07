@@ -53,7 +53,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button, buttonVariants, buttonText } from "@/components/ui/button"
 import {
   Card,
   CardAction,
@@ -99,6 +99,7 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  useFieldLabel,
 } from "@/components/ui/field"
 import {
   Combobox,
@@ -1016,9 +1017,7 @@ export function EmptyState({
         <EmptyMedia variant="icon" className="icon-tile border-0 shadow-none">
           <Icon className="size-4" />
         </EmptyMedia>
-        <EmptyTitle role="heading" aria-level={size === "sm" ? 3 : 2}>
-          {title}
-        </EmptyTitle>
+        <EmptyTitle>{title}</EmptyTitle>
         <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>
       {children ? <EmptyContent>{children}</EmptyContent> : null}
@@ -1404,20 +1403,31 @@ export function IconCell({
   )
 }
 
+/** Keyboard access and a name for a preformatted scroll container, without styling. */
+export function ScrollablePre({
+  label,
+  ...props
+}: React.ComponentProps<"pre"> & { label: string }) {
+  return <pre {...props} tabIndex={0} role="group" aria-label={label} />
+}
+
 /** Monospace well for source and payloads, with an optional copy button
     pinned to the corner. */
 export function CodeWell({
   children,
   copyValue,
   className,
+  label = "Source code",
 }: {
   children: React.ReactNode
   copyValue?: string
   className?: string
+  label?: string
 }) {
   return (
     <div className="relative">
-      <pre
+      <ScrollablePre
+        label={label}
         className={cn(
           "overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-mono whitespace-pre-wrap",
           copyValue && "pr-12",
@@ -1425,7 +1435,7 @@ export function CodeWell({
         )}
       >
         {children}
-      </pre>
+      </ScrollablePre>
       {copyValue ? (
         <div className="absolute top-3 right-3">
           <CopyButton value={copyValue} />
@@ -1478,7 +1488,7 @@ export function JsonSection({
 
   return (
     <DetailSection title={title}>
-      <CodeWell copyValue={source}>
+      <CodeWell copyValue={source} label={title}>
         {tokens.map((token, index) => (
           <span key={index} className={JSON_TOKEN_CLASS[token.kind]}>
             {token.value}
@@ -1945,6 +1955,12 @@ export function SearchableSelect({
     onSearch(settledSearch)
   }, [onSearch, settledSearch])
   const inputRef = React.useRef<HTMLInputElement>(null)
+  const triggerElement = trigger(current)
+  const triggerProps = triggerElement.props as {
+    children?: React.ReactNode
+    "aria-label"?: string
+    "aria-labelledby"?: string
+  }
 
   return (
     <Combobox
@@ -1974,7 +1990,15 @@ export function SearchableSelect({
       disabled={disabled}
     >
       <ComboboxPrimitive.Trigger
-        render={trigger(current)}
+        render={triggerElement}
+        // Base UI supplies its own children, so render-prop text alone cannot
+        // name this trigger. Preserve explicit names, then use the supplied text.
+        aria-label={
+          triggerProps["aria-label"] ??
+          (triggerProps["aria-labelledby"]
+            ? undefined
+            : buttonText(triggerProps.children).trim() || undefined)
+        }
         className="max-w-full min-w-0 overflow-hidden [&>span]:min-w-0 [&>span]:truncate"
         onKeyDown={(event) => {
           if (
@@ -1993,6 +2017,7 @@ export function SearchableSelect({
         }}
       />
       <ComboboxContent
+        aria-label={search.placeholder ?? "Search options"}
         align={align}
         sideOffset={4}
         initialFocus={inputRef}
@@ -2079,6 +2104,7 @@ export function OptionSelect({
   disabled?: boolean
   "aria-label"?: string
 }) {
+  const fieldLabel = useFieldLabel({ "aria-label": ariaLabel })
   if (search)
     return (
       <SearchableSelect
@@ -2097,6 +2123,7 @@ export function OptionSelect({
             type="button"
             id={id}
             aria-label={ariaLabel}
+            {...fieldLabel}
             data-slot="select-trigger"
             data-size={size}
             className={cn(selectTriggerClassName, className)}
@@ -2375,6 +2402,7 @@ export function ListToolbar({
         </InputGroupAddon>
         <InputGroupInput
           ref={search}
+          aria-label={placeholder}
           aria-keyshortcuts="/"
           className="h-full! min-w-0"
           value={query}

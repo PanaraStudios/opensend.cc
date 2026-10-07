@@ -1,11 +1,36 @@
 "use client"
 
-import { useMemo } from "react"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+
+const FieldContext = createContext<{
+  labelId: string | undefined
+  setLabelId: React.Dispatch<React.SetStateAction<string | undefined>>
+} | null>(null)
+
+// Only the primary control (or group container) inherits the field label.
+// Radio/checkbox options retain their native labels or explicit names.
+export function useFieldLabel(
+  props: Pick<React.AriaAttributes, "aria-label" | "aria-labelledby">
+) {
+  const field = useContext(FieldContext)
+  return {
+    "aria-labelledby":
+      props["aria-labelledby"] ??
+      (props["aria-label"] ? undefined : field?.labelId),
+  }
+}
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
@@ -74,14 +99,22 @@ function Field({
   orientation = "vertical",
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
+  const [labelId, setLabelId] = useState<string>()
+  const context = useMemo(() => ({ labelId, setLabelId }), [labelId])
   return (
-    <div
-      role="group"
-      data-slot="field"
-      data-orientation={orientation}
-      className={cn(fieldVariants({ orientation }), className)}
-      {...props}
-    />
+    <FieldContext.Provider value={context}>
+      <div
+        // Field is layout by default. Group controls own their names; a set
+        // without a group primitive (e.g. checkboxes) opts in with role="group".
+        aria-labelledby={
+          props.role === "group" && !props["aria-label"] ? labelId : undefined
+        }
+        data-slot="field"
+        data-orientation={orientation}
+        className={cn(fieldVariants({ orientation }), className)}
+        {...props}
+      />
+    </FieldContext.Provider>
   )
 }
 
@@ -102,6 +135,15 @@ function FieldLabel({
   className,
   ...props
 }: React.ComponentProps<typeof Label>) {
+  const field = useContext(FieldContext)
+  const generatedId = useId()
+  const id = props.id ?? generatedId
+  const setLabelId = field?.setLabelId
+  useEffect(() => {
+    setLabelId?.(id)
+    return () =>
+      setLabelId?.((current) => (current === id ? undefined : current))
+  }, [id, setLabelId])
   return (
     <Label
       data-slot="field-label"
@@ -111,6 +153,7 @@ function FieldLabel({
         className
       )}
       {...props}
+      id={id}
     />
   )
 }

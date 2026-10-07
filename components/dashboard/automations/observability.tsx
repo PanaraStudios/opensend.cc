@@ -26,6 +26,7 @@ import {
   ListPagination,
   RelativeTime,
   ResourceTable,
+  ScrollablePre,
   Surface,
   Th,
   ToolbarFilters,
@@ -120,9 +121,12 @@ function StepFacts({
               key={name}
               label={name === "inputs" ? "Resolved inputs" : "Output"}
             >
-              <pre className="max-h-48 overflow-auto text-caption whitespace-pre-wrap">
+              <ScrollablePre
+                label={name === "inputs" ? "Resolved inputs" : "Output"}
+                className="max-h-48 overflow-auto text-caption whitespace-pre-wrap"
+              >
                 {JSON.stringify(record[name], null, 2)}
-              </pre>
+              </ScrollablePre>
             </CardFact>
           ) : null
         )}

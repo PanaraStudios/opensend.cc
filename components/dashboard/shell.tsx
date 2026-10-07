@@ -348,6 +348,8 @@ function DashboardSidebar({
 
   return (
     <Sidebar
+      role="navigation"
+      aria-label="Dashboard"
       collapsible="icon"
       className="bg-background/90 border-double-r backdrop-blur-md"
     >

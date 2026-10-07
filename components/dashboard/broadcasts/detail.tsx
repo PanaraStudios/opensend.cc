@@ -186,7 +186,11 @@ function BroadcastReport({ item }: { item: Broadcast }) {
           <Spinner />
           <AlertTitle>Metrics update as emails go out</AlertTitle>
           <AlertDescription>
-            <Progress value={progress} className="max-w-xs">
+            <Progress
+              aria-label="Broadcast delivery progress"
+              value={progress}
+              className="max-w-xs"
+            >
               <ProgressValue />
             </Progress>
           </AlertDescription>

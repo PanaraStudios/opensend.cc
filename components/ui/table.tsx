@@ -9,6 +9,13 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
+      tabIndex={0}
+      role="group"
+      aria-label={
+        props["aria-label"]
+          ? `${props["aria-label"]} scroll area`
+          : "Scrollable table"
+      }
       className="relative w-full overflow-x-auto"
     >
       <table
@@ -66,7 +73,11 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+function TableHead({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<"th">) {
   return (
     <th
       data-slot="table-head"
@@ -75,7 +86,9 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
         className
       )}
       {...props}
-    />
+    >
+      {children ?? <span className="sr-only">Actions</span>}
+    </th>
   )
 }
 

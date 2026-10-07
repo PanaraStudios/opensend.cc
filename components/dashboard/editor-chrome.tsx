@@ -42,6 +42,9 @@ export function EditorTopBar({
       data-testid="editor-topbar"
       className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-2 sm:h-12 sm:flex-nowrap sm:py-0"
     >
+      <h1 className="sr-only">
+        {sentenceCase(noun)} editor{name ? `: ${name}` : ""}
+      </h1>
       <Button
         variant="ghost"
         size="icon-sm"

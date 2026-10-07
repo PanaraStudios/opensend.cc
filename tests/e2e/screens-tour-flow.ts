@@ -1,20 +1,59 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { performance } from "node:perf_hooks"
 import { expect, test, type ConsoleMessage, type Page } from "@playwright/test"
+import AxeBuilder from "@axe-core/playwright"
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { backendRows, client, importFixture } from "./ses-fixtures"
 import { beginOAuth, selectOAuthTeam } from "./oauth-flow"
+import {
+  A11Y_FULL_TAGS,
+  A11Y_THEME_RULES,
+  A11Y_RULE_ALLOWLIST,
+  A11Y_PREVIEW_FRAME_SELECTOR,
+  A11yScanTimeoutError,
+  a11yScanMode,
+  blocksA11yTour,
+  summarizeA11yFindings,
+  withinA11yScanBudget,
+} from "./a11y-policy"
+import {
+  findVisibleRawCodes,
+  RAW_CODE_FILENAME_PATTERN,
+} from "./raw-code-policy"
 
 type Screen = { name: string; open: (page: Page) => Promise<void> }
-type Finding = {
+type Scene = {
   screen: string
   theme: string
   width: number
-  kind: string
-  detail: unknown
   screenshot: string
 }
+type Finding = Scene &
+  (
+    | {
+        kind: "a11y"
+        detail: {
+          ruleId: string
+          impact: string | null
+          target: string
+          summary?: string
+          allowlisted: boolean
+        }
+      }
+    | {
+        kind:
+          | "screen-error"
+          | "a11y-scan-error"
+          | "overflow"
+          | "error-boundary"
+          | "runtime-error"
+          | "raw-code"
+        detail: unknown
+      }
+  )
+
 const channels = ["All channels", "Email", "WhatsApp", "Messenger", "Instagram"]
 type TourState = () => {
   owner: Page
@@ -31,6 +70,7 @@ async function choose(page: Page, label: string, option: string) {
  * Fixture imports are guarded by assertTestOwnership in ses-fixtures.ts. */
 export function screensTourTests(state: TourState) {
   test("screens tour: every v2 screen in light/dark at 1280/390", async () => {
+    // Keep the visual tour plus targeted axe passes within the QA host budget.
     test.setTimeout(20 * 60_000)
     const { owner, organizationId, sendingDomainId } = state()
     // Copy the real owner's session into a fresh context, without trace scripts
@@ -662,6 +702,9 @@ export function screensTourTests(state: TourState) {
       runtime.push(`pageerror: ${error.message}`)
     page.on("console", onConsole)
     page.on("pageerror", onError)
+    let axeTimeMs = 0
+    const axeScans = { full: 0, theme: 0 }
+    const axeErrors = new Map<string, number>()
     try {
       for (const width of [1280, 390]) {
         await page.setViewportSize({ width, height: 960 })
@@ -795,6 +838,84 @@ export function screensTourTests(state: TourState) {
                 detail: openingError,
                 screenshot,
               })
+            // Scan scheduled states even after a readiness failure. Scan errors
+            // still fail the tour; mobile states with shared structure skip axe.
+            const scanMode = a11yScanMode({ screen: screen.name, theme, width })
+            if (scanMode !== "skip") {
+              const axeStarted = performance.now()
+              axeScans[scanMode]++
+              let errorKind: string | undefined
+              try {
+                const result = await withinA11yScanBudget(async () => {
+                  const previewFrames = await page
+                    .locator(A11Y_PREVIEW_FRAME_SELECTOR)
+                    .count()
+                  console.log(
+                    `[screens tour] axe start: ${screen.name} ${theme} ${width}px ` +
+                      `${scanMode}; child frames: ${page.frames().length - 1}; ` +
+                      `excluded preview frames: ${previewFrames}`
+                  )
+                  const builder = new AxeBuilder({ page }).exclude(
+                    A11Y_PREVIEW_FRAME_SELECTOR
+                  )
+                  return (
+                    scanMode === "full"
+                      ? builder.withTags(A11Y_FULL_TAGS)
+                      : builder.withRules(A11Y_THEME_RULES)
+                  ).analyze()
+                })
+                for (const violation of result.violations) {
+                  for (const node of violation.nodes) {
+                    findings.push({
+                      screen: screen.name,
+                      theme,
+                      width,
+                      kind: "a11y",
+                      detail: {
+                        ruleId: violation.id,
+                        impact: violation.impact ?? null,
+                        // Includes frame/shadow ancestry without logging page HTML.
+                        target: node.target.flat().join(" > ").slice(0, 240),
+                        summary: node.failureSummary,
+                        allowlisted: A11Y_RULE_ALLOWLIST.has(violation.id),
+                      },
+                      screenshot,
+                    })
+                  }
+                }
+              } catch (error) {
+                errorKind = error instanceof Error ? error.name : "NonError"
+                axeErrors.set(errorKind, (axeErrors.get(errorKind) ?? 0) + 1)
+                console.error(
+                  `[screens tour] axe error: ${screen.name} ${theme} ${width}px ` +
+                    `${errorKind}: ${String(error)}`
+                )
+                findings.push({
+                  screen: screen.name,
+                  theme,
+                  width,
+                  kind: "a11y-scan-error",
+                  detail: { errorKind, message: String(error) },
+                  screenshot,
+                })
+                writeFileSync(
+                  join(dir, "findings.json"),
+                  JSON.stringify({ visited, findings }, null, 2)
+                )
+                if (error instanceof A11yScanTimeoutError) {
+                  // AxeBuilder cannot cancel analyze(). Abort: context.close()
+                  // below stops it before another scan can start.
+                  throw error
+                }
+              } finally {
+                const elapsedMs = performance.now() - axeStarted
+                axeTimeMs += elapsedMs
+                console.log(
+                  `[screens tour] axe scan: ${screen.name} ${theme} ${width}px ` +
+                    `${scanMode} ${(elapsedMs / 1000).toFixed(2)}s (${errorKind ?? "ok"})`
+                )
+              }
+            }
             const evidence = await page.evaluate(() => {
               const overflow =
                 (document.scrollingElement?.scrollWidth ?? 0) > innerWidth
@@ -813,51 +934,20 @@ export function screensTourTests(state: TourState) {
                       text: el.textContent?.slice(0, 100),
                     }))
                 : []
-              const raw = new Set<string>()
-              const walker = document.createTreeWalker(
-                document.body,
-                NodeFilter.SHOW_TEXT
-              )
-              while (walker.nextNode()) {
-                const node = walker.currentNode,
-                  el = node.parentElement
-                if (
-                  !el ||
-                  el.closest(
-                    'input, textarea, pre, code, script, style, [hidden], [aria-hidden="true"], [data-slot="json-viewer"], [data-testid*="payload"]'
-                  ) ||
-                  !el.checkVisibility({
-                    checkOpacity: true,
-                    checkVisibilityCSS: true,
-                  })
-                )
-                  continue
-                const text = node.textContent ?? ""
-                for (const token of text.match(
-                  /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b[a-z][a-z_]*(?:\.[a-z_]+)+\b/g
-                ) ?? []) {
-                  // Domain names and URLs are readable addresses, not machine labels.
-                  if (
-                    /\.(test|com|cc|dev|net|org|io)$/.test(token) ||
-                    text.includes("https://") ||
-                    text.includes("http://") ||
-                    text.includes("@")
-                  )
-                    continue
-                  raw.add(token)
-                }
-              }
               return {
                 overflow,
                 scrollWidth: document.scrollingElement?.scrollWidth ?? 0,
                 viewportWidth: innerWidth,
                 offenders,
-                raw: [...raw],
                 crashed: document.body.innerText.includes(
                   "Something went wrong"
                 ),
               }
             })
+            const raw = await page.evaluate(
+              findVisibleRawCodes,
+              RAW_CODE_FILENAME_PATTERN
+            )
             if (width === 390 && evidence.overflow)
               findings.push({
                 screen: screen.name,
@@ -889,13 +979,13 @@ export function screensTourTests(state: TourState) {
                 detail: [...runtime],
                 screenshot,
               })
-            if (evidence.raw.length)
+            if (raw.length)
               findings.push({
                 screen: screen.name,
                 theme,
                 width,
                 kind: "raw-code",
-                detail: evidence.raw,
+                detail: raw,
                 screenshot,
               })
             visited.push(screenshot)
@@ -907,11 +997,25 @@ export function screensTourTests(state: TourState) {
         }
       }
     } finally {
+      const a11ySummary = summarizeA11yFindings(
+        findings.flatMap((f) => (f.kind === "a11y" ? [f.detail] : []))
+      )
+      console.log(`[screens tour] axe findings: ${JSON.stringify(a11ySummary)}`)
+      console.log(
+        `[screens tour] axe total: ${(axeTimeMs / 1000).toFixed(1)}s ` +
+          `(${axeScans.full} full scans, ${axeScans.theme} theme scans); ` +
+          `scan errors: ${[...axeErrors.values()].reduce((total, count) => total + count, 0)}; ` +
+          `error kinds: ${JSON.stringify(Object.fromEntries(axeErrors))}`
+      )
       page.off("console", onConsole)
       page.off("pageerror", onError)
       await context.close()
     }
-    const failures = findings.filter((f) => f.kind !== "raw-code")
+    const failures = findings.filter((f) => {
+      if (f.kind === "raw-code") return false
+      if (f.kind === "a11y") return blocksA11yTour(f.detail)
+      return true
+    })
     expect(failures, `See ${join(dir, "findings.json")}`).toEqual([])
   })
 }

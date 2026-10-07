@@ -84,6 +84,20 @@ function BubbleContent({
   })
 }
 
+/** Secondary bubble text follows the fill's foreground, rather than the page's. */
+function BubbleMeta({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="bubble-meta"
+      className={cn(
+        "mt-1 flex items-center justify-end gap-1 text-[11px] text-muted-foreground tabular-nums group-data-[variant=default]/bubble:text-primary-foreground/70 group-data-[variant=destructive]/bubble:text-destructive group-data-[variant=secondary]/bubble:text-secondary-foreground/70",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
 const bubbleReactionsVariants = cva(
   "absolute z-10 flex w-fit shrink-0 items-center justify-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-sm ring-3 ring-card has-[button]:p-0",
   {
@@ -124,4 +138,4 @@ function BubbleReactions({
   )
 }
 
-export { BubbleGroup, Bubble, BubbleContent, BubbleReactions }
+export { BubbleGroup, Bubble, BubbleContent, BubbleMeta, BubbleReactions }

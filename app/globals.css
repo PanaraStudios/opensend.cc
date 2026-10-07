@@ -44,7 +44,7 @@
   --border-strong: #d4d4d4;
   --table-divider: var(--border);
   --fg: #0a0a0a;
-  --fg-muted: #737373;
+  --fg-muted: #707070; /* AA on muted badges/avatars (#f5f5f5). */
   --fg-faint: #a3a3a3;
 
   /* accent (one accent, one job): near-black, Vercel/Linear-style */
@@ -61,14 +61,16 @@
   --brand-accent: #a3a3a3;
 
   /* status */
-  --danger: #dc2626;
+  /* AA on page/muted/soft fills, including alert descriptions at 90% opacity.
+     Preserve hue/saturation; use the nearest passing lightness (see QA ratios). */
+  --danger: #cb2121;
   --danger-fg: #ffffff;
   --danger-soft: #fef2f2;
   --danger-border: #991b1b;
-  --warning: #d97706;
+  --warning: #9a5504;
   --warning-fg: #ffffff;
   --warning-soft: #fffbeb;
-  --success: #16a34a;
+  --success: #107535;
   --success-fg: #ffffff;
   --success-soft: #f0fdf4;
   --info: #2563eb;
@@ -275,7 +277,7 @@
   --table-divider: rgb(255 255 255 / 0.06);
   --fg: #fafafa;
   --fg-muted: #a1a1a1;
-  --fg-faint: #737373;
+  --fg-faint: #7e7e7e; /* AA for placeholders on --field (#141415). */
 
   /* Vercel-style flip: the accent goes near-white in dark mode, with dark
      foreground on the light controls */

@@ -266,6 +266,7 @@ const RawHtml = EmailNode.create({
       const dom = document.createElement("div")
       dom.className = "node-html"
       const frame = document.createElement("iframe")
+      frame.setAttribute("data-slot", "email-preview-frame")
       frame.setAttribute("sandbox", "")
       frame.title = "HTML block"
       const hint = document.createElement("div")

@@ -19,6 +19,7 @@ export function EmailPreviewFrame({
 }) {
   return (
     <iframe
+      data-slot="email-preview-frame"
       title={title}
       srcDoc={html}
       sandbox=""

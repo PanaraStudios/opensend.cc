@@ -7,6 +7,6 @@ test("empty state titles are semantic headings without caller role attributes", 
   const html = renderToStaticMarkup(
     createElement(EmptyTitle, null, "Calling stack is not configured")
   )
-  assert.match(html, /^<h3\b/)
-  assert.match(html, />Calling stack is not configured<\/h3>/)
+  assert.match(html, /^<h2\b/)
+  assert.match(html, />Calling stack is not configured<\/h2>/)
 })

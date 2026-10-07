@@ -9,7 +9,12 @@ import {
   CircleAlertIcon,
   ForwardIcon,
 } from "lucide-react"
-import { Bubble, BubbleContent, BubbleReactions } from "@/components/ui/bubble"
+import {
+  Bubble,
+  BubbleContent,
+  BubbleMeta,
+  BubbleReactions,
+} from "@/components/ui/bubble"
 import { Message, MessageContent } from "@/components/ui/message"
 import {
   MessageScroller,
@@ -261,9 +266,8 @@ export function ThreadBubble({
                   <MessageFiles messageId={message.id} media={message.media} />
                 ) : null}
               </div>
-              <div
+              <BubbleMeta
                 className={cn(
-                  "mt-1 flex items-center justify-end gap-1 text-[11px] text-muted-foreground tabular-nums",
                   audio && "ml-auto shrink-0 self-end",
                   audio &&
                     (outbound
@@ -297,7 +301,7 @@ export function ThreadBubble({
                     </span>
                   </span>
                 ) : null}
-              </div>
+              </BubbleMeta>
             </div>
             {message.error ? (
               <p className="mt-1 text-xs text-destructive">{message.error}</p>

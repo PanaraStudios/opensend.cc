@@ -651,6 +651,7 @@ function BulkEditDialog({
                         className="flex items-center gap-2 text-sm"
                       >
                         <Checkbox
+                          aria-label={item.name}
                           checked={picked.some((other) => other.id === item.id)}
                           onCheckedChange={(checked) =>
                             toggle(item, checked === true)

@@ -1,4 +1,5 @@
 "use client"
+import { useFieldLabel } from "@/components/ui/field"
 
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
@@ -26,6 +27,7 @@ function ComboboxTrigger({
 }: ComboboxPrimitive.Trigger.Props) {
   return (
     <ComboboxPrimitive.Trigger
+      aria-label={children ? undefined : "Show options"}
       data-slot="combobox-trigger"
       className={cn("[&_svg:not([class*='size-'])]:size-4", className)}
       {...props}
@@ -39,6 +41,7 @@ function ComboboxTrigger({
 function ComboboxClear({ className, ...props }: ComboboxPrimitive.Clear.Props) {
   return (
     <ComboboxPrimitive.Clear
+      aria-label="Clear selection"
       data-slot="combobox-clear"
       render={<InputGroupButton variant="ghost" size="icon-xs" />}
       className={cn(className)}
@@ -60,11 +63,13 @@ function ComboboxInput({
   showTrigger?: boolean
   showClear?: boolean
 }) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <InputGroup className={cn("w-auto", className)}>
       <ComboboxPrimitive.Input
         render={<InputGroupInput disabled={disabled} />}
         {...props}
+        {...fieldLabel}
       />
       <InputGroupAddon align="inline-end">
         {showTrigger && (
@@ -253,6 +258,7 @@ function ComboboxChip({
       {children}
       {showRemove && (
         <ComboboxPrimitive.ChipRemove
+          aria-label="Remove selection"
           render={<Button variant="ghost" size="icon-xs" />}
           className="-ml-1 opacity-50 hover:opacity-100"
           data-slot="combobox-chip-remove"
@@ -268,11 +274,13 @@ function ComboboxChipsInput({
   className,
   ...props
 }: ComboboxPrimitive.Input.Props) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <ComboboxPrimitive.Input
       data-slot="combobox-chip-input"
       className={cn("min-w-16 flex-1 outline-none", className)}
       {...props}
+      {...fieldLabel}
     />
   )
 }

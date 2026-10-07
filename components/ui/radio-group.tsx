@@ -2,14 +2,17 @@
 
 import { Radio as RadioPrimitive } from "@base-ui/react/radio"
 import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group"
+import { useFieldLabel } from "@/components/ui/field"
 import { cn } from "cn"
 
 function RadioGroup({ className, ...props }: RadioGroupPrimitive.Props) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <RadioGroupPrimitive
       data-slot="radio-group"
       className={cn("grid w-full gap-2", className)}
       {...props}
+      {...fieldLabel}
     />
   )
 }

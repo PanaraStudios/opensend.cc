@@ -62,7 +62,7 @@ const RANGE_CALENDAR_CLASS_NAMES = {
   range_end:
     "relative isolate z-0 rounded-r-md bg-muted after:absolute after:inset-y-0 after:left-0 after:w-1/2 after:bg-muted",
   today: "bg-transparent",
-  outside: "text-muted-foreground/40 aria-selected:text-muted-foreground",
+  outside: "text-muted-foreground aria-selected:text-muted-foreground",
 }
 
 const RANGE_CALENDAR_COMPONENTS = {
