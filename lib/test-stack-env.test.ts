@@ -38,13 +38,9 @@ for (const [harness, writes, shellOverride] of [
     ["targetFile, target"],
     "...process.env,\n  ...testStackEnv,",
   ],
-  [
-    "test-install",
-    ['resolve(configuration, ".env")', 'resolve(cloudDirectory, ".env")'],
-    "Object.assign(composeEnv, testStackEnv)",
-  ],
+  ["test-install", [], "Object.assign(composeEnv, testStackEnv)"],
 ] as const) {
-  test(`${harness} redirects telemetry in every generated env and child environment`, async () => {
+  test(`${harness} redirects telemetry through its child environments`, async () => {
     const source = await readFile(`scripts/${harness}.mjs`, "utf8")
     for (const args of writes)
       assert.ok(
@@ -57,17 +53,14 @@ for (const [harness, writes, shellOverride] of [
   })
 }
 
-test("installer configures Compose assets before redirecting telemetry and starting services", async () => {
+test("installer starts fresh without precreating env or a preparation phase", async () => {
   const source = await readFile("scripts/test-install.mjs", "utf8")
-  assert.ok(
-    source.includes(
-      'await configureTestStack(resolve(directory, ".env"), () =>'
-    )
+  assert.ok(!source.includes("writeTestStackEnv"))
+  assert.ok(!source.includes("configureTestStack"))
+  const fresh = source.slice(
+    source.indexOf("const install ="),
+    source.indexOf("await healthy()")
   )
-  assert.ok(source.includes('install("install", "itest-a", true)'))
-  assert.ok(source.includes('...(noStart ? ["--no-start"] : [])'))
-  assert.ok(
-    source.indexOf("await configureTestStack(") <
-      source.indexOf('await install("install", "itest-a")')
-  )
+  assert.ok(fresh.includes('await install("install", "itest-a")'))
+  assert.ok(!fresh.includes("--no-start"))
 })

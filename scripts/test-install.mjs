@@ -13,13 +13,9 @@ import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { freePort, parse } from "./lib.mjs"
-import {
-  configureTestStack,
-  testStackEnv,
-  writeTestStackEnv,
-} from "./test-stack-env.mjs"
-Object.assign(process.env, testStackEnv)
+import { testStackEnv } from "./test-stack-env.mjs"
 import { guardedDockerEnv, testProject } from "./test-compose.mjs"
+Object.assign(process.env, testStackEnv)
 
 // These tests use a Docker shim plus real Compose config parsing, with no daemon,
 // Meta, SES, media services or public network required.
@@ -218,9 +214,6 @@ try {
     COMPOSE_PROJECT_NAME: project,
   }
   const configuration = resolve(temporary, "configuration")
-  writeTestStackEnv(resolve(configuration, ".env"), {
-    COMPOSE_PROJECT_NAME: `${project}-config`,
-  })
   await execute("sh", ["-s", "--", "install"], {
     input: readFileSync(installer),
     stdio: ["pipe", "inherit", "inherit"],
@@ -256,9 +249,6 @@ try {
       ...composeEnv,
       COMPOSE_PROJECT_NAME: `${project}-${useCaddy ? "cloud" : "cloud-eu"}`,
     }
-    writeTestStackEnv(resolve(cloudDirectory, ".env"), {
-      COMPOSE_PROJECT_NAME: cloudEnv.COMPOSE_PROJECT_NAME,
-    })
     const cloudArgs = [
       "--dir",
       cloudDirectory,
@@ -350,6 +340,8 @@ try {
     const config = JSON.parse(
       await cloudCompose(["--profile", "smtp", "config", "--format", "json"])
     )
+    for (const [key, value] of Object.entries(testStackEnv))
+      assert.equal(config.services.migrate.environment[key], value)
     assert.equal(config.services.convex, undefined)
     assert.equal(config.services.migrate.depends_on, undefined)
     assert.equal(
@@ -430,7 +422,7 @@ try {
     "PASS cloud dry configuration, regional URLs, rerun, upgrade and uninstall"
   )
 
-  const install = (command, version, noStart = false) =>
+  const install = (command, version) =>
     execute(
       "sh",
       [
@@ -438,7 +430,6 @@ try {
         command,
         "--dir",
         directory,
-        ...(noStart ? ["--no-start"] : []),
         "--local",
         "--caddy",
         "no",
@@ -457,17 +448,13 @@ try {
         stdio: ["ignore", "inherit", "inherit"],
       }
     )
-  await configureTestStack(resolve(directory, ".env"), () =>
-    install("install", "itest-a", true)
-  )
   await install("install", "itest-a")
   await healthy()
   const initial = settings()
   assert.equal(initial.OPENSEND_TELEMETRY, testStackEnv.OPENSEND_TELEMETRY)
-  assert.equal(
-    initial.OPENSEND_TELEMETRY_URL,
-    testStackEnv.OPENSEND_TELEMETRY_URL
-  )
+  const config = JSON.parse(await compose(["config", "--format", "json"], true))
+  for (const [key, value] of Object.entries(testStackEnv))
+    assert.equal(config.services.migrate.environment[key], value)
   assert.equal(statSync(resolve(directory, ".env")).mode & 0o777, 0o600)
   assert.equal(initial.COMPOSE_PROJECT_NAME, project)
   assert.equal(

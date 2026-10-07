@@ -27,14 +27,6 @@ export function writeTestStackEnv(filename, values = {}) {
   chmodSync(filename, 0o600)
 }
 
-// A nonempty env file is treated as an existing installation by install.sh.
-// Generate Compose assets with --no-start first, then redirect telemetry before
-// the first invocation that can start migrate or any service.
-export async function configureTestStack(filename, configure) {
-  await configure()
-  writeTestStackEnv(filename, parse(readFileSync(filename, "utf8")))
-}
-
 // Shell harnesses repair reused env files without rotating their saved secrets.
 if (
   process.argv[1] &&

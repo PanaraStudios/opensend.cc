@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -17,7 +18,7 @@ import { test } from "node:test"
 import { fileURLToPath } from "node:url"
 import { parse } from "./lib.mjs"
 import { assertTestCompose, testProject } from "./test-compose.mjs"
-import { configureTestStack, testStackEnv } from "./test-stack-env.mjs"
+import { testStackEnv } from "./test-stack-env.mjs"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const secretKeys = [
@@ -63,6 +64,19 @@ if (has("version", "--short")) console.log(process.env.TEST_COMPOSE_VERSION || "
 if (has("config")) {
   const result = spawnSync(process.env.TEST_REAL_DOCKER, args, { stdio: "inherit" })
   process.exit(result.status ?? 1)
+}
+// Resolve migrate's environment at the installer's actual deployment boundary,
+// after it clears Compose overrides. Record only the telemetry settings.
+if (has("up", "--exit-code-from", "migrate") && process.env.TEST_CAPTURE_MIGRATE_ENV==="1") {
+  const result = spawnSync(process.env.TEST_REAL_DOCKER,
+    [...args.slice(0, args.indexOf("up")), "config", "--format", "json"],
+    { encoding: "utf8" })
+  if (result.status!==0) { process.stderr.write(result.stderr); process.exit(result.status ?? 1) }
+  const env = JSON.parse(result.stdout).services.migrate.environment
+  writeFileSync(process.env.TEST_MIGRATE_ENV, JSON.stringify({
+    OPENSEND_TELEMETRY: env.OPENSEND_TELEMETRY,
+    OPENSEND_TELEMETRY_URL: env.OPENSEND_TELEMETRY_URL,
+  }))
 }
 if (has("ps", "convex") && process.env.TEST_NO_CONTAINER!=="1") console.log("test-convex-container")
 if (has("ps", "migrate") && process.env.TEST_NO_CONTAINER!=="1" && process.env.TEST_NO_MIGRATE_CONTAINER!=="1") console.log("test-log-container\\ntest-migrate-container")
@@ -115,6 +129,7 @@ if (has("image", "inspect") && process.env.TEST_FAIL==="missing-image") process.
     TEST_ADMIN: randomBytes(32).toString("hex"),
     TEST_LOG: log,
     TEST_REAL_DOCKER: realDocker,
+    TEST_MIGRATE_ENV: join(dir, "migrate-env.json"),
   }
   for (const key of Object.keys(env))
     if (
@@ -182,6 +197,7 @@ if (has("image", "inspect") && process.env.TEST_FAIL==="missing-image") process.
     run,
     settings,
     commands,
+    migrateEnv: () => JSON.parse(readFileSync(env.TEST_MIGRATE_ENV, "utf8")),
     clear,
     composeConfig,
     failAssets: () => {
@@ -757,40 +773,42 @@ test("cloud scenario persists its isolated project through rerun, upgrade and un
   assert.ok(f.commands().some((args) => args.includes("down")))
 })
 
-test("fresh telemetry install prepares Compose before seeding env and preserves configuration", async (t) => {
-  const f = await fixture(t)
-  const filename = join(f.installation, ".env")
-  await configureTestStack(filename, async () => {
-    const result = await f.run(["--no-start"], testStackEnv)
+for (const mode of ["self", "cloud"]) {
+  test(`${mode} fresh install forwards child telemetry settings to migrate without env seeding`, async (t) => {
+    const f = await fixture(t)
+    assert.equal(existsSync(join(f.installation, ".env")), false)
+    const flags =
+      mode === "cloud"
+        ? ["--convex", "cloud", "--deploy-key", "dev:fake-name|token"]
+        : []
+    const result = await f.run(flags, {
+      ...testStackEnv,
+      TEST_CAPTURE_MIGRATE_ENV: "1",
+    })
     assert.equal(result.code, 0, result.output)
+    assert.ok(!result.output.includes("starting the prepared configuration"))
+    assert.equal(f.settings().OPENSEND_TELEMETRY, "1")
+    // The URL comes from the child environment, not a harness-created env file.
+    assert.equal(f.settings().OPENSEND_TELEMETRY_URL, undefined)
+    assert.deepEqual(f.migrateEnv(), testStackEnv)
+    const calls = f.commands()
     assert.ok(
-      !f
-        .commands()
-        .some(
-          (args) =>
-            args.includes("ps") || args.includes("up") || args.includes("stop")
-        )
+      !calls.some(
+        (args) =>
+          args.includes("ps") ||
+          args.includes("--mount") ||
+          args.includes("stop")
+      )
+    )
+    const migrate = calls.findIndex(
+      (args) => args.includes("up") && args.includes("--exit-code-from")
+    )
+    const app = calls.findIndex(
+      (args) => args.includes("up") && args.includes("app")
+    )
+    assert.ok(
+      migrate >= 0 && app > migrate,
+      "fresh install starts app after migrate"
     )
   })
-  const prepared = f.settings()
-  assert.equal(prepared.OPENSEND_TELEMETRY, "1")
-  assert.equal(prepared.OPENSEND_TELEMETRY_URL, "http://127.0.0.1:9/telemetry")
-  assert.match(prepared.COMPOSE_PROJECT_NAME, /^opensend-install-config-/)
-  const config = f.composeConfig()
-  assert.equal(
-    config.services.migrate.environment.OPENSEND_TELEMETRY_URL,
-    testStackEnv.OPENSEND_TELEMETRY_URL
-  )
-  const result = await f.run([], { ...testStackEnv, TEST_NO_CONTAINER: "1" })
-  assert.equal(result.code, 0, result.output)
-  assert.match(
-    result.output,
-    /No existing Convex data volume; starting the prepared configuration/
-  )
-  assert.deepEqual(f.settings(), prepared)
-  assert.ok(
-    !f
-      .commands()
-      .some((args) => args.includes("--mount") || args.includes("stop"))
-  )
-})
+}
