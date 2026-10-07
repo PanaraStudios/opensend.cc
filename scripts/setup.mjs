@@ -7,6 +7,14 @@ const filename = resolve(process.env.OPENSEND_ENV_FILE || ".env.docker")
 const env = existsSync(filename) ? parse(readFileSync(filename, "utf8")) : {}
 for (const [key, value] of convexEnvEntries(process.env)) env[key] ||= value
 const defaults = {
+  OPENSEND_TELEMETRY: "1",
+  OPENSEND_INSTALL_METHOD: "source",
+  OPENSEND_ARCH:
+    process.arch === "x64"
+      ? "amd64"
+      : process.arch === "arm64"
+        ? "arm64"
+        : "unknown",
   INSTANCE_NAME: "opensend",
   INSTANCE_SECRET: randomBytes(32).toString("hex"),
   BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),

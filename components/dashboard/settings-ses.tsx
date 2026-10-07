@@ -1,4 +1,5 @@
 "use client"
+import { TelemetrySettings } from "./settings-telemetry"
 import { FileStorageSettings } from "./file-storage"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
@@ -50,6 +51,7 @@ export function SettingsSes() {
   return (
     <div className="flex max-w-3xl flex-col gap-6" data-testid="ses-settings">
       <FileStorageSettings />
+      <TelemetrySettings />
       <p className="text-sm text-muted-foreground">
         Manage the AWS connection used by all teams.
       </p>

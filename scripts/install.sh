@@ -20,6 +20,7 @@ Usage: install.sh [install|upgrade [version]|uninstall|help] [options]
   --deploy-key KEY     Cloud deploy key (CONVEX_DEPLOY_KEY; prompted without echo)
   --convex-url URL     Cloud deployment URL (CONVEX_URL; derived from deploy key)
   --convex-site-url URL  Cloud HTTP site URL (CONVEX_SITE_URL; derived from URL)
+  --telemetry yes|no    Anonymous usage statistics (default yes)
   --caddy yes|no       HTTPS proxy (OPENSEND_CADDY; yes)
   --upgrade            Alias for the upgrade command
   --calling yes|no     Enable media services (OPENSEND_CALLING; no)
@@ -54,6 +55,9 @@ version=${OPENSEND_VERSION:-}
 domain=${OPENSEND_DOMAIN:-}
 api_domain=${OPENSEND_API_DOMAIN:-}
 realtime_domain=${OPENSEND_REALTIME_DOMAIN:-}
+telemetry=${OPENSEND_TELEMETRY:-1}
+telemetry_explicit=0
+case $telemetry in 0) telemetry=no ;; 1) telemetry=yes ;; esac
 caddy=${OPENSEND_CADDY:-yes}
 yes=${OPENSEND_YES:-0}
 local=${OPENSEND_LOCAL:-0}
@@ -82,11 +86,12 @@ if [ "$command" = upgrade ] && [ "$#" -gt 0 ]; then
 fi
 while [ "$#" -gt 0 ]; do
   case $1 in
-    --dir|--version|--domain|--api-domain|--realtime-domain|--caddy|--source-url|--convex|--deploy-key|--convex-url|--convex-site-url|--calling|--calling-domain|--calling-public-ip|--calling-wss-port|--calling-cert-dir|--janus-rtp-range|--freeswitch-rtp-range|--turn|--turn-port|--turn-relay-range)
+    --dir|--version|--domain|--api-domain|--realtime-domain|--caddy|--telemetry|--source-url|--convex|--deploy-key|--convex-url|--convex-site-url|--calling|--calling-domain|--calling-public-ip|--calling-wss-port|--calling-cert-dir|--janus-rtp-range|--freeswitch-rtp-range|--turn|--turn-port|--turn-relay-range)
       [ "$#" -ge 2 ] || die "Missing value for $1"
       case $1 in
         --dir) dir=$2 ;; --version) version=$2 ;; --domain) domain=$2 ;;
         --api-domain) api_domain=$2 ;; --realtime-domain) realtime_domain=$2 ;;
+        --telemetry) telemetry=$2; telemetry_explicit=1 ;;
         --caddy) caddy=$2 ;; --source-url) source_url=$2 ;;
         --convex) convex_mode=$2 ;; --deploy-key) deploy_key=$2 ;;
         --convex-url) convex_url=$2 ;; --convex-site-url) convex_site_url=$2 ;;
@@ -105,6 +110,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 if [ "$command" = help ]; then help; exit 0; fi
+case $telemetry in yes|no) ;; *) die '--telemetry must be yes or no' ;; esac
 case $caddy in yes|no) ;; *) die '--caddy must be yes or no' ;; esac
 [ "$purge" = 0 ] || [ "$command" = uninstall ] || die '--purge requires uninstall'
 
@@ -381,7 +387,7 @@ for asset in compose.yaml compose.caddy.yaml compose.cloud.yaml compose.cloud-ca
 done
 
 clear_compose_env() {
-  unset APP_IMAGE MIGRATE_IMAGE SMTP_IMAGE CONVEX_IMAGE APP_PORT CONVEX_PORT CONVEX_SITE_PORT COMPOSE_PROJECT_NAME COMPOSE_FILE OPENSEND_VERSION COMPOSE_PROFILES
+  unset APP_IMAGE MIGRATE_IMAGE SMTP_IMAGE CONVEX_IMAGE APP_PORT CONVEX_PORT CONVEX_SITE_PORT COMPOSE_PROJECT_NAME COMPOSE_FILE OPENSEND_VERSION OPENSEND_TELEMETRY OPENSEND_INSTALL_METHOD OPENSEND_ARCH COMPOSE_PROFILES
   unset JANUS_IMAGE FREESWITCH_IMAGE DRACHTIO_IMAGE COTURN_IMAGE CALL_GATEWAY_IMAGE VOICE_AGENT_IMAGE
   unset CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT CONVEX_SELF_HOSTED_URL CONVEX_URL CONVEX_SITE_URL
   unset INSTANCE_NAME INSTANCE_SECRET BETTER_AUTH_SECRET SSO_ENCRYPTION_KEY CONVEX_SELF_HOSTED_ADMIN_KEY SITE_URL CONVEX_PUBLIC_URL CONVEX_PUBLIC_SITE_URL CONVEX_BACKEND_ORIGIN
@@ -502,6 +508,18 @@ put_env() {
 }
 # Append missing defaults only. Never rotate an existing secret, even on upgrade.
 put_env OPENSEND_CONVEX "$convex_mode"
+telemetry_value=1
+[ "$telemetry" != no ] || telemetry_value=0
+telemetry_mode=keep
+[ "$telemetry_explicit" = 0 ] || telemetry_mode=replace
+put_env OPENSEND_TELEMETRY "$telemetry_value" "$telemetry_mode"
+put_env OPENSEND_INSTALL_METHOD script
+case $(uname -m) in
+  x86_64|amd64) telemetry_arch=amd64 ;;
+  aarch64|arm64) telemetry_arch=arm64 ;;
+  *) telemetry_arch=unknown ;;
+esac
+put_env OPENSEND_ARCH "$telemetry_arch"
 secret_keys="BETTER_AUTH_SECRET SSO_ENCRYPTION_KEY"
 if [ "$convex_mode" = self ]; then
   put_env INSTANCE_NAME opensend

@@ -90,4 +90,11 @@ crons.interval(
   {}
 )
 
+crons.interval(
+  "anonymous usage statistics",
+  { hours: 24 },
+  internal.telemetry.dispatch,
+  {}
+)
+
 export default crons

@@ -82,6 +82,7 @@ jobs:
           context: ${{ env.CONTEXT }}
           file: ${{ env.DOCKERFILE }}
           target: ${{ env.TARGET }}
+          build-args: ${{ matrix.image == 'migrate' && format('RELEASE_TAG={0}', env.RELEASE_TAG) || '' }}
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=ghcr.io/panarastudios/opensend-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest

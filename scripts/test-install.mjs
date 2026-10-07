@@ -13,8 +13,10 @@ import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { freePort, parse } from "./lib.mjs"
+import { testStackEnv } from "./test-stack-env.mjs"
 import { guardedDockerEnv, testProject } from "./test-compose.mjs"
 import { waitForLogStream } from "./test-log-stream.mjs"
+Object.assign(process.env, testStackEnv)
 
 // These tests use a Docker shim plus real Compose config parsing, with no daemon,
 // Meta, SES, media services or public network required.
@@ -64,6 +66,8 @@ for (const key of Object.keys(composeEnv))
     ].includes(key)
   )
     delete composeEnv[key]
+Object.assign(composeEnv, testStackEnv)
+composeEnv.COMPOSE_PROJECT_NAME = project
 let server
 let logs
 let logText = ""
@@ -337,6 +341,8 @@ try {
     const config = JSON.parse(
       await cloudCompose(["--profile", "smtp", "config", "--format", "json"])
     )
+    for (const [key, value] of Object.entries(testStackEnv))
+      assert.equal(config.services.migrate.environment[key], value)
     assert.equal(config.services.convex, undefined)
     assert.equal(config.services.migrate.depends_on, undefined)
     assert.equal(
@@ -446,6 +452,10 @@ try {
   await install("install", "itest-a")
   await healthy()
   const initial = settings()
+  assert.equal(initial.OPENSEND_TELEMETRY, testStackEnv.OPENSEND_TELEMETRY)
+  const config = JSON.parse(await compose(["config", "--format", "json"], true))
+  for (const [key, value] of Object.entries(testStackEnv))
+    assert.equal(config.services.migrate.environment[key], value)
   assert.equal(statSync(resolve(directory, ".env")).mode & 0o777, 0o600)
   assert.equal(initial.COMPOSE_PROJECT_NAME, project)
   assert.equal(

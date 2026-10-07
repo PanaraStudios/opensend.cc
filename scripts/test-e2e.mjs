@@ -11,8 +11,10 @@ import { spawn, spawnSync } from "node:child_process"
 import { lookup } from "node:dns/promises"
 import { resolve } from "node:path"
 import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
+import { testStackEnv, writeTestStackEnv } from "./test-stack-env.mjs"
 import { guardedDockerEnv } from "./test-compose.mjs"
 import { startFakeGraph } from "../tests/e2e/fake-graph.mjs"
+Object.assign(process.env, testStackEnv)
 const project = `opensend-e2e-${Date.now()}-${randomBytes(3).toString("hex")}`
 const filename = resolve(`.env.playwright-${project}`)
 const [appPort, convexPort, sitePort, oidcPort, graphPort] = await Promise.all(
@@ -100,15 +102,10 @@ const values = {
     ? { CONVEX_IMAGE: process.env.E2E_CONVEX_IMAGE || local.CONVEX_IMAGE }
     : {}),
 }
-writeFileSync(
-  filename,
-  Object.entries(values)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("\n") + "\n",
-  { mode: 0o600 }
-)
+writeTestStackEnv(filename, values)
 const env = {
   ...process.env,
+  ...testStackEnv,
   OPENSEND_ENV_FILE: filename,
   COMPOSE_PROJECT_NAME: project,
   COMPOSE_FILE: composeFiles.join(":"),
