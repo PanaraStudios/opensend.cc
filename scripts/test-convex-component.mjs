@@ -18,7 +18,10 @@ import { freePort, parse, removeTestInstance } from "./lib.mjs"
 import { guardedDockerEnv } from "./test-compose.mjs"
 import { testStackEnv, writeTestStackEnv } from "./test-stack-env.mjs"
 import { CONVEX_ENV_KEYS } from "./convex-env.mjs"
-import { writeComponentFixtures } from "./convex-component-fixtures.mjs"
+import {
+  prepareComponentMount,
+  writeComponentFixtures,
+} from "./convex-component-fixtures.mjs"
 import { sesFixtureNotification } from "../tests/e2e/ses-fixture-data.mjs"
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
@@ -81,7 +84,8 @@ function execute(
       activeChild = undefined
       reject(error)
     })
-    child.once("exit", (code) => {
+    // Wait for stdout/stderr to close before parsing captured CLI JSON.
+    child.once("close", (code) => {
       clearInterval(heartbeat)
       activeChild = undefined
       if (code === 0) resolveResult(output.trim())
@@ -211,6 +215,9 @@ try {
     project,
     endpoint: `http://host.docker.internal:${exampleSitePort}/opensend/webhook`,
   })
+  // The migrate image runs as uid 1000, which may differ from the Linux host
+  // user. Codegen needs writable generated files in the disposable bind mount.
+  prepareComponentMount(join(staging, "convex"))
   const local = existsSync(".env.docker")
     ? parse(readFileSync(".env.docker", "utf8"))
     : {}
@@ -329,6 +336,12 @@ volumes:
     ...isolatedEnv(env),
     CONVEX_SELF_HOSTED_URL: `http://127.0.0.1:${examplePort}`,
     CONVEX_SELF_HOSTED_ADMIN_KEY: exampleKey,
+    // Apply the consumer policy to later pnpm exec/run commands too, including
+    // their automatic dependency checks. Environment/global strict defaults
+    // must not undo the explicit install policy.
+    pnpm_config_strict_dep_builds: "false",
+    pnpm_config_ignore_scripts: "false",
+    pnpm_config_dangerously_allow_all_builds: "false",
   }
   pass("isolated opensend and example backends")
 
@@ -361,36 +374,48 @@ volumes:
   const manifest = JSON.parse(
     readFileSync(join(example, "package.json"), "utf8")
   )
-  manifest.packageManager = JSON.parse(
-    readFileSync(resolve("package.json"), "utf8")
-  ).packageManager
+  const rootManifest = JSON.parse(readFileSync(resolve("package.json"), "utf8"))
+  manifest.packageManager = rootManifest.packageManager
+  // Workpool's runtime peer must match the pinned Convex version. Letting
+  // pnpm choose the newest helper can require a newer Convex and fail strict
+  // peer checks; declare the same compatible pair this checkout tests.
+  manifest.dependencies["convex-helpers"] =
+    rootManifest.dependencies["convex-helpers"]
   manifest.dependencies["@opensendcc/convex"] =
     `file:${join(packs, "opensendcc-convex-0.1.0.tgz")}`
   // pnpm 11 reads overrides from pnpm-workspace.yaml, not package.json.
   writeFileSync(
     join(example, "pnpm-workspace.yaml"),
-    "packages: []\nallowBuilds:\n  esbuild: true\noverrides:\n  '@opensendcc/sdk': " +
+    // Only the Convex CLI's esbuild needs an install script. The consumer
+    // uses this checkout's linter, so it has no Next.js/native resolver tree.
+    // Unknown optional scripts stay blocked without failing strict pnpm 11.
+    "packages: []\nstrictDepBuilds: false\nallowBuilds:\n  esbuild: true\n  unrs-resolver: false\n  fsevents: false\noverrides:\n  '@opensendcc/sdk': " +
       JSON.stringify("file:" + join(packs, "opensendcc-sdk-0.1.2.tgz")) +
       "\n"
   )
   manifest.dependencies.convex = JSON.parse(
     readFileSync(resolve("node_modules/convex/package.json"), "utf8")
   ).version
-  // Lint the tarball consumer too, using the package's own configuration.
-  manifest.devDependencies.eslint = "^9"
-  manifest.devDependencies["eslint-config-next"] = "16.2.6"
   writeFileSync(
     join(example, "package.json"),
     JSON.stringify(manifest, null, 2)
   )
-  cpSync(
-    resolve("packages/convex/eslint.config.mjs"),
-    join(example, "eslint.config.mjs")
+  // CLI flags override inherited CI/environment/global settings. A fresh
+  // consumer has no lockfile, and optional blocked scripts must not be fatal.
+  await execute(
+    "pnpm",
+    [
+      "install",
+      "--no-frozen-lockfile",
+      "--config.strict-dep-builds=false",
+      "--config.ignore-scripts=false",
+      "--config.dangerously-allow-all-builds=false",
+    ],
+    {
+      cwd: example,
+      childEnv: exampleEnv,
+    }
   )
-  await execute("pnpm", ["install"], {
-    cwd: example,
-    childEnv: exampleEnv,
-  })
   const installed = JSON.parse(
     readFileSync(
       join(example, "node_modules/@opensendcc/convex/package.json"),
@@ -416,7 +441,21 @@ volumes:
   )
   await cli(["deploy", "--yes"], { cwd: example, childEnv: exampleEnv })
   await execute("pnpm", ["typecheck"], { cwd: example, childEnv: exampleEnv })
-  await execute("pnpm", ["lint"], { cwd: example, childEnv: exampleEnv })
+  // Resolve the executable/config from the checkout but lint from the consumer
+  // cwd, so ESLint includes the temporary files rather than ignoring them as
+  // outside its base path. No lint dependencies are added to the consumer.
+  await execute(
+    process.execPath,
+    [
+      resolve("node_modules/eslint/bin/eslint.js"),
+      "--config",
+      resolve("packages/convex/eslint.config.mjs"),
+      "convex",
+      "--max-warnings",
+      "0",
+    ],
+    { cwd: example, childEnv: exampleEnv }
+  )
   pass("tarball exports, installation, deployment, typecheck, lint")
 
   const fixture = await runProduct("componentFixture:seed", {

@@ -1,6 +1,22 @@
-import { readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { syntheticSesConnection } from "../tests/e2e/ses-fixture-data.mjs"
+
+/** Normalize only the disposable Convex bind mount. Container codegen runs as
+ * uid 1000 even when the host owns these copies under a different uid/umask.
+ * Handwritten sources are readable; only generated output is writable.
+ */
+export function prepareComponentMount(directory, generated = false) {
+  chmodSync(directory, generated ? 0o777 : 0o755)
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name)
+    if (entry.isSymbolicLink())
+      throw new Error("Refusing symlink in disposable Convex bind mount")
+    if (entry.isDirectory())
+      prepareComponentMount(path, generated || entry.name === "_generated")
+    else if (entry.isFile()) chmodSync(path, generated ? 0o666 : 0o644)
+  }
+}
 
 /** Test-only modules written into a disposable deployment, never the product
  * checkout. Reuse the existing SES claim/record and SNS projection boundaries.
