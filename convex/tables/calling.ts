@@ -113,6 +113,10 @@ export const callingTables = {
     botDuration: v.optional(v.number()),
     botUsage: v.optional(voiceUsage),
     botSessionUsage: v.optional(voiceUsage),
+    // Admission counters saturate at 2,001 rows / 128 tools. Older calls
+    // initialize them from a bounded indexed scan on admission or insertion.
+    admissionTranscriptCount: v.optional(v.number()),
+    admissionToolCount: v.optional(v.number()),
     operation: v.optional(v.string()),
     operationUntil: v.optional(v.number()),
   })
