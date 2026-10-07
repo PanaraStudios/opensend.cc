@@ -9,6 +9,12 @@ import {
 } from "./broadcastMessaging"
 import { primaryContactIdentity } from "./audience"
 import { contactChannelIdentityValue } from "./contacts"
+import {
+  publicRecipientValue,
+  publicRecipient,
+  readPageDocuments,
+  recipientMessageStatuses,
+} from "./broadcastReadModel"
 import { ConvexError, v, type Infer } from "convex/values"
 import {
   paginationOptsValidator,
@@ -235,6 +241,8 @@ export async function sendWhatsAppRecipient(
     contactId: contact._id,
     email: contact.email ?? "",
     messageId,
+    displayIdentity: await primaryContactIdentity(ctx, contact),
+    displayMessageStatus: messageId ? "queued" : null,
     skipReason: reason ?? undefined,
     settled: !!reason,
     failed: false,
@@ -395,7 +403,7 @@ export const review = action({
 export const recipients = query({
   args: { ...scope, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(
-    schema.doc("broadcastRecipients").extend({
+    publicRecipientValue.extend({
       phone: v.optional(v.string()),
       contact: v.union(
         v.null(),
@@ -415,31 +423,40 @@ export const recipients = query({
       .query("broadcastRecipients")
       .withIndex("by_broadcastId_and_contactId", (q) => q.eq("broadcastId", id))
       .paginate(paginationOpts)
-    const page = []
-    for (const recipient of result.page) {
-      const contact = await ctx.db.get("contacts", recipient.contactId)
-      const message = recipient.messageId
-        ? await ctx.db.get("channelMessages", recipient.messageId)
-        : null
-      page.push({
-        contact:
-          contact?.organizationId === organizationId
-            ? {
-                ...contact,
-                channelIdentity: await primaryContactIdentity(ctx, contact),
-              }
+    const contacts = await readPageDocuments(
+      ctx,
+      "contacts",
+      result.page.map((r) => r.contactId)
+    )
+    const statuses = recipientMessageStatuses(ctx, organizationId)
+    const identities = new Map<
+      Doc<"contacts">["_id"],
+      ReturnType<typeof primaryContactIdentity>
+    >()
+    const page = await Promise.all(
+      result.page.map(async (recipient) => {
+        const loaded = contacts.get(recipient.contactId)
+        const contact =
+          loaded?.organizationId === organizationId ? loaded : null
+        let channelIdentity = recipient.displayIdentity
+        if (contact && channelIdentity === undefined) {
+          let identity = identities.get(contact._id)
+          if (!identity) {
+            identity = primaryContactIdentity(ctx, contact)
+            identities.set(contact._id, identity)
+          }
+          channelIdentity = await identity
+        }
+        return {
+          ...publicRecipient(recipient),
+          contact: contact
+            ? { ...contact, channelIdentity: channelIdentity ?? null }
             : null,
-        messageStatus:
-          message?.organizationId === organizationId
-            ? message.status
-            : undefined,
-        ...recipient,
-        phone:
-          contact?.organizationId === organizationId
-            ? contact.phone
-            : undefined,
+          phone: contact?.phone,
+          messageStatus: await statuses(recipient),
+        }
       })
-    }
+    )
     return { ...result, page }
   },
 })
