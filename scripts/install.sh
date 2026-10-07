@@ -386,7 +386,7 @@ clear_compose_env() {
   unset CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT CONVEX_SELF_HOSTED_URL CONVEX_URL CONVEX_SITE_URL
   unset INSTANCE_NAME INSTANCE_SECRET BETTER_AUTH_SECRET SSO_ENCRYPTION_KEY CONVEX_SELF_HOSTED_ADMIN_KEY SITE_URL CONVEX_PUBLIC_URL CONVEX_PUBLIC_SITE_URL CONVEX_BACKEND_ORIGIN
   unset CALL_GATEWAY_URL CALL_GATEWAY_SECRET CALL_AGENT_WSS_URL CALL_AGENT_QUEUES VOICE_AGENT_SECRET JANUS_API_SECRET FREESWITCH_ESL_SECRET FREESWITCH_SIP_SECRET FREESWITCH_DIRECTORY_SECRET DRACHTIO_SECRET
-  unset CALLING_WSS_PORT FREESWITCH_CERT_DIR JANUS_RTP_RANGE FREESWITCH_RTP_RANGE JANUS_PUBLIC_IP FREESWITCH_PUBLIC_IP CALL_GATEWAY_CONVEX_HTTP_URL CALL_TURN_PUBLIC_IP CALL_TURN_PASSWORD CALL_TURN_PORT CALL_TURN_RELAY_RANGE
+  unset CALLING_WSS_PORT FREESWITCH_CERT_DIR JANUS_RTP_RANGE FREESWITCH_RTP_RANGE JANUS_PUBLIC_IP FREESWITCH_PUBLIC_IP CALL_GATEWAY_CONVEX_HTTP_URL CALL_TURN_PUBLIC_IP CALL_TURN_PASSWORD CALL_TURN_SECRET CALL_TURN_URLS CALL_STUN_URLS CALL_TURN_REALM CALL_TURN_TLS_PORT CALL_TURN_CERT_DIR CALL_TURN_CERT_FILE CALL_TURN_KEY_FILE CALL_TURN_PORT CALL_TURN_RELAY_RANGE
   if [ "$convex_mode" = cloud ]; then unset SES_CALLBACK_ORIGIN; fi
 }
 backup() (
@@ -577,7 +577,16 @@ if [ "$calling" = yes ]; then
     put_env CALL_TURN_PUBLIC_IP "$calling_ip"
     put_env CALL_TURN_PORT "$turn_port"
     put_env CALL_TURN_RELAY_RANGE "$turn_range"
-    secret_keys="$secret_keys CALL_TURN_PASSWORD"
+    put_env CALL_STUN_URLS "stun:$calling_domain:$turn_port"
+    put_env CALL_TURN_URLS "turn:$calling_domain:$turn_port?transport=udp,turn:$calling_domain:$turn_port?transport=tcp"
+    if [ -z "$(get_env CALL_TURN_SECRET 2>/dev/null || true)" ]; then
+      put_env CALL_TURN_SECRET "$(random_secret)" replace
+    fi
+    # Retire the unused long-term browser password on older installations.
+    if has_env CALL_TURN_PASSWORD; then
+      awk 'index($0, "CALL_TURN_PASSWORD=") != 1 { print }' "$env_file" > "$env_file.tmp"
+      mv "$env_file.tmp" "$env_file"
+    fi
   fi
   for key in $secret_keys; do
     if ! has_env "$key"; then put_env "$key" "$(random_secret)"; fi
@@ -633,7 +642,7 @@ if [ "$calling" = yes ]; then
   say "Calling firewall: TCP $wss_port; UDP $janus_range and $fs_range. Keep media ports mapped 1:1."
   if [ "$turn" = yes ]; then
     say "TURN firewall: TCP/UDP $turn_port; UDP $turn_range."
-    warn 'The current dashboard does not use TURN automatically; its browser adapter needs iceServers support. See docs/browser-softphone.md.'
+    say 'Browser agents receive short-lived relay credentials. See docs/browser-softphone.md.'
   fi
 fi
 say 'For Meta channels, finish the public callback and Meta app steps in the installation wizard.'

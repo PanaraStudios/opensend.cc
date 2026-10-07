@@ -31,7 +31,7 @@ const secretKeys = [
   "FREESWITCH_DIRECTORY_SECRET",
   "DRACHTIO_SECRET",
   "VOICE_AGENT_SECRET",
-  "CALL_TURN_PASSWORD",
+  "CALL_TURN_SECRET",
 ]
 
 async function fixture(t) {
@@ -247,6 +247,7 @@ test("calling and TURN flags reach Compose, services and backend, without starti
   privateOutput(result, env)
   assert.equal(env.COMPOSE_PROFILES, "calling,calling-turn")
   assert.equal(env.CALL_AGENT_WSS_URL, "wss://calling.example.test:8443")
+  assert.equal(env.CALL_STUN_URLS, "stun:calling.example.test:3479")
   assert.equal(env.JANUS_PUBLIC_IP, "192.0.2.10")
   assert.equal(env.FREESWITCH_PUBLIC_IP, env.JANUS_PUBLIC_IP)
   for (const key of secretKeys) assert.match(env[key], /^[a-f0-9]{64}$/)
@@ -267,6 +268,7 @@ test("calling and TURN flags reach Compose, services and backend, without starti
     "CALL_GATEWAY_URL",
     "CALL_GATEWAY_SECRET",
     "CALL_AGENT_WSS_URL",
+    "CALL_STUN_URLS",
   ])
     assert.equal(config.services.migrate.environment[key], env[key])
   assert.equal(config.services.janus.environment.JANUS_RTP_RANGE, "22000-22199")
@@ -636,6 +638,88 @@ test("public calling needs a public IP and a certificate directory before startu
     f.settings()
   )
   assert.equal(f.settings().FREESWITCH_CERT_DIR, certDir)
+})
+
+test("legacy TURN password migrates to a new REST secret, retained on upgrades", async (t) => {
+  const f = await fixture(t)
+  await f.run(["--no-start", ...callingFlags])
+  const path = join(f.installation, ".env")
+  const legacy = randomBytes(32).toString("hex")
+  writeFileSync(
+    path,
+    readFileSync(path, "utf8")
+      .replace(/^CALL_TURN_SECRET=.*$/m, `CALL_TURN_PASSWORD=${legacy}`)
+      .replace(/^CALL_TURN_URLS=.*\n/m, "")
+  )
+  const migrated = await f.run([
+    "--upgrade",
+    "--no-start",
+    "--version",
+    "itest-b",
+  ])
+  const env = f.settings()
+  privateOutput(migrated, env)
+  assert.equal(migrated.output.includes(legacy), false)
+  assert.equal(/^[a-f0-9]{64}$/.test(env.CALL_TURN_SECRET), true)
+  assert.equal(env.CALL_TURN_SECRET === legacy, false)
+  assert.equal(env.CALL_TURN_PASSWORD, undefined)
+  assert.equal(
+    env.CALL_TURN_URLS,
+    "turn:calling.example.test:3479?transport=udp,turn:calling.example.test:3479?transport=tcp"
+  )
+  const config = f.composeConfig()
+  assert.equal(
+    config.services.coturn.environment.CALL_TURN_SECRET ===
+      env.CALL_TURN_SECRET,
+    true
+  )
+  assert.equal(
+    config.services.migrate.environment.CALL_TURN_SECRET ===
+      env.CALL_TURN_SECRET,
+    true
+  )
+  assert.equal(config.services.app.environment.CALL_TURN_SECRET, undefined)
+  assert.equal(config.services.coturn.environment.CALL_TURN_PASSWORD, undefined)
+  await f.run(["--upgrade", "--no-start", "--version", "itest-c"])
+  assert.equal(f.settings().CALL_TURN_SECRET === env.CALL_TURN_SECRET, true)
+})
+
+test("plain TURN keeps custom port 5349 without reserving an inactive TLS listener", async (t) => {
+  const f = await fixture(t)
+  privateOutput(
+    await f.run(["--no-start", ...callingFlags, "--turn-port", "5349"]),
+    f.settings()
+  )
+  assert.equal(f.settings().CALL_TURN_PORT, "5349")
+  assert.equal(f.settings().CALL_STUN_URLS, "stun:calling.example.test:5349")
+  const ports = f.composeConfig().services.coturn.ports
+  assert.equal(
+    ports.filter((p) => p.target === 5349 && p.protocol === "tcp").length,
+    1
+  )
+})
+
+test("TURN upgrade preserves an operator's STUN override", async (t) => {
+  const f = await fixture(t)
+  privateOutput(await f.run(["--no-start", ...callingFlags]), f.settings())
+  const path = join(f.installation, ".env")
+  const stun = "stun:operator.example.test:19302"
+  writeFileSync(
+    path,
+    readFileSync(path, "utf8").replace(
+      /^CALL_STUN_URLS=.*$/m,
+      `CALL_STUN_URLS=${stun}`
+    )
+  )
+  privateOutput(
+    await f.run(["--upgrade", "--no-start", "--version", "itest-b"]),
+    f.settings()
+  )
+  assert.equal(f.settings().CALL_STUN_URLS, stun)
+  assert.equal(
+    f.composeConfig().services.migrate.environment.CALL_STUN_URLS,
+    stun
+  )
 })
 
 test("cloud scenario persists its isolated project through rerun, upgrade and uninstall", async (t) => {

@@ -314,33 +314,20 @@ unsent events. There is no durable outbox or automatic session recovery in 8b.
 
 ## Optional agent TURN
 
-`coturn` is excluded from `--profile calling`; opt in with
-`--profile calling --profile calling-turn`. It is built from the pinned Debian
-base with Debian's coturn package. Set `CALL_TURN_PUBLIC_IP` to its public IPv4 and
-`CALL_TURN_PASSWORD` to a separate `openssl rand -hex 32` value. It uses realm
-`opensend-calling`, username `agent`, authenticated long-term credentials, and
-UDP or TCP TURN on 3478, with UDP relay ports 20800–20999. Forward these ports
-1:1 and keep FreeSWITCH's browser RTP ports accessible from the relay.
+`coturn` is excluded from `--profile calling`; opt in with `--turn yes` in the
+installer or `--profile calling --profile calling-turn` manually. It uses TURN
+REST authentication with `use-auth-secret`, private `CALL_TURN_SECRET` and realm
+`opensend-calling` (override with `CALL_TURN_REALM`). The dashboard automatically
+fetches one-hour HMAC credentials for its owned agent session and refreshes them
+before expiry. Static `CALL_TURN_PASSWORD` credentials are retired on upgrade.
 
-In an operator SIP.js adapter configure:
-
-```ts
-sessionDescriptionHandlerFactoryOptions: {
-  peerConnectionConfiguration: {
-    iceServers: [{
-      urls: ["turn:calling.example.com:3478?transport=udp", "turn:calling.example.com:3478?transport=tcp"],
-      username: "agent",
-      credential: "<CALL_TURN_PASSWORD delivered only to authorized agents>",
-    }],
-  },
-}
-```
-
-This service does not enable TURN in the dashboard automatically. The shipped
-adapter uses host candidates; secure credential delivery/rotation and adapter
-configuration remain operator work. This optional service does not provide TLS
-TURN on 5349. Add trusted certificates and a separate coturn TLS configuration
-if the network requires `turns:`. It has no Meta-facing role; Meta has no TURN.
+Set `CALL_TURN_PUBLIC_IP` to its public IPv4 address and `CALL_TURN_URLS` in Convex
+to the public UDP/TCP TURN endpoints. Forward TCP/UDP 3478 and UDP relay ports
+20800–20999 1:1 (both configurable), keeping FreeSWITCH's public browser RTP ports
+reachable from the relay. Private, loopback, link-local and multicast peer
+addresses are denied. Optional trusted TLS certificates enable `turns:` on TCP 5349. See [browser TURN configuration](browser-softphone.md#optional-turn-for-agents)
+for certificates, environment and credential delivery. This relay has no
+Meta-facing role.
 
 ## Lead harness: exact commands
 

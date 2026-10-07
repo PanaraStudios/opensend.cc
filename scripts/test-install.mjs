@@ -19,7 +19,11 @@ import { guardedDockerEnv, testProject } from "./test-compose.mjs"
 // Meta, SES, media services or public network required.
 const configTests = spawnSync(
   process.execPath,
-  ["--test", fileURLToPath(new URL("./install.test.mjs", import.meta.url))],
+  [
+    "--test",
+    fileURLToPath(new URL("./install.test.mjs", import.meta.url)),
+    fileURLToPath(new URL("./coturn.test.mjs", import.meta.url)),
+  ],
   { stdio: "inherit" }
 )
 if (configTests.status !== 0) process.exit(configTests.status || 1)

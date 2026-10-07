@@ -1,3 +1,4 @@
+import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter"
 import { ConvexError, v } from "convex/values"
 import {
   internalMutation,
@@ -19,6 +20,21 @@ import { ownedCall, authorize } from "./rows"
 import { CALL_TERMINAL } from "../../lib/meta/calling"
 const browserArgs = { organizationId: v.string(), browserId: v.string() }
 const status = v.union(v.literal("online"), v.literal("away"))
+const iceLimiter = new RateLimiter(components.rateLimiter, {
+  agentIce: { kind: "token bucket", rate: 6, period: MINUTE, capacity: 6 },
+})
+/** Auth and quota share a transaction; the client cannot choose the lease. */
+export const iceSession = internalMutation({
+  args: browserArgs,
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    const row = await agentPresence(ctx, args.organizationId, args.browserId)
+    if (!row.extension || row.expiresAt <= Date.now())
+      throw new ConvexError("Register the softphone first")
+    await iceLimiter.limit(ctx, "agentIce", { key: row.userId, throws: true })
+    return row.leaseId
+  },
+})
 export const begin = internalMutation({
   args: browserArgs,
   returns: schema.doc("callAgents"),

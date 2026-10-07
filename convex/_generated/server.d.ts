@@ -30,6 +30,9 @@ import type { DataModel } from "./dataModel.js";
 type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
+  readonly CALL_STUN_URLS: string | undefined;
+  readonly CALL_TURN_URLS: string | undefined;
+  readonly CALL_TURN_SECRET: string | undefined;
   readonly ALLOW_LOCAL_OIDC: string | undefined;
   readonly BETTER_AUTH_SECRET: string;
   readonly DOMAIN_CONNECT_KEY: string | undefined;

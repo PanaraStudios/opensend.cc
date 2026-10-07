@@ -3,5 +3,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends coturn ca-certi
     && rm -rf /var/lib/apt/lists/*
 COPY entrypoint.sh /entrypoint.sh
 USER nobody
-EXPOSE 3478/tcp 3478/udp 20800-20999/udp
+EXPOSE 3478/tcp 3478/udp 5349/tcp 20800-20999/udp
 ENTRYPOINT ["sh", "/entrypoint.sh"]
