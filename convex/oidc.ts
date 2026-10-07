@@ -12,6 +12,11 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
     organizationId,
   })
   if (!connection) throw new Error("SSO connection not found")
+  // Discovery runs before Better Auth's handler and its rate limits.
+  await ctx.runMutation(internal.botToolkitAccess.reserveOutbound, {
+    organizationId,
+    operation: "oidcDiscovery",
+  })
   const discoveryUrl = `${connection.issuer}/.well-known/openid-configuration`
   const localOrigin =
     env.ALLOW_LOCAL_OIDC === "true"

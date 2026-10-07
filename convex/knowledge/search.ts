@@ -49,6 +49,10 @@ export async function searchKnowledge(
     }
   )
   if (!args.knowledgeBaseIds.length) return { data: [] }
+  await ctx.runMutation(internal.botToolkitAccess.reserveOutbound, {
+    organizationId: args.organizationId,
+    operation: "knowledgeSearch",
+  })
   const vector = await embedText(
     await decryptSecret(encryptedKey),
     args.query,

@@ -34,11 +34,15 @@ export const fetchFile = internalAction({
         })
         if ([301, 302, 303, 307, 308].includes(response.status)) {
           const target = response.headers.get("location")
+          await response.body?.cancel()
           if (!target) break
           url = new URL(target, url).href
           continue
         }
-        if (!response.ok) break
+        if (!response.ok) {
+          await response.body?.cancel()
+          break
+        }
         if (!response.body) break
         const file = await storeFile(ctx, {
           organizationId: caller.organizationId,
