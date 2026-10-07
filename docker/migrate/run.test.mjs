@@ -99,6 +99,7 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
     BETTER_AUTH_SECRET: "",
     SMTP_HOST: "smtp.example.test",
     OPENSEND_TELEMETRY: "0",
+    OPENSEND_TELEMETRY_URL: "http://127.0.0.1:9/telemetry",
     OPENSEND_INSTALL_METHOD: "script",
   })
   assert.equal(code, 0)
@@ -110,6 +111,12 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
     !calls.some((call) => call.args[2]?.startsWith("BETTER_AUTH_SECRET="))
   )
   assert.ok(calls.some((call) => call.args[2] === "OPENSEND_TELEMETRY=0"))
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.args[2] === "OPENSEND_TELEMETRY_URL=http://127.0.0.1:9/telemetry"
+    )
+  )
   assert.ok(
     calls.some((call) => call.args[2] === "OPENSEND_INSTALL_METHOD=script")
   )

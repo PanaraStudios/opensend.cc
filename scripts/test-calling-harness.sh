@@ -2,6 +2,8 @@
 # The only Docker entry point for this lane; every operation holds the shared lock.
 set -eu
 (
+  export OPENSEND_TELEMETRY=1
+  export OPENSEND_TELEMETRY_URL=http://127.0.0.1:9/telemetry
   c() { docker compose --env-file .env.calling-test -f compose.yaml -f docker/compose.calling-test.yaml --profile calling --profile calling-test -p opensend-calling-test "$@"; }
   if [ ! -f .env.calling-test ]; then
     umask 077
@@ -11,6 +13,7 @@ set -eu
   elif ! grep -q '^VOICE_AGENT_SECRET=.' .env.calling-test; then
     printf 'VOICE_AGENT_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env.calling-test
   fi
+  node scripts/test-stack-env.mjs .env.calling-test
   until mkdir /private/tmp/opensend-calling-harness.lock 2>/dev/null; do sleep 30; done
   finish() {
     harness_status=$?

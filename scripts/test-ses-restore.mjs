@@ -2,6 +2,8 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { randomBytes } from "node:crypto"
 import { resolve } from "node:path"
 import { freePort, parse, removeTestInstance, run } from "./lib.mjs"
+import { testStackEnv, writeTestStackEnv } from "./test-stack-env.mjs"
+Object.assign(process.env, testStackEnv)
 const sourceFile = process.argv[2]
 if (!sourceFile?.includes(".env.playwright-opensend-e2e-"))
   throw new Error("Supply an isolated test instance environment file")
@@ -27,15 +29,10 @@ const target = {
   CONVEX_BACKEND_ORIGIN: `http://host.docker.internal:${port}`,
 }
 delete target.CONVEX_SELF_HOSTED_ADMIN_KEY
-writeFileSync(
-  targetFile,
-  Object.entries(target)
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n") + "\n",
-  { mode: 0o600 }
-)
+writeTestStackEnv(targetFile, target)
 const env = {
   ...process.env,
+  ...testStackEnv,
   OPENSEND_ENV_FILE: targetFile,
   COMPOSE_PROJECT_NAME: name,
   OPENSEND_BACKEND_ONLY: "1",
