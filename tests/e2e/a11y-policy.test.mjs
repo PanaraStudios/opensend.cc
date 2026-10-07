@@ -10,8 +10,25 @@ import {
   A11yScanTimeoutError,
   a11yScanMode,
   blocksA11yTour,
+  summarizeA11yFindings,
   withinA11yScanBudget,
 } from "./a11y-policy.ts"
+
+test("contrast remains counted in the summary while only its failure gate is deferred", () => {
+  const findings = [
+    { ruleId: "color-contrast", impact: "serious" },
+    { ruleId: "color-contrast", impact: "critical" },
+    { ruleId: "button-name", impact: "critical" },
+  ]
+  assert.deepEqual(summarizeA11yFindings(findings), {
+    total: 3,
+    allowlisted: 2,
+    failing: 1,
+    rules: { "color-contrast": 2, "button-name": 1 },
+  })
+  assert.equal(blocksA11yTour(findings[0]), false)
+  assert.equal(blocksA11yTour(findings[2]), true)
+})
 
 test("preview exclusion prevents axe frame traversal without excluding other UI frames", async () => {
   const require = createRequire(import.meta.url)

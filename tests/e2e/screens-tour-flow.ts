@@ -15,8 +15,13 @@ import {
   A11yScanTimeoutError,
   a11yScanMode,
   blocksA11yTour,
+  summarizeA11yFindings,
   withinA11yScanBudget,
 } from "./a11y-policy"
+import {
+  findVisibleRawCodes,
+  RAW_CODE_FILENAME_PATTERN,
+} from "./raw-code-policy"
 
 type Screen = { name: string; open: (page: Page) => Promise<void> }
 type Scene = {
@@ -853,9 +858,10 @@ export function screensTourTests(state: TourState) {
                   const builder = new AxeBuilder({ page }).exclude(
                     A11Y_PREVIEW_FRAME_SELECTOR
                   )
-                  return (scanMode === "full"
-                    ? builder.withTags(A11Y_FULL_TAGS)
-                    : builder.withRules(A11Y_THEME_RULES)
+                  return (
+                    scanMode === "full"
+                      ? builder.withTags(A11Y_FULL_TAGS)
+                      : builder.withRules(A11Y_THEME_RULES)
                   ).analyze()
                 })
                 for (const violation of result.violations) {
@@ -928,51 +934,20 @@ export function screensTourTests(state: TourState) {
                       text: el.textContent?.slice(0, 100),
                     }))
                 : []
-              const raw = new Set<string>()
-              const walker = document.createTreeWalker(
-                document.body,
-                NodeFilter.SHOW_TEXT
-              )
-              while (walker.nextNode()) {
-                const node = walker.currentNode,
-                  el = node.parentElement
-                if (
-                  !el ||
-                  el.closest(
-                    'input, textarea, pre, code, script, style, [hidden], [aria-hidden="true"], [data-slot="json-viewer"], [data-testid*="payload"]'
-                  ) ||
-                  !el.checkVisibility({
-                    checkOpacity: true,
-                    checkVisibilityCSS: true,
-                  })
-                )
-                  continue
-                const text = node.textContent ?? ""
-                for (const token of text.match(
-                  /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b[a-z][a-z_]*(?:\.[a-z_]+)+\b/g
-                ) ?? []) {
-                  // Domain names and URLs are readable addresses, not machine labels.
-                  if (
-                    /\.(test|com|cc|dev|net|org|io)$/.test(token) ||
-                    text.includes("https://") ||
-                    text.includes("http://") ||
-                    text.includes("@")
-                  )
-                    continue
-                  raw.add(token)
-                }
-              }
               return {
                 overflow,
                 scrollWidth: document.scrollingElement?.scrollWidth ?? 0,
                 viewportWidth: innerWidth,
                 offenders,
-                raw: [...raw],
                 crashed: document.body.innerText.includes(
                   "Something went wrong"
                 ),
               }
             })
+            const raw = await page.evaluate(
+              findVisibleRawCodes,
+              RAW_CODE_FILENAME_PATTERN
+            )
             if (width === 390 && evidence.overflow)
               findings.push({
                 screen: screen.name,
@@ -1004,13 +979,13 @@ export function screensTourTests(state: TourState) {
                 detail: [...runtime],
                 screenshot,
               })
-            if (evidence.raw.length)
+            if (raw.length)
               findings.push({
                 screen: screen.name,
                 theme,
                 width,
                 kind: "raw-code",
-                detail: evidence.raw,
+                detail: raw,
                 screenshot,
               })
             visited.push(screenshot)
@@ -1022,6 +997,10 @@ export function screensTourTests(state: TourState) {
         }
       }
     } finally {
+      const a11ySummary = summarizeA11yFindings(
+        findings.flatMap((f) => (f.kind === "a11y" ? [f.detail] : []))
+      )
+      console.log(`[screens tour] axe findings: ${JSON.stringify(a11ySummary)}`)
       console.log(
         `[screens tour] axe total: ${(axeTimeMs / 1000).toFixed(1)}s ` +
           `(${axeScans.full} full scans, ${axeScans.theme} theme scans); ` +
