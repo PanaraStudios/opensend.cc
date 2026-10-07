@@ -1,4 +1,12 @@
 import { completeOnHangup } from "../ivr/runtime"
+import {
+  INACTIVE_CALL_MS,
+  LEGACY_INACTIVE_CALL_MS,
+  inactivityTimeout,
+  inactivityReason,
+  lastActivity,
+} from "./activity"
+import { settleTerminal } from "./terminal"
 import { requireAvailable } from "./agentAccess"
 import { callPageValue, callDetailValue } from "./values"
 import { v } from "convex/values"
@@ -665,6 +673,11 @@ export const finish = internalMutation({
       patch.operationUntil = undefined
     }
     await ctx.db.patch("calls", row._id, patch)
+    if (
+      !CALL_TERMINAL.has(row.status) &&
+      CALL_TERMINAL.has(patch.status ?? row.status)
+    )
+      await settleTerminal(ctx, (await ctx.db.get("calls", row._id))!)
     const updated = (await ctx.db.get("calls", row._id))!
     if (updated.status !== row.status)
       await callEvent(ctx, updated, updated.status)
@@ -724,6 +737,110 @@ export const settleConnect = internalMutation({
       await ctx.db.patch("apiIdempotency", reservation._id, {
         response: { status, body },
       })
+    return null
+  },
+})
+
+/** Claim the local terminal state before any best-effort network cleanup. */
+export const endLocally = internalMutation({
+  args: {
+    id: v.id("calls"),
+    kind: v.union(
+      v.literal("timeout"),
+      v.literal("hangup"),
+      v.literal("inactive"),
+      v.literal("blocked")
+    ),
+    at: v.optional(v.number()),
+    reason: v.optional(v.string()),
+  },
+  returns: v.union(v.null(), schema.doc("calls")),
+  handler: async (
+    ctx,
+    { id, kind, at, reason }
+  ): Promise<Doc<"calls"> | null> => {
+    const row = await ctx.db.get("calls", id)
+    if (
+      !row ||
+      CALL_TERMINAL.has(row.status) ||
+      (await retirement(ctx, row.organizationId))
+    )
+      return null
+    // Acceptance wins over a timeout, but a terminal media callback cannot be
+    // superseded by a later acceptance webhook or a different server clock.
+    if (kind === "timeout" && row.status === "connected") return null
+    if (kind === "hangup" && at === undefined) return null
+    if (
+      kind === "inactive" &&
+      (row.mode !== "gateway" ||
+        row.status !== "connected" ||
+        lastActivity(row) > Date.now() - inactivityTimeout(row))
+    )
+      return null
+    await ctx.runMutation(internal.calling.rows.finish, {
+      id,
+      status:
+        kind === "hangup" || kind === "inactive"
+          ? kind === "inactive" || row.connectedAt
+            ? "completed"
+            : "missed"
+          : kind === "timeout" && !row.wacid
+            ? "failed"
+            : "missed",
+      ...(kind === "inactive"
+        ? { error: inactivityReason(row) }
+        : reason
+          ? { error: reason }
+          : {}),
+      ...(kind === "timeout" && !row.wacid
+        ? { error: "Call setup timed out before Meta assigned a call id." }
+        : {}),
+    })
+    return row
+  },
+})
+
+/** One bounded transaction; a heartbeat or hangup conflict retries the claim. */
+export const reconcileInactive = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    // Reserve room for heartbeat-enabled calls even with a backlog of old gateways.
+    const legacyCalls = await ctx.db
+      .query("calls")
+      .withIndex(
+        "by_mode_and_status_and_supportsHeartbeats_and_lastActivityAt",
+        (q) =>
+          q
+            .eq("mode", "gateway")
+            .eq("status", "connected")
+            .eq("supportsHeartbeats", undefined)
+            .lte("lastActivityAt", Date.now() - LEGACY_INACTIVE_CALL_MS)
+      )
+      .take(25)
+    const heartbeatCalls = await ctx.db
+      .query("calls")
+      .withIndex(
+        "by_mode_and_status_and_supportsHeartbeats_and_lastActivityAt",
+        (q) =>
+          q
+            .eq("mode", "gateway")
+            .eq("status", "connected")
+            .eq("supportsHeartbeats", true)
+            .lte("lastActivityAt", Date.now() - INACTIVE_CALL_MS)
+      )
+      .take(50 - legacyCalls.length)
+    for (const call of [...legacyCalls, ...heartbeatCalls]) {
+      // Initialize legacy timestamps so recent legacy rows cannot starve older calls.
+      if (call.lastActivityAt === undefined)
+        await ctx.db.patch("calls", call._id, {
+          lastActivityAt: lastActivity(call),
+        })
+      await ctx.runMutation(internal.calling.rows.endLocally, {
+        id: call._id,
+        kind: "inactive",
+      })
+    }
     return null
   },
 })

@@ -11,13 +11,17 @@ import {
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import {
-  teamEventCatalog,
   changeEvent,
   defineEvent,
   findEvent,
   payloadShapeError,
   receiveEvent,
 } from "../automationEvents"
+import {
+  catalogPage,
+  CATALOG_PAGE_LIMIT,
+  CATALOG_PAGE_BYTES,
+} from "../automationEventCatalog"
 import { deleteAutomationEvent } from "../automationEventRows"
 import schema from "../schema"
 import { eventSchemaValue } from "../tables/automationEvents"
@@ -55,11 +59,35 @@ function own(ctx: QueryCtx, caller: Caller, idOrName: string) {
 }
 
 export const catalog = internalQuery({
-  args: { caller: callerValue },
-  returns: v.array(v.any()),
-  handler: async (ctx, { caller }) => {
+  args: {
+    caller: callerValue,
+    limit: v.optional(v.number()),
+    after: v.optional(v.string()),
+    search: v.optional(v.string()),
+  },
+  returns: v.object({
+    has_more: v.boolean(),
+    next_cursor: v.union(v.string(), v.null()),
+    data: v.array(v.any()),
+  }),
+  handler: async (ctx, { caller, limit, after, search }) => {
     await requireCaller(ctx, caller, { resource: "events", access: "read" })
-    return teamEventCatalog(ctx, caller.organizationId)
+    const result = await catalogPage(
+      ctx,
+      caller.organizationId,
+      {
+        numItems: limit ?? 20,
+        cursor: after ?? null,
+        maximumRowsRead: CATALOG_PAGE_LIMIT,
+        maximumBytesRead: CATALOG_PAGE_BYTES,
+      },
+      search
+    )
+    return {
+      has_more: !result.isDone,
+      next_cursor: result.isDone ? null : result.continueCursor,
+      data: result.page,
+    }
   },
 })
 export const list = internalQuery({
@@ -227,12 +255,22 @@ export function registerEventRoutes(http: HttpRouter) {
     method: "GET",
     path: "/events/catalog",
     scope: { resource: "events", access: "read" },
-    handler: async (ctx, { caller }) => ({
-      body: {
-        object: "event_catalog",
-        data: await ctx.runQuery(internal.api.events.catalog, { caller }),
-      },
-    }),
+    handler: async (ctx, { caller, query }) => {
+      const { limit, after, before } = listParams(query)
+      if (before !== undefined)
+        throw invalid("The catalog supports forward pagination with `after`.")
+      return {
+        body: {
+          object: "event_catalog",
+          ...(await ctx.runQuery(internal.api.events.catalog, {
+            caller,
+            limit,
+            after,
+            search: query.get("search") ?? undefined,
+          })),
+        },
+      }
+    },
   })
   const changed = (id: Id<"automationEvents"> | null) => {
     if (!id) throw notFound("Event")

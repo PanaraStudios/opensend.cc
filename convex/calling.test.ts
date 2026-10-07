@@ -1921,3 +1921,181 @@ test("managed IVR calls preserve their route override, record successive attempt
   expect(events.map((e) => e.type)).toContain("call.outbound_missed")
   expect(events.map((e) => e.type)).toContain("call.outbound_rejected")
 })
+
+test.each(["timeout", "gatewayHangup", "blockInbound"] as const)(
+  "%s finalizes locally even if Meta termination fails",
+  async (name) => {
+    const f = await setup()
+    const graph = fakeGraph([
+      {
+        method: "POST",
+        path: `/${PHONE_ID}/calls`,
+        respond: () => graphError("Provider unavailable", 2, 503),
+      },
+    ])
+    const id = await f.t.run((ctx) =>
+      ctx.db.insert("calls", {
+        organizationId: f.owner.team,
+        accountId: f.account,
+        mode: "api",
+        direction: "inbound",
+        wacid: `wacid.${name}`,
+        status: name === "gatewayHangup" ? "connected" : "ringing",
+        ...(name === "gatewayHangup" ? { connectedAt: Date.now() - 1000 } : {}),
+        observedAt: Date.now(),
+        operation: "unfinished",
+        operationUntil: Date.now() + 120000,
+      })
+    )
+    await f.t.action(internal.calling.callActions[name], {
+      id,
+      ...(name === "gatewayHangup"
+        ? { at: Date.now(), reason: "SIP hangup" }
+        : {}),
+    })
+    const row = await f.t.run((ctx) => ctx.db.get("calls", id))
+    expect(row?.status).toBe(name === "gatewayHangup" ? "completed" : "missed")
+    expect(row?.endedAt).toBeDefined()
+    expect(row?.operation).toBeUndefined()
+    expect(graph.to(`/${PHONE_ID}/calls`)).toHaveLength(1)
+  }
+)
+
+test("timeout works without signaling credentials and atomically respects acceptance", async () => {
+  const f = await setup()
+  const id = await f.t.run((ctx) =>
+    ctx.db.insert("calls", {
+      organizationId: f.owner.team,
+      accountId: f.account,
+      mode: "api",
+      direction: "outbound",
+      status: "ringing",
+      observedAt: Date.now(),
+      wacid: "wacid.offline",
+    })
+  )
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { status: "disconnected" })
+  )
+  await f.t.action(internal.calling.callActions.timeout, { id })
+  expect((await f.t.run((ctx) => ctx.db.get("calls", id)))?.status).toBe(
+    "missed"
+  )
+  await f.t.run((ctx) =>
+    ctx.db.patch("calls", id, {
+      status: "connected",
+      observedAt: Date.now(),
+      endedAt: undefined,
+    })
+  )
+  expect(
+    await f.t.mutation(internal.calling.rows.endLocally, {
+      id,
+      kind: "timeout",
+    })
+  ).toBeNull()
+  expect((await f.t.run((ctx) => ctx.db.get("calls", id)))?.status).toBe(
+    "connected"
+  )
+})
+
+test("a Graph connect response arriving after the setup timeout terminates the newly assigned remote call", async () => {
+  const f = await setup()
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({ permission: { status: "permanent" } }),
+    },
+    { path: `/${PHONE_ID}/calls`, respond: () => ({ success: true }) },
+  ])
+  const original = graph.spy.getMockImplementation()!
+  graph.spy.mockImplementation(async (input, options) => {
+    const body =
+      typeof options?.body === "string" ? JSON.parse(options.body) : {}
+    if (body.action === "connect") {
+      const row = await f.t.run((ctx) =>
+        ctx.db.query("calls").order("desc").first()
+      )
+      await f.t.action(internal.calling.callActions.timeout, { id: row!._id })
+      return Response.json({ calls: [{ id: "wacid.late-response" }] })
+    }
+    return original(input, options)
+  })
+  const response = await f.request("/whatsapp/calls", "POST", {
+    recipient: BSUID,
+    route: "api",
+    session: { sdp_type: "offer", sdp: SDP },
+  })
+  expect(response.status).toBe(409)
+  expect(graph.to(`/${PHONE_ID}/calls`)[0].body).toMatchObject({
+    action: "terminate",
+    call_id: "wacid.late-response",
+  })
+  const row = await f.t.run((ctx) =>
+    ctx.db.query("calls").order("desc").first()
+  )
+  expect(row?.status).toBe("failed")
+  expect(row?.operation).toBeUndefined()
+})
+
+test("a delayed signed media hangup wins over newer acceptance and gateway timestamps", async () => {
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_SECRET", secret)
+  const id = await f.t.run((ctx) =>
+    ctx.db.insert("calls", {
+      organizationId: f.owner.team,
+      accountId: f.account,
+      direction: "inbound",
+      mode: "gateway",
+      status: "connected",
+      connectedAt: Date.now() - 5000,
+      observedAt: Date.now(),
+      gatewayAt: Date.now(),
+    })
+  )
+  const at = Date.now() - 1000
+  const path = "/calling/gateway/events"
+  const body = JSON.stringify({
+    version: 1,
+    eventId: crypto.randomUUID(),
+    callId: id,
+    timestamp: at,
+    event: "hangup",
+    reason: "SIP hangup",
+  })
+  expect(
+    (
+      await f.t.fetch(path, {
+        method: "POST",
+        headers: signRequest(secret, "POST", path, body),
+        body,
+      })
+    ).status
+  ).toBe(200)
+  const jobs = await f.t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect()
+  )
+  expect(
+    jobs.some(
+      (job) => job.name.includes("gatewayHangup") && job.args[0].id === id
+    )
+  ).toBe(true)
+  expect(
+    await f.t.mutation(internal.calling.rows.endLocally, {
+      id,
+      kind: "hangup",
+      at,
+      reason: "SIP hangup",
+    })
+  ).not.toBeNull()
+  expect((await f.t.run((ctx) => ctx.db.get("calls", id)))?.status).toBe(
+    "completed"
+  )
+  expect(
+    await f.t.mutation(internal.calling.rows.endLocally, {
+      id,
+      kind: "hangup",
+      at,
+    })
+  ).toBeNull()
+})

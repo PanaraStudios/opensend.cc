@@ -66,7 +66,9 @@ export default defineSchema({
     revision: v.string(),
     tested: v.boolean(),
     enforced: v.boolean(),
-  }).index("by_organizationId", ["organizationId"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_enforced", ["enforced"]),
   ssoProof: defineTable({
     sessionId: v.string(),
     organizationId: v.string(),

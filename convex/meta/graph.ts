@@ -76,6 +76,27 @@ export async function graph<T = unknown>(input: {
   })
   return parseGraphResponse(response.status, await response.text(), [
     input.token,
+    // App access tokens contain the app secret; Meta may echo that component
+    // alone, or another credential sent outside the Authorization header.
+    ...(input.token.includes("|")
+      ? [input.token.split("|").slice(1).join("|")]
+      : []),
+    ...Object.entries(input.query ?? {}).flatMap(([name, value]) =>
+      /^(access_token|input_token|client_secret|code|appsecret_proof)$/i.test(
+        name
+      ) && typeof value === "string"
+        ? [value]
+        : []
+    ),
+    ...(input.body && "form" in input.body
+      ? Object.entries(input.body.form).flatMap(([name, value]) =>
+          /^(access_token|input_token|client_secret|code|verify_token|appsecret_proof)$/i.test(
+            name
+          )
+            ? [value]
+            : []
+        )
+      : []),
   ]) as T
 }
 

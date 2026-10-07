@@ -226,6 +226,42 @@ async function setup() {
 }
 
 describe("WhatsApp templates", () => {
+  test("template submissions share a team quota across templates and count provider failures", async () => {
+    const f = await setup()
+    const ids = [await f.create(), await f.create(), await f.create()]
+    f.graph.use({
+      method: "POST",
+      path: `/${WABA_ID}/message_templates`,
+      respond: () =>
+        Response.json(
+          { error: { message: "Temporary failure", code: 2 } },
+          { status: 503 }
+        ),
+    })
+    for (const id of ids.slice(0, 2))
+      await expect(
+        f.owner.action(api.whatsapp.templateActions.publish, { id })
+      ).rejects.toThrow(/Temporary failure/)
+    await expect(
+      f.owner.action(api.whatsapp.templateActions.publish, { id: ids[2] })
+    ).rejects.toThrow(/Too many/)
+    expect(f.graph.to(`/${WABA_ID}/message_templates`, "POST")).toHaveLength(2)
+  })
+
+  test("manual template sync limits whole paged listings per team", async () => {
+    const f = await setup()
+    for (let index = 0; index < 2; index++)
+      await f.owner.action(api.whatsapp.templateActions.sync, {
+        organizationId: f.team,
+      })
+    await expect(
+      f.owner.action(api.whatsapp.templateActions.sync, {
+        organizationId: f.team,
+      })
+    ).rejects.toThrow(/Too many/)
+    expect(f.graph.to(`/${WABA_ID}/message_templates`, "GET")).toHaveLength(4)
+  })
+
   test("a draft takes a Meta name and the team's WABA, then publishing submits it", async () => {
     const f = await setup()
     const id = await f.create()

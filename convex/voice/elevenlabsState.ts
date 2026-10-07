@@ -1,3 +1,5 @@
+import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter"
+import { components } from "../_generated/api"
 import { v } from "convex/values"
 import {
   internalMutation,
@@ -157,5 +159,31 @@ export const store = internalMutation({
     if (row) await ctx.db.replace(row._id, next)
     else await ctx.db.insert("elevenLabsVoiceCaches", next)
     return null
+  },
+})
+
+const refreshLimiter = new RateLimiter(components.rateLimiter, {
+  forcedVoiceCatalogRefresh: {
+    kind: "token bucket",
+    rate: 1,
+    period: MINUTE,
+    capacity: 1,
+  },
+})
+/** A separate committed reservation keeps failed provider requests from refunding quota. */
+export const reserveForcedRefresh = internalMutation({
+  args: actor,
+  returns: v.object({ ok: v.boolean(), retryAfter: v.optional(v.number()) }),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, false, !!args.caller)
+    const provider = await elevenLabsKey(
+      ctx,
+      args.organizationId,
+      args.credentialId
+    )
+    if (!provider) throw notFound("Voice provider")
+    return refreshLimiter.limit(ctx, "forcedVoiceCatalogRefresh", {
+      key: args.organizationId,
+    })
   },
 })

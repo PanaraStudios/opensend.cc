@@ -3,6 +3,19 @@ import type { HttpRouter } from "convex/server"
 import { internal } from "../_generated/api"
 import { apiRoute, listParams, objectBody } from "../api/route"
 export function registerIvrRoutes(http: HttpRouter) {
+  apiRoute(http, {
+    method: "POST",
+    path: "/ivrs/{id}/rotate-signing-secret",
+    scope: { resource: "ivrs", access: "write" },
+    handler: async (ctx, { caller, params }) => ({
+      body: await ctx.runMutation(internal.ivr.definitions.rotateSecret, {
+        organizationId: caller.organizationId,
+        caller,
+        id: params.id,
+        webhookSecret: createWebhookSecret(),
+      }),
+    }),
+  })
   for (const kind of ["create", "update", "remove"] as const)
     apiRoute(http, {
       method:

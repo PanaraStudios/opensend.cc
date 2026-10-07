@@ -26,7 +26,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [app, migrate, smtp]
+        image:
+          [
+            app,
+            migrate,
+            smtp,
+            janus,
+            freeswitch,
+            drachtio,
+            coturn,
+            call-gateway,
+            voice-agent,
+          ]
         platform: [linux/amd64, linux/arm64]
     steps:
       - uses: actions/checkout@v5
@@ -40,8 +51,18 @@ jobs:
         run: |
           arch=${PLATFORM#linux/}
           echo "ARCH=$arch" >> "$GITHUB_ENV"
+          echo "CONTEXT=." >> "$GITHUB_ENV"
           case "$IMAGE" in
             smtp) echo "DOCKERFILE=docker/smtp/Dockerfile" >> "$GITHUB_ENV"; echo "TARGET=" >> "$GITHUB_ENV" ;;
+            janus|freeswitch|drachtio|coturn)
+              echo "CONTEXT=docker/$IMAGE" >> "$GITHUB_ENV"
+              echo "DOCKERFILE=docker/$IMAGE/Dockerfile" >> "$GITHUB_ENV"
+              echo "TARGET=" >> "$GITHUB_ENV" ;;
+            call-gateway|voice-agent)
+              echo "DOCKERFILE=services/$IMAGE/Dockerfile" >> "$GITHUB_ENV"
+              if [ "$IMAGE" = call-gateway ]; then
+                echo "TARGET=runtime" >> "$GITHUB_ENV"
+              else echo "TARGET=" >> "$GITHUB_ENV"; fi ;;
             *) echo "DOCKERFILE=Dockerfile" >> "$GITHUB_ENV"; echo "TARGET=$IMAGE" >> "$GITHUB_ENV" ;;
           esac
         env:
@@ -58,9 +79,10 @@ jobs:
       - uses: useblacksmith/build-push-action@v2
         id: build
         with:
-          context: .
+          context: ${{ env.CONTEXT }}
           file: ${{ env.DOCKERFILE }}
           target: ${{ env.TARGET }}
+          build-args: ${{ matrix.image == 'migrate' && format('RELEASE_TAG={0}', env.RELEASE_TAG) || '' }}
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=ghcr.io/panarastudios/opensend-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
@@ -82,7 +104,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [app, migrate, smtp]
+        image:
+          [
+            app,
+            migrate,
+            smtp,
+            janus,
+            freeswitch,
+            drachtio,
+            coturn,
+            call-gateway,
+            voice-agent,
+          ]
     steps:
       - uses: actions/download-artifact@v4
         with:

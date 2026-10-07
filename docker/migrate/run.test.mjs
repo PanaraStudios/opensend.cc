@@ -1,4 +1,5 @@
 import { test } from "node:test"
+import { randomBytes } from "node:crypto"
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { createServer } from "node:http"
@@ -16,9 +17,18 @@ import { join } from "node:path"
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), "opensend-migrate-test-"))
   t.after(() => rm(directory, { recursive: true, force: true }))
-  for (const path of ["docker/migrate", "scripts", "node_modules/convex/bin"])
+  for (const path of [
+    "docker/migrate",
+    "scripts",
+    "lib",
+    "node_modules/convex/bin",
+  ])
     await mkdir(join(directory, path), { recursive: true })
-  for (const path of ["docker/migrate/run.mjs", "scripts/convex-env.mjs"])
+  for (const path of [
+    "docker/migrate/run.mjs",
+    "scripts/convex-env.mjs",
+    "lib/telemetry.ts",
+  ])
     await copyFile(path, join(directory, path))
   await writeFile(
     join(directory, "node_modules/convex/package.json"),
@@ -88,6 +98,9 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
     SITE_URL: "https://mail.example.test",
     BETTER_AUTH_SECRET: "",
     SMTP_HOST: "smtp.example.test",
+    OPENSEND_TELEMETRY: "0",
+    OPENSEND_TELEMETRY_URL: "http://127.0.0.1:9/telemetry",
+    OPENSEND_INSTALL_METHOD: "script",
   })
   assert.equal(code, 0)
   assert.ok(requests >= 2)
@@ -97,13 +110,28 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
   assert.ok(
     !calls.some((call) => call.args[2]?.startsWith("BETTER_AUTH_SECRET="))
   )
-  assert.deepEqual(calls.at(-1).args, [
+  assert.ok(calls.some((call) => call.args[2] === "OPENSEND_TELEMETRY=0"))
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.args[2] === "OPENSEND_TELEMETRY_URL=http://127.0.0.1:9/telemetry"
+    )
+  )
+  assert.ok(
+    calls.some((call) => call.args[2] === "OPENSEND_INSTALL_METHOD=script")
+  )
+  assert.deepEqual(calls.at(-2).args, [
     "deploy",
     "--yes",
     "--typecheck",
     "disable",
     "--codegen",
     "disable",
+  ])
+  assert.deepEqual(calls.at(-1).args, [
+    "run",
+    "migrations:initializeEventCounts",
+    "{}",
   ])
   for (const call of calls) {
     assert.equal(call.url, url)
@@ -147,18 +175,25 @@ test("cloud deploy skips readiness and selects only the deploy key", async (t) =
     CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:1",
     CONVEX_DEPLOY_KEY: "dev:fake-name|token",
     SITE_URL: "https://mail.example.test",
+    OPENSEND_TELEMETRY: "0",
   })
   assert.equal(code, 0)
+  assert.ok(calls.some((call) => call.args[2] === "OPENSEND_TELEMETRY=0"))
   assert.ok(
     calls.some((call) => call.args[2] === "SITE_URL=https://mail.example.test")
   )
-  assert.deepEqual(calls.at(-1).args, [
+  assert.deepEqual(calls.at(-2).args, [
     "deploy",
     "--yes",
     "--typecheck",
     "disable",
     "--codegen",
     "disable",
+  ])
+  assert.deepEqual(calls.at(-1).args, [
+    "run",
+    "migrations:initializeEventCounts",
+    "{}",
   ])
   for (const call of calls) {
     assert.equal(call.url, undefined)
@@ -216,4 +251,90 @@ test("rejects neither credential mode before calling the CLI", async (t) => {
     /CONVEX_SELF_HOSTED_ADMIN_KEY.*CONVEX_DEPLOY_KEY.*required/
   )
   assert.deepEqual(calls, [])
+})
+
+test("deploys a normalized override, baked release or unknown version", async (t) => {
+  const server = createServer((_req, res) => res.writeHead(200).end("ready"))
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
+  t.after(() => new Promise((resolve) => server.close(resolve)))
+  const url = `http://127.0.0.1:${server.address().port}`
+  for (const [version, baked, expected] of [
+    ["v0.1.1", "v2.0.0-rc.1", "0.1.1"],
+    ["0.1.1", "v2.0.0-rc.1", "0.1.1"],
+    ["latest", "v2.0.0-rc.1", "2.0.0-rc.1"],
+    ["", "v2.0.0-rc.1", "2.0.0-rc.1"],
+    [undefined, "v2.0.0-rc.1", "2.0.0-rc.1"],
+    ["latest", "", "0.0.0-unknown"],
+  ]) {
+    const f = await fixture(t)
+    const { code, calls } = await f.run([], {
+      CONVEX_SELF_HOSTED_URL: url,
+      OPENSEND_VERSION: version,
+      OPENSEND_RELEASE_VERSION: baked,
+    })
+    assert.equal(code, 0)
+    assert.ok(
+      calls.some((call) => call.args[2] === `OPENSEND_VERSION=${expected}`)
+    )
+    assert.ok(
+      !calls.some((call) =>
+        call.args[2]?.startsWith("OPENSEND_RELEASE_VERSION=")
+      )
+    )
+    assert.equal(calls.at(-2).args[0], "deploy")
+    assert.deepEqual(calls.at(-1).args, [
+      "run",
+      "migrations:initializeEventCounts",
+      "{}",
+    ])
+  }
+})
+
+test("a failed automatic count backfill start fails the upgrade after deployment", async (t) => {
+  const f = await fixture(t)
+  const { code, stderr, calls } = await f.run([], {
+    CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+    CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:1",
+    CONVEX_DEPLOY_KEY: "fixture-cloud-credential",
+    FAIL_COMMAND: "run",
+  })
+  assert.equal(code, 1)
+  assert.match(stderr, /Convex run failed/)
+  assert.equal(calls.at(-2).args[0], "deploy")
+  assert.deepEqual(calls.at(-1).args, [
+    "run",
+    "migrations:initializeEventCounts",
+    "{}",
+  ])
+})
+
+test("calling deployment supplies gateway and browser settings without erasing empty values", async (t) => {
+  const f = await fixture(t)
+  const settings = {
+    CALL_GATEWAY_URL: "http://call-gateway:8090",
+    CALL_GATEWAY_SECRET: randomBytes(32).toString("hex"),
+    CALL_AGENT_WSS_URL: "wss://calling.example.test:7443",
+    CALL_AGENT_QUEUES: JSON.stringify({ team: ["support"] }),
+    CALL_STUN_URLS: "stun:stun.example.test:3478",
+    CALL_TURN_URLS: "turn:relay.example.test:3478?transport=tcp",
+    CALL_TURN_SECRET: randomBytes(32).toString("hex"),
+  }
+  const { code, calls } = await f.run([], {
+    CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+    CONVEX_DEPLOY_KEY: randomBytes(32).toString("hex"),
+    ...settings,
+  })
+  assert.equal(code, 0)
+  for (const [key, value] of Object.entries(settings))
+    assert.ok(
+      calls.some(
+        (call) => call.args[0] === "env" && call.args[2] === `${key}=${value}`
+      )
+    )
+  assert.equal(calls.at(-2).args[0], "deploy")
+  assert.deepEqual(calls.at(-1).args, [
+    "run",
+    "migrations:initializeEventCounts",
+    "{}",
+  ])
 })

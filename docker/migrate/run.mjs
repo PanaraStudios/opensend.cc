@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process"
 import { createRequire } from "node:module"
 import { dirname, resolve } from "node:path"
+// The migrate image pins Node 22.18+, which reads this dependency-free TS helper.
+import { normalizeTelemetryVersion } from "../../lib/telemetry.ts"
 import { convexEnvEntries } from "../../scripts/convex-env.mjs"
 
 const require = createRequire(import.meta.url)
@@ -70,6 +72,10 @@ try {
   if (args.length) await runCli(args)
   else {
     if (selfHosted) await waitForBackend()
+    process.env.OPENSEND_VERSION = normalizeTelemetryVersion(
+      process.env.OPENSEND_VERSION,
+      process.env.OPENSEND_RELEASE_VERSION
+    )
     for (const [key, value] of convexEnvEntries(process.env))
       await runCli(["env", "set", `${key}=${value}`])
     await runCli([
@@ -80,6 +86,7 @@ try {
       "--codegen",
       "disable",
     ])
+    await runCli(["run", "migrations:initializeEventCounts", "{}"])
   }
 } catch (error) {
   console.error(`Opensend migrate: ${error.message}`)

@@ -1,4 +1,5 @@
 import type { SimpleUser } from "sip.js/lib/platform/web"
+import { browserIceServers, type IceConfiguration } from "./ice"
 import { isDtmf } from "../meta/softphone"
 export interface BrowserCredential {
   wssUrl: string
@@ -9,6 +10,10 @@ export interface BrowserCredential {
 export class BrowserPhone {
   private user?: SimpleUser
   private disposed = false
+  private ice?: IceConfiguration
+  setIceConfiguration(configuration: IceConfiguration) {
+    this.ice = configuration
+  }
   private microphoneId = "default"
   setMicrophone(id: string) {
     this.microphoneId = id
@@ -22,10 +27,24 @@ export class BrowserPhone {
       failed: (error: unknown) => void
     }
   ) {}
-  async register(credential: BrowserCredential) {
+  async register(
+    credential: BrowserCredential,
+    configuration?: IceConfiguration
+  ) {
     const { SimpleUser, defaultSessionDescriptionHandlerFactory } =
       await import("sip.js/lib/platform/web")
     if (this.disposed) throw new Error("Softphone closed")
+    this.ice = configuration
+    const factory = defaultSessionDescriptionHandlerFactory(
+      async (constraints) =>
+        navigator.mediaDevices.getUserMedia({
+          ...constraints,
+          audio:
+            this.microphoneId === "default"
+              ? true
+              : { deviceId: { exact: this.microphoneId } },
+        })
+    )
     let registered!: () => void
     const ready = new Promise<void>((resolve) => {
       registered = resolve
@@ -44,19 +63,14 @@ export class BrowserPhone {
         authorizationPassword: credential.password,
         logBuiltinEnabled: false,
         logConfiguration: false,
-        sessionDescriptionHandlerFactory:
-          defaultSessionDescriptionHandlerFactory(async (constraints) =>
-            navigator.mediaDevices.getUserMedia({
-              ...constraints,
-              audio:
-                this.microphoneId === "default"
-                  ? true
-                  : { deviceId: { exact: this.microphoneId } },
-            })
-          ),
-        sessionDescriptionHandlerFactoryOptions: {
-          peerConnectionConfiguration: { iceServers: [] },
-        },
+        // Read the current credentials for each new call, including after refresh.
+        sessionDescriptionHandlerFactory: (session, options) =>
+          factory(session, {
+            ...options,
+            peerConnectionConfiguration: {
+              iceServers: browserIceServers(this.ice),
+            },
+          }),
       },
       delegate: {
         onRegistered: registered,

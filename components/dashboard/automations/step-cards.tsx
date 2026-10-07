@@ -1,6 +1,8 @@
 "use client"
 import { PlaceCallFields } from "@/components/dashboard/calling/place-call-fields"
 import { readablePath, referenceErrors } from "@/lib/automation-references"
+import { automationCatalogNames } from "@/lib/dashboard/event-catalog-options"
+import { useResourceOptions } from "@/components/dashboard/resource-picker"
 import { catalogContactSchema, eventLabel } from "@/lib/event-catalog"
 import { FieldError } from "@/components/ui/field"
 import {
@@ -105,7 +107,7 @@ function CardSection({
 
 /** The payload fields of the trigger's event, as references. */
 function useEventReferences(trigger: string): string[] {
-  const catalog = useEventCatalog()
+  const catalog = useEventCatalog([trigger])
   return flattenSchema(
     catalogEvent(catalog, trigger)?.schema ?? {
       type: "object",
@@ -150,27 +152,24 @@ function EventNameInput(props: {
   onChange: (value: string) => void
   "aria-label": string
 }) {
-  const catalog = useEventCatalog()
-  const [search, setSearch] = React.useState("")
-  const options = catalog
-    .filter((event) =>
-      `${event.name} ${event.label} ${event.description}`
-        .toLowerCase()
-        .includes(search.toLowerCase())
-    )
-    .map((event) => ({
-      value: event.trigger,
-      label: event.label,
-      group: event.group,
-      description: event.description,
-      icon: event.name.startsWith("whatsapp.")
-        ? (channelIcon("whatsapp") as typeof EventIcon)
-        : event.name.startsWith("instagram.")
-          ? (channelIcon("instagram") as typeof EventIcon)
-          : event.name.startsWith("messenger.")
-            ? (channelIcon("messenger") as typeof EventIcon)
-            : EventIcon,
-    }))
+  const { rows, setSearch } = useResourceOptions(
+    api.automationEventCatalog.options,
+    { selectedNames: [props.value] }
+  )
+  const catalog = rows ?? []
+  const options = catalog.map((event) => ({
+    value: event.trigger,
+    label: event.label,
+    group: event.group,
+    description: event.description,
+    icon: event.name.startsWith("whatsapp.")
+      ? (channelIcon("whatsapp") as typeof EventIcon)
+      : event.name.startsWith("instagram.")
+        ? (channelIcon("instagram") as typeof EventIcon)
+        : event.name.startsWith("messenger.")
+          ? (channelIcon("messenger") as typeof EventIcon)
+          : EventIcon,
+  }))
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2">
       <SearchableSelect
@@ -225,7 +224,9 @@ export function TriggerCard({
   onChange: (trigger: string) => void
   onFiltersChange: (rules: AutomationRule[]) => void
 }) {
-  const catalog = useEventCatalog()
+  const catalog = useEventCatalog(
+    automationCatalogNames(automation.trigger, automation.steps)
+  )
   const errors = referenceErrors(
     automation.trigger,
     [],
@@ -316,7 +317,9 @@ export function StepCard({
   editor?: React.ReactNode
   presentation: FlowPresentation
 }) {
-  const catalog = useEventCatalog()
+  const catalog = useEventCatalog(
+    automationCatalogNames(automation.trigger, automation.steps)
+  )
   const errors = referenceErrors(
     automation.trigger,
     automation.steps,

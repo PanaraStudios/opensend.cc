@@ -1,5 +1,4 @@
 import assert from "node:assert/strict"
-import { randomBytes } from "node:crypto"
 import { spawn, spawnSync } from "node:child_process"
 import {
   copyFileSync,
@@ -14,16 +13,34 @@ import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { freePort, parse } from "./lib.mjs"
+import { testStackEnv } from "./test-stack-env.mjs"
+import { guardedDockerEnv, testProject } from "./test-compose.mjs"
+import { waitForLogStream } from "./test-log-stream.mjs"
+Object.assign(process.env, testStackEnv)
+
+// These tests use a Docker shim plus real Compose config parsing, with no daemon,
+// Meta, SES, media services or public network required.
+const configTests = spawnSync(
+  process.execPath,
+  [
+    "--test",
+    fileURLToPath(new URL("./install.test.mjs", import.meta.url)),
+    fileURLToPath(new URL("./coturn.test.mjs", import.meta.url)),
+  ],
+  { stdio: "inherit" }
+)
+if (configTests.status !== 0) process.exit(configTests.status || 1)
+if (process.argv.includes("--config-only")) process.exit(0)
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const installer = resolve(root, "scripts/install.sh")
-const project = `opensend-install-${Date.now()}-${randomBytes(3).toString("hex")}`
+const project = testProject("install")
 const temporary = mkdtempSync(resolve(tmpdir(), `${project}-`))
 const directory = resolve(temporary, "installation")
 const assets = resolve(temporary, "assets")
 const tags = []
 const logContainer = `${project}-logs`
-const composeEnv = { ...process.env }
+const composeEnv = guardedDockerEnv(temporary)
 // Compose interpolates the calling shell before reading .env. Keep the test
 // installation's saved images, ports and origins authoritative in every check.
 for (const key of Object.keys(composeEnv))
@@ -49,6 +66,8 @@ for (const key of Object.keys(composeEnv))
     ].includes(key)
   )
     delete composeEnv[key]
+Object.assign(composeEnv, testStackEnv)
+composeEnv.COMPOSE_PROJECT_NAME = project
 let server
 let logs
 let logText = ""
@@ -217,13 +236,20 @@ try {
     configured.CONVEX_PUBLIC_URL,
     "https://realtime.mail.example.test"
   )
-  assert.equal(configured.CONVEX_PUBLIC_SITE_URL, "https://api.mail.example.test")
+  assert.equal(
+    configured.CONVEX_PUBLIC_SITE_URL,
+    "https://api.mail.example.test"
+  )
   assert.equal(configured.CONVEX_BACKEND_ORIGIN, configured.CONVEX_PUBLIC_URL)
   assert.ok(statSync(resolve(configuration, "docker/caddy/Caddyfile")).isFile())
 
   // Fake credentials only: cloud dry runs must never start migrate or contact Convex.
   for (const useCaddy of [true, false]) {
     const cloudDirectory = resolve(temporary, useCaddy ? "cloud" : "cloud-eu")
+    const cloudEnv = {
+      ...composeEnv,
+      COMPOSE_PROJECT_NAME: `${project}-${useCaddy ? "cloud" : "cloud-eu"}`,
+    }
     const cloudArgs = [
       "--dir",
       cloudDirectory,
@@ -257,12 +283,16 @@ try {
               "https://fake-name.eu.convex.site",
             ]),
       ],
-      { env: composeEnv }
+      { env: cloudEnv }
     )
     const cloudSettings = () =>
       parse(readFileSync(resolve(cloudDirectory, ".env"), "utf8"))
     const initialCloud = cloudSettings()
     assert.equal(statSync(resolve(cloudDirectory, ".env")).mode & 0o777, 0o600)
+    assert.equal(
+      initialCloud.COMPOSE_PROJECT_NAME,
+      cloudEnv.COMPOSE_PROJECT_NAME
+    )
     assert.equal(initialCloud.OPENSEND_CONVEX, "cloud")
     assert.equal(initialCloud.CONVEX_DEPLOY_KEY, "dev:fake-name|token")
     assert.equal(
@@ -303,14 +333,16 @@ try {
           "--project-directory",
           cloudDirectory,
           "-p",
-          `${project}-cloud`,
+          cloudEnv.COMPOSE_PROJECT_NAME,
           ...args,
         ],
-        { env: composeEnv, stdio: ["ignore", "pipe", "inherit"] }
+        { env: cloudEnv, stdio: ["ignore", "pipe", "inherit"] }
       )
     const config = JSON.parse(
       await cloudCompose(["--profile", "smtp", "config", "--format", "json"])
     )
+    for (const [key, value] of Object.entries(testStackEnv))
+      assert.equal(config.services.migrate.environment[key], value)
     assert.equal(config.services.convex, undefined)
     assert.equal(config.services.migrate.depends_on, undefined)
     assert.equal(
@@ -366,7 +398,7 @@ try {
         "--deploy-key",
         "prod:other|different",
       ],
-      { env: composeEnv }
+      { env: cloudEnv }
     )
     assert.deepEqual(
       cloudSettings(),
@@ -376,7 +408,7 @@ try {
     await execute(
       "sh",
       [installer, "upgrade", ...cloudArgs, "--version", "itest-b"],
-      { env: composeEnv }
+      { env: cloudEnv }
     )
     assert.deepEqual(
       cloudSettings(),
@@ -384,7 +416,7 @@ try {
       "upgrade remembers cloud mode and secrets"
     )
     await execute("sh", [installer, "uninstall", "--dir", cloudDirectory], {
-      env: composeEnv,
+      env: cloudEnv,
     })
   }
   console.log(
@@ -420,6 +452,10 @@ try {
   await install("install", "itest-a")
   await healthy()
   const initial = settings()
+  assert.equal(initial.OPENSEND_TELEMETRY, testStackEnv.OPENSEND_TELEMETRY)
+  const config = JSON.parse(await compose(["config", "--format", "json"], true))
+  for (const [key, value] of Object.entries(testStackEnv))
+    assert.equal(config.services.migrate.environment[key], value)
   assert.equal(statSync(resolve(directory, ".env")).mode & 0o777, 0o600)
   assert.equal(initial.COMPOSE_PROJECT_NAME, project)
   assert.equal(
@@ -448,6 +484,7 @@ try {
     { env: composeEnv, stdio: ["ignore", "pipe", "inherit"] }
   )
   logs.stdout.on("data", (chunk) => (logText += chunk))
+  await waitForLogStream(logs)
   const account = {
     name: "Installer Admin",
     email: "installer@example.test",

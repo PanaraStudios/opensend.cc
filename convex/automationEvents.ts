@@ -1,6 +1,7 @@
+import { CATALOG_SELECTED_LIMIT } from "../lib/dashboard/event-catalog-options"
 import { eventCatalog } from "../lib/event-catalog"
 import { listProperties } from "./audience"
-import { includeSelected } from "../lib/dashboard/options"
+import { OPTION_LIMIT, includeSelected } from "../lib/dashboard/options"
 import { selectedOption, prefixOptions } from "./lists"
 import { stream } from "convex-helpers/server/stream"
 import { v, ConvexError, convexToJson, type Value } from "convex/values"
@@ -378,6 +379,10 @@ export async function teamEventCatalog(
   organizationId: string,
   names?: readonly string[]
 ) {
+  if ((names?.length ?? 0) > CATALOG_SELECTED_LIMIT)
+    throw new ConvexError(
+      `Look up at most ${CATALOG_SELECTED_LIMIT} event names`
+    )
   const custom = names
     ? (
         await Promise.all(
@@ -388,12 +393,14 @@ export async function teamEventCatalog(
       ).filter((event) => event !== null)
     : await ctx.db
         .query("automationEvents")
-        .withIndex("by_organizationId", (q) =>
+        .withIndex("by_organizationId_and_name", (q) =>
           q.eq("organizationId", organizationId)
         )
-        .collect()
+        .take(OPTION_LIMIT)
   return eventCatalog(custom, await listProperties(ctx, organizationId))
 }
+/** @deprecated Use automationEventCatalog.page/search or its searchable options.
+ * Compatibility callers get system events and the first 20 custom definitions. */
 export const catalog = query({
   args: { organizationId: v.string() },
   returns: v.array(v.any()),

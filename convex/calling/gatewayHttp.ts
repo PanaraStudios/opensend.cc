@@ -33,6 +33,7 @@ export const events = httpAction(async (ctx, request) => {
         "answer_ready",
         "offer_ready",
         "media_up",
+        "heartbeat",
         "hangup",
         "recording_ready",
       ].includes(event) ||

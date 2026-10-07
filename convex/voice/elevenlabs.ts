@@ -3,7 +3,7 @@ import { v } from "convex/values"
 import { action, internalAction, type ActionCtx } from "../_generated/server"
 import type { Id } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
-import { callerValue, type Caller } from "../api/caller"
+import { apiError, callerValue, type Caller } from "../api/caller"
 import { decryptSecret } from "../secrets"
 import { publicFetch } from "../../lib/net/public-fetch"
 import {
@@ -162,6 +162,22 @@ async function load(
     }
   )
   if (!prepared) return { hasKey: false, voices: [] }
+  if (args.force) {
+    const limit = await ctx.runMutation(
+      internal.voice.elevenlabsState.reserveForcedRefresh,
+      {
+        organizationId: args.organizationId,
+        caller: args.caller,
+        credentialId: prepared.credentialId,
+      }
+    )
+    if (!limit.ok)
+      throw apiError(
+        429,
+        "voice_catalog_rate_limited",
+        "Wait one minute before forcing another voice catalog refresh."
+      )
+  }
   return catalog(ctx, prepared, !!args.force)
 }
 

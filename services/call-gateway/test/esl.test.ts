@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { EslFrames, parseHeaders } from "../src/esl.js"
+import { createServer } from "node:net"
+import { EslFrames, FreeSwitch, parseHeaders } from "../src/esl.js"
 import { validateRoute } from "../src/controller.js"
 
 test("ESL parses byte lengths across fragmented and coalesced TCP frames", () => {
@@ -35,4 +36,28 @@ test("routing allows local browser agents/IVR and refuses command injection and 
     )
   for (const target of ["queue", "bot"] as const)
     assert.throws(() => validateRoute({ callId: "x", target }))
+})
+
+test("failed ESL reconnects release challenge listeners and reject a pre-auth close immediately", async () => {
+  const server = createServer((socket) => socket.end())
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const fs = new FreeSwitch(
+    "127.0.0.1",
+    (server.address() as { port: number }).port,
+    "fixture"
+  )
+  try {
+    for (let i = 0; i < 12; i++) {
+      await assert.rejects(fs.open(), /ESL closed before authentication/)
+      assert.equal(fs.listenerCount("challenge"), 0)
+    }
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    for (let i = 0; i < 12; i++) {
+      await assert.rejects(fs.open(), /ECONNREFUSED/)
+      assert.equal(fs.listenerCount("challenge"), 0)
+    }
+  } finally {
+    fs.close()
+    server.close()
+  }
 })

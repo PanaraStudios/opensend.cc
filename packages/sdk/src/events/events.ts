@@ -1,6 +1,12 @@
-import type { CatalogEvent } from "./catalog"
-import type { Response } from "../interfaces"
-import { buildPaginationUrl } from "../common/utils/build-pagination-query"
+import type { PostOptions } from "../common/interfaces"
+import type {
+  CatalogEventsOptions,
+  CatalogEventsResponse,
+} from "./interfaces/catalog-events.interface"
+import {
+  buildPaginationQuery,
+  buildPaginationUrl,
+} from "../common/utils/build-pagination-query"
 import { parseEventToApiOptions } from "../common/utils/parse-automation-to-api-options"
 import type { Resend } from "../resend"
 import type {
@@ -35,25 +41,37 @@ import type {
 export class Events {
   constructor(private readonly resend: Resend) {}
 
-  async catalog(): Promise<
-    Response<{ object: "event_catalog"; data: CatalogEvent[] }>
-  > {
-    return this.resend.get("/events/catalog")
+  async catalog(
+    options: CatalogEventsOptions = {}
+  ): Promise<CatalogEventsResponse> {
+    const params = new URLSearchParams(buildPaginationQuery(options))
+    if (options.search !== undefined) params.set("search", options.search)
+    const query = params.toString()
+    const url = query ? `/events/catalog?${query}` : "/events/catalog"
+    return this.resend.get(url)
   }
 
-  async send(payload: SendEventOptions): Promise<SendEventResponse> {
+  async send(
+    payload: SendEventOptions,
+    requestOptions: PostOptions = {}
+  ): Promise<SendEventResponse> {
     const data = await this.resend.post<SendEventResponseSuccess>(
       "/events/send",
-      parseEventToApiOptions(payload)
+      parseEventToApiOptions(payload),
+      requestOptions
     )
 
     return data
   }
 
-  async create(payload: CreateEventOptions): Promise<CreateEventResponse> {
+  async create(
+    payload: CreateEventOptions,
+    requestOptions: PostOptions = {}
+  ): Promise<CreateEventResponse> {
     const data = await this.resend.post<CreateEventResponseSuccess>(
       "/events",
-      payload
+      payload,
+      requestOptions
     )
 
     return data

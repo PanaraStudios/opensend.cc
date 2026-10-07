@@ -434,6 +434,32 @@ describe("sending", () => {
 })
 
 describe("attachments, batches and templates", () => {
+  test("attachment redirects and rejected responses release their streams before continuing", async () => {
+    const f = await setup()
+    const cancelled: string[] = []
+    const response = (status: number, name: string, headers?: HeadersInit) =>
+      new Response(
+        new ReadableStream({
+          cancel() {
+            cancelled.push(name)
+          },
+        }),
+        { status, headers }
+      )
+    vi.mocked(publicFetch)
+      .mockResolvedValueOnce(
+        response(302, "redirect", { location: "https://example.test/final" })
+      )
+      .mockResolvedValueOnce(response(404, "rejected"))
+    const result = await post(f, {
+      ...EMAIL,
+      attachments: [{ filename: "a.txt", path: "https://example.test/file" }],
+    })
+    expect(result.status).toBe(422)
+    expect(publicFetch).toHaveBeenCalledTimes(2)
+    expect(cancelled).toEqual(["redirect", "rejected"])
+  })
+
   test("attachments are stored and sent; unsafe or unsupported ones are refused", async () => {
     const f = await setup()
     const sent = ses()

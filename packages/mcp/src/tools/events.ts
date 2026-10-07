@@ -39,6 +39,7 @@ const SEND_EVENT_TOOL = {
       .describe(
         "Optional key-value data passed to the automation. Accessible in steps via event.* variables."
       ),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -93,6 +94,7 @@ Events define named triggers that your application sends to start automations. E
       .string()
       .optional()
       .describe("Cursor for backward pagination (for list)."),
+    idempotencyKey: z.string().optional(),
   },
 } as const
 
@@ -102,29 +104,63 @@ export function addEventTools(server: McpServer, opensend: Opensend) {
     {
       title: "List event catalog",
       description:
-        "List all system and team custom automation triggers with nested typed fields, descriptions and examples. Use before creating event filters or {{trigger.path}} references.",
+        "List a page of system and team custom automation triggers with nested typed fields, descriptions and examples. Use before creating event filters or {{trigger.path}} references.",
       inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe(
+            "Custom event types per page (default 20). System events appear on the first page."
+          ),
+        after: z
+          .string()
+          .optional()
+          .describe(
+            "Opaque next_cursor from the previous catalog page. Keep search unchanged."
+          ),
+        search: z
+          .string()
+          .max(256)
+          .optional()
+          .describe("Search event names on the server."),
         event: z
           .string()
           .optional()
           .describe("Optional event name or trigger name to show its fields"),
       },
     },
-    async ({ event }) => {
-      const response = await opensend.events.catalog()
+    async ({ event, limit, after, search }) => {
+      const response = await opensend.events.catalog({
+        limit,
+        after,
+        search: search ?? event,
+      })
       if (response.error) throw new Error(JSON.stringify(response.error))
       const events = response.data.data.filter(
         (item) => !event || item.name === event || item.trigger === event
       )
       return {
-        content: [{ type: "text", text: JSON.stringify(events, null, 2) }],
+        content: [
+          { type: "text", text: JSON.stringify(events, null, 2) },
+          {
+            type: "text",
+            text: JSON.stringify({
+              object: response.data.object,
+              has_more: response.data.has_more,
+              next_cursor: response.data.next_cursor,
+            }),
+          },
+        ],
       }
     }
   )
   server.registerTool(
     "send-event",
     SEND_EVENT_TOOL,
-    async ({ event, contactId, email, payload }) => {
+    async ({ event, contactId, email, payload, idempotencyKey }) => {
       if (!contactId && !email) {
         throw new Error(
           'Either "contactId" or "email" must be provided to identify the contact.'
@@ -138,7 +174,7 @@ export function addEventTools(server: McpServer, opensend: Opensend) {
         ? { event, contactId, payload }
         : { event, email: email!, payload }
 
-      const response = await opensend.events.send(options)
+      const response = await opensend.events.send(options, { idempotencyKey })
 
       if (response.error) {
         throw new Error(
@@ -173,17 +209,29 @@ export function addEventTools(server: McpServer, opensend: Opensend) {
   server.registerTool(
     "manage-events",
     MANAGE_EVENTS_TOOL,
-    async ({ action, name, identifier, schema, limit, after, before }) => {
+    async ({
+      action,
+      name,
+      identifier,
+      schema,
+      limit,
+      after,
+      before,
+      idempotencyKey,
+    }) => {
       switch (action) {
         case "create": {
           if (!name) {
             throw new Error('The "name" field is required for create.')
           }
 
-          const response = await opensend.events.create({
-            name,
-            ...(schema ? { schema } : {}),
-          })
+          const response = await opensend.events.create(
+            {
+              name,
+              ...(schema ? { schema } : {}),
+            },
+            { idempotencyKey }
+          )
 
           if (response.error) {
             throw new Error(

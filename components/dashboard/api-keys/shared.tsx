@@ -404,9 +404,23 @@ function ApiKeyForm({
 export function ViewApiKeyDialog({
   token,
   onOpenChange,
+  title = "View API Key",
+  description = "Use it as a bearer token, or as the SMTP password.",
+  fieldLabel = "API Key",
+  secretLabel = "API key",
+  fieldId = "api-key-token",
+  alertTitle = "You can only see this key once.",
+  alertDescription = "Store it somewhere safe.",
 }: {
   token: string | null
   onOpenChange: (open: boolean) => void
+  title?: string
+  description?: string
+  fieldLabel?: string
+  secretLabel?: string
+  fieldId?: string
+  alertTitle?: string
+  alertDescription?: string
 }) {
   /* Hold the last token through the close animation, so the field does not
      blank out on its way off screen. The key resets the reveal toggle. */
@@ -417,22 +431,20 @@ export function ViewApiKeyDialog({
     <Dialog open={token !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>View API Key</DialogTitle>
-          <DialogDescription>
-            Use it as a bearer token, or as the SMTP password.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <Alert variant="warning">
           <TriangleAlertIcon />
-          <AlertTitle>You can only see this key once.</AlertTitle>
-          <AlertDescription>Store it somewhere safe.</AlertDescription>
+          <AlertTitle>{alertTitle}</AlertTitle>
+          <AlertDescription>{alertDescription}</AlertDescription>
         </Alert>
         <Field>
-          <FieldLabel htmlFor="api-key-token">API Key</FieldLabel>
+          <FieldLabel htmlFor={fieldId}>{fieldLabel}</FieldLabel>
           <SecretField
             key={shown ?? "empty"}
-            id="api-key-token"
-            label="API key"
+            id={fieldId}
+            label={secretLabel}
             value={shown ?? ""}
           />
         </Field>

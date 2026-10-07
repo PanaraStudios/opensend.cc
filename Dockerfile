@@ -21,6 +21,8 @@ RUN pnpm --dir /esbuild install --prod --ignore-scripts \
     && cp /esbuild/node_modules/@esbuild/linux-*/bin/esbuild /out/esbuild
 
 FROM node:22.18.0-alpine@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS migrate
+ARG RELEASE_TAG
+ENV OPENSEND_RELEASE_VERSION=${RELEASE_TAG}
 WORKDIR /app
 ENV NODE_ENV=production ESBUILD_BINARY_PATH=/usr/local/bin/esbuild
 COPY --from=migrate-deps /out/esbuild /usr/local/bin/esbuild

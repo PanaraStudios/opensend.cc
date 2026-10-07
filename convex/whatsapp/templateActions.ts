@@ -166,6 +166,10 @@ async function submitTemplate(
     throw new ConvexError(
       "Meta is reviewing this template. Edit it again once it is approved or rejected."
     )
+  await ctx.runMutation(internal.botToolkitAccess.reserveOutbound, {
+    organizationId: target.organizationId,
+    operation: "templatePublish",
+  })
   const token = await decryptSecret(access.encryptedToken)
   await friendly(
     ctx,
@@ -361,6 +365,10 @@ export const sync = action({
       throw new ConvexError(
         "Connect a WhatsApp Business Account on the Channels page first"
       )
+    await ctx.runMutation(internal.botToolkitAccess.reserveOutbound, {
+      organizationId,
+      operation: "templateSync",
+    })
     let synced = 0
     for (const wabaId of wabaIds) synced += await syncWaba(ctx, wabaId)
     return { synced }

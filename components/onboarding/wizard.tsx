@@ -1,4 +1,5 @@
 "use client"
+import { TelemetrySettings } from "@/components/dashboard/settings-telemetry"
 import * as React from "react"
 import Link from "next/link"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -257,6 +258,7 @@ export function InstallationWizard() {
             />
           </>
         )}
+        {step === "channels" && <TelemetrySettings setup />}
         {step === "channels" && (
           <AsyncForm
             fullWidth
