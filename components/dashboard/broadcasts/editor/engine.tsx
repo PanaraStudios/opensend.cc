@@ -170,6 +170,8 @@ export function useEmailEngine({
     immediatelyRender: true,
     editorProps: {
       attributes: {
+        // Keep the role when Tiptap reapplies editorProps after a render.
+        role: "textbox",
         "aria-label": "Email content",
         "aria-multiline": "true",
       },

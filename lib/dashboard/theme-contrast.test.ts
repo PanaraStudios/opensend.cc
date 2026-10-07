@@ -132,3 +132,46 @@ test("dark placeholders meet AA on the actual dark field background", () => {
     "dark placeholder on page"
   )
 })
+
+test("bubble metadata stays AA on primary fills in both themes", () => {
+  const bubble = readFileSync(
+    new URL("../../components/ui/bubble.tsx", import.meta.url),
+    "utf8"
+  )
+  const opacity = bubble.match(
+    /group-data-\[variant=default\]\/bubble:text-primary-foreground\/(\d+)/
+  )?.[1]
+  assert.ok(opacity, "Primary bubble metadata needs its own foreground family")
+  for (const [name, theme] of [
+    ["light", light],
+    ["dark", dark],
+  ] as const)
+    assertAA(
+      color(theme, "--primary-foreground"),
+      color(theme, "--primary"),
+      `${name} primary bubble metadata`,
+      Number(opacity) / 100
+    )
+})
+
+test("shared light placeholders use a foreground that meets AA on fields", () => {
+  for (const [file, variant] of [
+    ["input", "placeholder"],
+    ["textarea", "placeholder"],
+    ["select", "data-placeholder"],
+  ]) {
+    const source = readFileSync(
+      new URL(`../../components/ui/${file}.tsx`, import.meta.url),
+      "utf8"
+    )
+    const token = source.match(
+      new RegExp(`(?<![\\w:-])${variant}:text-([\\w-]+)`)
+    )?.[1]
+    assert.ok(token, `${file} has no shared placeholder foreground`)
+    assertAA(
+      color(light, `--${token}`),
+      color(light, "--field"),
+      `${file} placeholder`
+    )
+  }
+})

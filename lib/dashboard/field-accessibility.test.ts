@@ -558,3 +558,199 @@ test("portaled dropdown menu content is contained by a named landmark", async ()
     }
   )
 })
+
+test("disabled addon buttons leave enabled group controls undimmed", async () => {
+  const { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton } =
+    await import("../../components/ui/input-group")
+  const { compile } = await import("tailwindcss")
+  for (const disabled of [false, true]) {
+    await render(
+      h(
+        InputGroup,
+        null,
+        h(InputGroupTextarea, { "aria-label": "Reply", disabled }),
+        h(
+          InputGroupAddon,
+          null,
+          h(InputGroupButton, { disabled: true }, "Send")
+        )
+      ),
+      async (container) => {
+        const group = container.querySelector<HTMLElement>(
+          '[data-slot="input-group"]'
+        )!
+        const { build } = await compile("@tailwind utilities;")
+        const css = build([...group.classList])
+        const dimmingSelectors = [
+          ...css.matchAll(/([^{}\n]+)\{\n\s+opacity:\s*45%;/g),
+        ].map((match) => match[1].trim())
+        assert.ok(
+          dimmingSelectors.length,
+          "The genuine disabled-control style must remain"
+        )
+        assert.equal(
+          dimmingSelectors.some((selector) => group.matches(selector)),
+          disabled
+        )
+        assert.equal(
+          computeAccessibleName(container.querySelector("textarea")!),
+          "Reply"
+        )
+        assert.equal(container.querySelector("textarea")!.disabled, disabled)
+      }
+    )
+  }
+})
+
+test("compact run payloads and code wells share named keyboard scroll semantics", async () => {
+  const { ScrollablePre, CodeWell } =
+    await import("../../components/dashboard/primitives")
+  await render(
+    h(
+      "div",
+      null,
+      h(
+        ScrollablePre,
+        { label: "Resolved inputs", className: "max-h-48 overflow-auto" },
+        "Input payload"
+      ),
+      h(
+        ScrollablePre,
+        { label: "Output", className: "max-h-48 overflow-auto" },
+        "Output payload"
+      ),
+      h(CodeWell, { label: "Request body", children: "Request payload" })
+    ),
+    (container) => {
+      assert.deepEqual(names(container, "pre"), [
+        "Resolved inputs",
+        "Output",
+        "Request body",
+      ])
+      for (const pre of container.querySelectorAll("pre")) {
+        assert.equal(pre.tabIndex, 0)
+        assert.equal(pre.getAttribute("role"), "group")
+      }
+    }
+  )
+})
+
+test("the email engine retains named multiline textbox semantics after rerender", async () => {
+  const { useEmailEngine } =
+    await import("../../components/dashboard/broadcasts/editor/engine")
+  const { EditorContent } = await import("@tiptap/react")
+  const { useState } = await import("react")
+  function EditorFixture() {
+    const [revision, setRevision] = useState(0)
+    const editor = useEmailEngine({
+      content: "<p>Email body</p>",
+      onUpdate: () => {},
+    })
+    return h(
+      "div",
+      { "data-revision": revision },
+      h("button", { onClick: () => setRevision(revision + 1) }, "Rerender"),
+      h(EditorContent, { editor })
+    )
+  }
+  await render(h(EditorFixture), async (container) => {
+    const check = () => {
+      const editor = container.querySelector<HTMLElement>(".tiptap")!
+      assert.ok(editor)
+      assert.equal(editor.getAttribute("contenteditable"), "true")
+      assert.equal(editor.getAttribute("role"), "textbox")
+      assert.equal(editor.getAttribute("aria-multiline"), "true")
+      assert.equal(computeAccessibleName(editor), "Email content")
+    }
+    check()
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>("button")!.click()
+    )
+    assert.equal(
+      container.querySelector("[data-revision]")!.getAttribute("data-revision"),
+      "1"
+    )
+    check()
+  })
+})
+
+test("bubble metadata chooses primary foreground only inside a primary bubble", async () => {
+  const { Bubble, BubbleContent, BubbleMeta } =
+    await import("../../components/ui/bubble")
+  const { compile } = await import("tailwindcss")
+  for (const variant of ["default", "muted", "ghost", "destructive"] as const) {
+    await render(
+      h(
+        Bubble,
+        { variant },
+        h(BubbleContent, null, h(BubbleMeta, null, "10:30"))
+      ),
+      async (container) => {
+        const meta = container.querySelector<HTMLElement>(
+          '[data-slot="bubble-meta"]'
+        )!
+        const { build } = await compile(
+          "@theme { --color-primary-foreground: var(--primary-foreground); } @tailwind utilities;"
+        )
+        const css = build([...meta.classList])
+        const primarySelectors = [
+          ...css.matchAll(
+            /([^{}\n]+)\{\n\s+color: var\(--color-primary-foreground\);/g
+          ),
+        ].map((match) => {
+          // Happy DOM cannot match a descendant combinator nested in :is/:where.
+          // Flatten that equivalent selector; specificity is irrelevant to matches().
+          return match[1]
+            .trim()
+            .replace(
+              /^(.+):is\(:where\(\.group\\\/bubble\)(\[data-variant="[^"]+"\]) \*\)$/,
+              '[class~="group/bubble"]$2 $1'
+            )
+        })
+        assert.ok(primarySelectors.length)
+        assert.equal(
+          primarySelectors.some((selector) => meta.matches(selector)),
+          variant === "default"
+        )
+      }
+    )
+  }
+})
+
+test("native and searchable option triggers keep readable empty-state text", async () => {
+  for (const search of [
+    undefined,
+    { onChange: () => {}, placeholder: "Search routes" },
+  ]) {
+    await render(
+      field(
+        "Route",
+        h(OptionSelect, {
+          value: "",
+          items: [],
+          placeholder: "Choose a route",
+          search,
+        })
+      ),
+      (container) => {
+        const trigger = container.querySelector<HTMLElement>(
+          '[data-slot="select-trigger"]'
+        )!
+        assert.equal(computeAccessibleName(trigger), "Route")
+        assert.equal(
+          trigger.querySelector('[data-slot="select-value"]')!.textContent,
+          "Choose a route"
+        )
+        assert.ok(trigger.hasAttribute("data-placeholder"))
+        assert.ok(
+          trigger.classList.contains("data-placeholder:text-muted-foreground")
+        )
+        assert.ok(
+          trigger.classList.contains(
+            "dark:data-placeholder:text-faint-foreground"
+          )
+        )
+      }
+    )
+  }
+})

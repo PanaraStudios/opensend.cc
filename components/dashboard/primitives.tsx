@@ -1403,6 +1403,14 @@ export function IconCell({
   )
 }
 
+/** Keyboard access and a name for a preformatted scroll container, without styling. */
+export function ScrollablePre({
+  label,
+  ...props
+}: React.ComponentProps<"pre"> & { label: string }) {
+  return <pre {...props} tabIndex={0} role="group" aria-label={label} />
+}
+
 /** Monospace well for source and payloads, with an optional copy button
     pinned to the corner. */
 export function CodeWell({
@@ -1418,10 +1426,8 @@ export function CodeWell({
 }) {
   return (
     <div className="relative">
-      <pre
-        tabIndex={0}
-        role="group"
-        aria-label={label}
+      <ScrollablePre
+        label={label}
         className={cn(
           "overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-mono whitespace-pre-wrap",
           copyValue && "pr-12",
@@ -1429,7 +1435,7 @@ export function CodeWell({
         )}
       >
         {children}
-      </pre>
+      </ScrollablePre>
       {copyValue ? (
         <div className="absolute top-3 right-3">
           <CopyButton value={copyValue} />

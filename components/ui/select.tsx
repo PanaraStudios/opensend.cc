@@ -29,7 +29,7 @@ function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
 }
 
 export const selectTriggerClassName =
-  "flex w-fit items-center justify-between gap-1.5 rounded-lg border border-input bg-field py-2 pr-2.5 pl-3 text-sm whitespace-nowrap shadow-none transition-[border-color,box-shadow] outline-none select-none hover:border-border-strong focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-45 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-placeholder:text-faint-foreground data-[size=default]:h-control data-[size=sm]:h-control-sm *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+  "flex w-fit items-center justify-between gap-1.5 rounded-lg border border-input bg-field py-2 pr-2.5 pl-3 text-sm whitespace-nowrap shadow-none transition-[border-color,box-shadow] outline-none select-none hover:border-border-strong focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-45 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground dark:data-placeholder:text-faint-foreground data-[size=default]:h-control data-[size=sm]:h-control-sm *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
 
 function SelectTrigger({
   className,
