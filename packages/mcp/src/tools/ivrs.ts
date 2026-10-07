@@ -205,4 +205,19 @@ export function addIvrTools(server: McpServer, opensend: Opensend) {
     async ({ id, idempotencyKey }) =>
       channelOutput("IVR", await opensend.ivrs.render(id, { idempotencyKey }))
   )
+  server.registerTool(
+    "rotate-ivr-signing-secret",
+    {
+      title: "Rotate IVR signing secret",
+      description:
+        "Replace an IVR signing credential and reveal the new secret once. Save it now; subsequent reads are redacted. Requires ivrs:write.",
+      inputSchema: { id: z.string(), idempotencyKey: z.string().optional() },
+      annotations: write,
+    },
+    async ({ id, idempotencyKey }) =>
+      channelOutput(
+        "IVR",
+        await opensend.ivrs.rotateSigningSecret(id, { idempotencyKey })
+      )
+  )
 }
