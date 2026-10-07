@@ -94,8 +94,6 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
-        "413":
-          $ref: "#/components/responses/Error400"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -137,7 +135,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -172,8 +170,6 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
-        "413":
-          $ref: "#/components/responses/Error400"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -230,7 +226,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -274,7 +270,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -312,8 +308,6 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
-        "413":
-          $ref: "#/components/responses/Error400"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -360,7 +354,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -400,8 +394,6 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
-        "413":
-          $ref: "#/components/responses/Error400"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -474,7 +466,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -523,7 +515,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -556,8 +548,6 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
-        "413":
-          $ref: "#/components/responses/Error400"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -599,7 +589,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -634,8 +624,6 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
-        "413":
-          $ref: "#/components/responses/Error400"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -725,7 +713,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -769,7 +757,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -831,7 +819,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -878,7 +866,7 @@ paths:
         "404":
           $ref: "#/components/responses/Error404"
         "413":
-          $ref: "#/components/responses/Error400"
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -924,6 +912,8 @@ paths:
         '403': {$ref: '#/components/responses/Error403'}
         '404': {$ref: '#/components/responses/Error404'}
         '409': {$ref: '#/components/responses/Error409'}
+        "413":
+          $ref: "#/components/responses/Error413"
         '422': {$ref: '#/components/responses/Error422'}
         '429': {$ref: '#/components/responses/Error429'}
     get:
@@ -1095,6 +1085,8 @@ paths:
           $ref: '#/components/responses/Error403'
         '404':
           $ref: '#/components/responses/Error404'
+        "413":
+          $ref: "#/components/responses/Error413"
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -1140,6 +1132,8 @@ paths:
           $ref: '#/components/responses/Error403'
         '404':
           $ref: '#/components/responses/Error404'
+        "413":
+          $ref: "#/components/responses/Error413"
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -1182,6 +1176,8 @@ paths:
           $ref: '#/components/responses/Error403'
         '404':
           $ref: '#/components/responses/Error404'
+        "413":
+          $ref: "#/components/responses/Error413"
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -1275,8 +1271,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -1391,8 +1385,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -1565,9 +1557,7 @@ paths:
       tags:
         - Domains
       summary: Create Domain
-      description: >-
-        Add a domain for sending or receiving email (requires domains:write or Full access). Setup
-        runs asynchronously; receiving requires a supported region.
+      description: "Add a domain for sending or receiving email. Setup runs asynchronously; receiving requires a supported region. Requires domains:write or full_access access (write includes read)."
       x-opensend-scope: domains:write
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1614,9 +1604,7 @@ paths:
       tags:
         - Domains
       summary: List Domains
-      description: >-
-        List your domains and their verification status (requires domains:read or Full access).
-        Statuses are pending, verified, partially_verified, or failed.
+      description: "List your domains and their verification status. Statuses are pending, verified, partially_verified, or failed. Requires domains:read or full_access access (write includes read)."
       x-opensend-scope: domains:read
       parameters:
         - $ref: '#/components/parameters/PaginationLimit'
@@ -1646,8 +1634,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -1660,9 +1646,7 @@ paths:
       tags:
         - Domains
       summary: Retrieve Domain
-      description: >-
-        Retrieve a domain and the DNS records needed to verify it (requires domains:read or Full
-        access). Records include DMARC; TrackingCAA and CAA records are not returned.
+      description: "Retrieve a domain and the DNS records needed to verify it. Records include DMARC; TrackingCAA and CAA records are not returned. Requires domains:read or full_access access (write includes read)."
       x-opensend-scope: domains:read
       parameters:
         - name: id
@@ -1695,8 +1679,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -1708,10 +1690,7 @@ paths:
       tags:
         - Domains
       summary: Update Domain
-      description: >-
-        Update tracking, TLS, or receiving settings for a domain that has completed setup (requires
-        domains:write or Full access). Omitted or null settings stay unchanged; receiving requires a
-        supported region.
+      description: "Update tracking, TLS, or receiving settings for a domain that has completed setup. Omitted or null settings stay unchanged; receiving requires a supported region. Requires domains:write or full_access access (write includes read)."
       x-opensend-scope: domains:write
       parameters:
         - name: id
@@ -1763,9 +1742,7 @@ paths:
       tags:
         - Domains
       summary: Delete Domain
-      description: >-
-        Delete a domain from your team (requires domains:write or Full access). Removal and related
-        cleanup may finish after the response.
+      description: "Delete a domain from your team. Removal and related cleanup may finish after the response. Requires domains:write or full_access access (write includes read)."
       x-opensend-scope: domains:write
       parameters:
         - name: id
@@ -1897,8 +1874,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -1945,8 +1920,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -2139,8 +2112,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -2186,8 +2157,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -2379,8 +2348,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -2426,8 +2393,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -2620,8 +2585,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -2667,8 +2630,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -2876,8 +2837,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -2926,8 +2885,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -3123,8 +3080,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -3170,8 +3125,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -3365,8 +3318,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -3412,8 +3363,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -3528,10 +3477,7 @@ paths:
       tags:
         - Domains
       summary: Verify Domain
-      description: >-
-        Start DNS verification or retry a failed domain setup (requires domains:write or Full
-        access). Verification runs asynchronously and is limited to one request per domain every 10
-        seconds; earlier retries return 422.
+      description: "Start DNS verification or retry a failed domain setup. Verification runs asynchronously and is limited to one request per domain every 10 seconds; earlier retries return 422. Requires domains:write or full_access access (write includes read)."
       x-opensend-scope: domains:write
       parameters:
         - name: id
@@ -3656,8 +3602,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4067,8 +4011,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4119,8 +4061,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4171,8 +4111,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4381,8 +4319,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4441,8 +4377,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4493,8 +4427,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4548,8 +4480,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4645,8 +4575,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4694,8 +4622,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4835,8 +4761,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -4992,8 +4916,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -5039,8 +4961,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -5253,8 +5173,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -5309,8 +5227,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -5435,8 +5351,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -5559,8 +5473,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -5709,8 +5621,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -5906,8 +5816,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6013,8 +5921,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6060,8 +5966,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6162,8 +6066,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6209,8 +6111,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6469,8 +6369,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6523,8 +6421,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6621,8 +6517,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6669,8 +6563,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6768,8 +6660,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6821,8 +6711,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6899,8 +6787,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6951,8 +6837,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -6966,11 +6850,7 @@ paths:
       tags:
         - Domains
       summary: Claim a domain
-      description: >-
-        Start a claim for a domain that another team has already verified. The domain is recreated
-        under your account with fresh DKIM keys, so the previous account's DNS records cannot be
-        reused. Returns a TXT record to add to your DNS to prove ownership. Uses the same request
-        body as creating a domain.
+      description: "Start a claim for a domain that another team has already verified. The domain is recreated under your account with fresh DKIM keys, so the previous account's DNS records cannot be reused. Returns a TXT record to add to your DNS to prove ownership. Uses the same request body as creating a domain. Requires domains:write or full_access access (write includes read)."
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -7016,7 +6896,7 @@ paths:
       tags:
         - Domains
       summary: Retrieve a domain claim
-      description: Retrieve the latest claim for the placeholder domain created by the claim.
+      description: "Retrieve the latest claim for the placeholder domain created by the claim. Requires domains:read or full_access access (write includes read)."
       parameters:
         - name: id
           in: path
@@ -7041,8 +6921,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -7056,11 +6934,7 @@ paths:
       tags:
         - Domains
       summary: Verify a domain claim
-      description: >-
-        Trigger asynchronous DNS verification and ownership transfer for a domain claim. The claim
-        stays `pending` while verification runs; poll the retrieve endpoint for status. Once
-        `completed`, the transferred domain has new DKIM records that must be added to DNS and
-        verified via the standard domain verify endpoint.
+      description: "Trigger asynchronous DNS verification and ownership transfer for a domain claim. The claim stays `pending` while verification runs; poll the retrieve endpoint for status. Once `completed`, the transferred domain has new DKIM records that must be added to DNS and verified via the standard domain verify endpoint. Requires domains:write or full_access access (write includes read)."
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - name: id
@@ -8176,8 +8050,6 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
-        "413":
-          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -12065,8 +11937,6 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
-        "413":
-          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -12152,6 +12022,8 @@ paths:
           $ref: "#/components/responses/Error401"
         "403":
           $ref: "#/components/responses/Error403"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -12190,6 +12062,8 @@ paths:
               schema: { $ref: "#/components/schemas/WhatsAppId" }
         "401": { $ref: "#/components/responses/Error401" }
         "403": { $ref: "#/components/responses/Error403" }
+        "413":
+          $ref: "#/components/responses/Error413"
         "422": { $ref: "#/components/responses/Error422" }
         "429": { $ref: "#/components/responses/Error429" }
   /whatsapp/media:
@@ -12298,8 +12172,6 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
-        "413":
-          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -12337,8 +12209,6 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
-        "413":
-          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -12374,8 +12244,6 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
-        "413":
-          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -12416,8 +12284,6 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
-        "413":
-          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -12534,8 +12400,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -12579,8 +12443,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -12622,8 +12484,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -12667,8 +12527,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -12710,8 +12568,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -12758,8 +12614,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -12876,8 +12730,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -12921,8 +12773,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -12964,8 +12814,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -13009,8 +12857,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -13052,8 +12898,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -13100,8 +12944,6 @@ paths:
           $ref: '#/components/responses/Error404'
         '409':
           $ref: '#/components/responses/Error409'
-        '413':
-          $ref: '#/components/responses/Error413'
         '422':
           $ref: '#/components/responses/Error422'
         '429':
@@ -13574,6 +13416,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -13668,6 +13512,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -13755,6 +13601,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -13807,6 +13655,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -13853,6 +13703,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -13899,6 +13751,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -13977,6 +13831,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14020,6 +13876,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14106,6 +13964,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14118,8 +13978,7 @@ paths:
       tags:
         - IVRs
       summary: create
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
-        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -14142,6 +14001,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14151,8 +14012,7 @@ paths:
       tags:
         - IVRs
       summary: list
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
-        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:read or full_access access (write includes read)."
       x-opensend-scope: ivrs:read
       parameters:
         - name: limit
@@ -14207,8 +14067,7 @@ paths:
       tags:
         - IVRs
       summary: get
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
-        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:read or full_access access (write includes read)."
       x-opensend-scope: ivrs:read
       parameters:
         - &a2
@@ -14238,8 +14097,7 @@ paths:
       tags:
         - IVRs
       summary: update
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
-        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
         - *a2
@@ -14262,6 +14120,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14271,8 +14131,7 @@ paths:
       tags:
         - IVRs
       summary: remove
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
-        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
         - *a2
@@ -14302,6 +14161,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14312,8 +14173,7 @@ paths:
       tags:
         - IVRs
       summary: validate
-      description: Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this
-        release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB).
+      description: "Team-scoped IVR. Menus replace the entire array. TTS prompts are pending_render in this release. Audio uses finalized WAV/MP3/OGG files (use=ivr, media:write, at most 16 MiB). Requires ivrs:read or full_access access (write includes read)."
       x-opensend-scope: ivrs:read
       parameters:
         - *a2
@@ -14346,6 +14206,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14355,7 +14217,7 @@ paths:
       operationId: ivrs/render
       tags: [IVRs]
       summary: Retry failed IVR prompts
-      description: Re-render failed prompts with the saved team provider credential; cached ready prompts are reused.
+      description: "Re-render failed prompts with the saved team provider credential; cached ready prompts are reused. Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
         - name: id
@@ -14374,6 +14236,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14383,7 +14247,7 @@ paths:
       operationId: ivrs/rotateSigningSecret
       tags: [IVRs]
       summary: Rotate IVR signing secret
-      description: Replace the signing credential and reveal it in this write-scoped response. Save it now; subsequent reads are redacted. Supports Idempotency-Key.
+      description: "Replace the signing credential and reveal it in this write-scoped response. Save it now; subsequent reads are redacted. Supports Idempotency-Key. Requires ivrs:write or full_access access (write includes read)."
       x-opensend-scope: ivrs:write
       parameters:
         - name: id
@@ -14402,6 +14266,8 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14441,6 +14307,8 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14551,6 +14419,8 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14593,6 +14463,8 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14634,6 +14506,8 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":
@@ -14708,6 +14582,8 @@ paths:
           $ref: "#/components/responses/Error404"
         "409":
           $ref: "#/components/responses/Error409"
+        "413":
+          $ref: "#/components/responses/Error413"
         "422":
           $ref: "#/components/responses/Error422"
         "429":

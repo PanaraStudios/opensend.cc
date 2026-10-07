@@ -9,6 +9,8 @@ services:
       CONVEX_DEPLOY_KEY: ${CONVEX_DEPLOY_KEY:?Set CONVEX_DEPLOY_KEY to your deployment deploy key}
       CONVEX_SELF_HOSTED_URL: !reset null
       CONVEX_SELF_HOSTED_ADMIN_KEY: !reset null
+      # Cloud Node actions cannot access the local recording volume.
+      CALL_GATEWAY_RECORDINGS_DIR: !reset null
   app:
     depends_on: !override
       migrate:

@@ -29,15 +29,30 @@ set -eu
   trap finish EXIT
   trap 'exit 130' INT TERM
   c build janus freeswitch drachtio voice-agent call-gateway meta-peer
+  # Match installer startup: Convex mounts the empty volume before FreeSWITCH.
+  c run --rm --no-deps --entrypoint node convex \
+    -e 'require("node:fs").accessSync("/recordings")'
   c up -d janus freeswitch drachtio voice-agent call-gateway
   if [ "$#" -eq 0 ]; then
     set -- playground playground-bot baseline agent voice bot-engine bot-end-call ivr-engine ivr-bot-agent bot-ivr outbound-bot outbound-ivr
   fi
+  harness_recordings=no
   for harness_mode in "$@"; do
     case "$harness_mode" in
       playground|playground-bot|baseline|agent|voice|bot-engine|bot-end-call|ivr-engine|ivr-bot-agent|bot-ivr|outbound-bot|outbound-ivr) ;;
       *) echo "Unknown calling harness mode: $harness_mode" >&2; exit 2 ;;
     esac
+    case "$harness_mode" in
+      playground|playground-bot) ;;
+      *) harness_recordings=yes ;;
+    esac
     c run --rm --no-deps --use-aliases meta-peer node node_modules/tsx/dist/cli.mjs scripts/meta-peer.ts "$harness_mode"
   done
+  # The fake callback receiver cannot test Convex storage. Exercise the real
+  # backend image's Node user and production mount against the finalized WAVs.
+  if [ "$harness_recordings" = yes ]; then
+    c run --rm --no-deps --entrypoint node \
+      --volume "$(pwd)/scripts/test-calling-recordings.mjs:/test-recordings.mjs:ro" \
+      convex /test-recordings.mjs
+  fi
 )

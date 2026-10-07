@@ -98,6 +98,7 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
     SITE_URL: "https://mail.example.test",
     BETTER_AUTH_SECRET: "",
     SMTP_HOST: "smtp.example.test",
+    CALL_GATEWAY_RECORDINGS_DIR: "/recordings",
     OPENSEND_TELEMETRY: "0",
     OPENSEND_TELEMETRY_URL: "http://127.0.0.1:9/telemetry",
     OPENSEND_INSTALL_METHOD: "script",
@@ -106,6 +107,11 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
   assert.ok(requests >= 2)
   assert.ok(
     calls.some((call) => call.args[2] === "SMTP_HOST=smtp.example.test")
+  )
+  assert.ok(
+    calls.some(
+      (call) => call.args[2] === "CALL_GATEWAY_RECORDINGS_DIR=/recordings"
+    )
   )
   assert.ok(
     !calls.some((call) => call.args[2]?.startsWith("BETTER_AUTH_SECRET="))

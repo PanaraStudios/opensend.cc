@@ -179,6 +179,13 @@ export function scopeAllows(
 export function scopeName(scope: RequiredScope): ApiScope | "full_access" {
   return scope === "full_access" ? scope : `${scope.resource}:${scope.access}`
 }
+/** Permission text shared by the base and enriched REST documentation. */
+export function scopeDescription(scope: ApiScope | "full_access"): string {
+  if (scope === "full_access") return "Requires full_access access."
+  if (!API_SCOPES.includes(scope))
+    throw new Error(`Unknown API scope: ${scope}`)
+  return `Requires ${scope} or full_access access (write includes read).`
+}
 export function scopeLabel(scope: string): string {
   const [id, access] = scope.split(":")
   const resource = API_RESOURCES.find((r) => r.id === id)

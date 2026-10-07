@@ -4,7 +4,7 @@ import { resolve } from "node:path"
 import SwaggerParser from "@apidevtools/swagger-parser"
 import Ajv2020, { type AnySchema } from "ajv/dist/2020"
 import { beforeAll, expect, test, vi } from "vitest"
-import { scopeName } from "../../lib/api-scopes"
+import { scopeDescription, scopeName } from "../../lib/api-scopes"
 import type { ApiRouteOptions } from "./route"
 import { buildOpenApi, type OpenApiDocument } from "./openapi"
 
@@ -82,6 +82,53 @@ test("every registered REST route is inventoried with SDK and MCP coverage or an
   expect(
     Object.keys(exceptions).filter((key) => !actual.includes(key))
   ).toEqual([])
+})
+
+test("raw and enriched scope documentation matches enforced route permissions", () => {
+  for (const { method, path, scope } of registrations) {
+    const context = `${method} ${path}`
+    const name = scopeName(scope)
+    const raw = source.paths[path][method.toLowerCase()]
+    const enriched = document.paths[path][method.toLowerCase()]
+    expect(raw["x-opensend-scope"], context).toBe(name)
+    expect(enriched["x-opensend-scope"], context).toBe(name)
+    if (scope !== "full_access")
+      expect(enriched.description, context).toContain(scopeDescription(name))
+    if (path.startsWith("/ivrs") || path.startsWith("/domains"))
+      expect(raw.description, context).toContain(scopeDescription(name))
+  }
+})
+
+test("413 uses one response/schema for routes accepting bounded request bodies", () => {
+  const components = source.components as {
+    responses: Record<
+      string,
+      { content: { "application/json": { schema: { $ref: string } } } }
+    >
+    schemas: Record<
+      string,
+      {
+        properties: { statusCode: { const: number }; name: { enum: string[] } }
+      }
+    >
+  }
+  expect(
+    components.responses.Error413.content["application/json"].schema.$ref
+  ).toBe("#/components/schemas/Error413")
+  expect(components.schemas.Error413.properties.statusCode.const).toBe(413)
+  expect(components.schemas.Error413.properties.name.enum).toEqual([
+    "validation_error",
+  ])
+  for (const { method, path } of registrations) {
+    const response = source.paths[path][method.toLowerCase()].responses["413"]
+    // Fetch Request objects cannot carry a GET body. The shared wrapper bounds
+    // every POST/PATCH/DELETE body, including unexpected bodies on delete routes.
+    if (method === "GET") expect(response, `${method} ${path}`).toBeUndefined()
+    else
+      expect(response, `${method} ${path}`).toEqual({
+        $ref: "#/components/responses/Error413",
+      })
+  }
 })
 
 test("enriched operations have descriptions, scopes, schemas and valid examples without changing wire fields", async () => {
