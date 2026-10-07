@@ -160,7 +160,7 @@ function WebhookForm({ webhook, onSubmit, onOpenChange }: WebhookFormProps) {
             />
             {error?.endpoint ? <FieldError>{error.endpoint}</FieldError> : null}
           </Field>
-          <Field>
+          <Field role="group">
             <FieldLabel>Events</FieldLabel>
             <div className="flex max-h-64 flex-col gap-4 overflow-auto rounded-lg border border-border p-3">
               {WEBHOOK_EVENT_GROUPS.map((group) => {

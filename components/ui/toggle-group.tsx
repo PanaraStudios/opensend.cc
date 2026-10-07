@@ -7,6 +7,7 @@ import { type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 import { toggleVariants } from "@/components/ui/toggle"
+import { useFieldLabel } from "@/components/ui/field"
 
 const ToggleGroupContext = React.createContext<
   VariantProps<typeof toggleVariants> & {
@@ -33,6 +34,7 @@ function ToggleGroup({
     spacing?: number
     orientation?: "horizontal" | "vertical"
   }) {
+  const fieldLabel = useFieldLabel(props)
   return (
     <ToggleGroupPrimitive
       data-slot="toggle-group"
@@ -46,6 +48,7 @@ function ToggleGroup({
         className
       )}
       {...props}
+      {...fieldLabel}
     >
       <ToggleGroupContext.Provider
         value={{ variant, size, spacing, orientation }}

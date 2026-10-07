@@ -104,8 +104,11 @@ function Field({
   return (
     <FieldContext.Provider value={context}>
       <div
-        role="group"
-        aria-labelledby={props["aria-label"] ? undefined : labelId}
+        // Field is layout by default. Group controls own their names; a set
+        // without a group primitive (e.g. checkboxes) opts in with role="group".
+        aria-labelledby={
+          props.role === "group" && !props["aria-label"] ? labelId : undefined
+        }
         data-slot="field"
         data-orientation={orientation}
         className={cn(fieldVariants({ orientation }), className)}

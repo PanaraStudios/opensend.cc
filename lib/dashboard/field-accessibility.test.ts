@@ -32,10 +32,13 @@ for (const key of [
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const { createElement: h, act } = await import("react")
 const { createRoot } = await import("react-dom/client")
-const { Field, FieldLabel } = await import("../../components/ui/field")
+const { Field, FieldLabel, FieldSet, FieldLegend } =
+  await import("../../components/ui/field")
 const { RadioGroup, RadioGroupItem } =
   await import("../../components/ui/radio-group")
 const { Checkbox } = await import("../../components/ui/checkbox")
+const { ToggleGroup, ToggleGroupItem } =
+  await import("../../components/ui/toggle-group")
 const { Switch } = await import("../../components/ui/switch")
 const { Input } = await import("../../components/ui/input")
 const { Textarea } = await import("../../components/ui/textarea")
@@ -70,6 +73,120 @@ function names(container: HTMLDivElement, selector: string) {
     computeAccessibleName(element)
   )
 }
+
+// Label locators consider aria-labelledby on generic elements too, even when
+// their role does not allow an accessible name. Check the actual associations.
+function elementsForLabel(container: HTMLDivElement, label: HTMLLabelElement) {
+  return [...container.querySelectorAll("*")].filter(
+    (element) =>
+      element === label.control ||
+      element.getAttribute("aria-labelledby")?.split(/\s+/).includes(label.id)
+  )
+}
+
+test("a single-input Field has exactly one label target, with or without htmlFor", async () => {
+  for (const htmlFor of ["name", undefined]) {
+    await render(
+      h(
+        Field,
+        null,
+        h(FieldLabel, { htmlFor }, "Name"),
+        h(Input, { id: "name" })
+      ),
+      (container) => {
+        const label = container.querySelector("label")!
+        const input = container.querySelector("input")!
+        const targets = elementsForLabel(container, label)
+        assert.equal(targets.length, 1)
+        assert.ok(targets[0] === input)
+        assert.equal(computeAccessibleName(input), "Name")
+        const wrapper = container.querySelector('[data-slot="field"]')!
+        assert.equal(wrapper.hasAttribute("role"), false)
+        assert.equal(wrapper.hasAttribute("aria-labelledby"), false)
+        assert.equal(wrapper.hasAttribute("aria-label"), false)
+      }
+    )
+  }
+})
+
+test("a RadioGroup alone receives the field label while its radios keep option names", async () => {
+  await render(
+    field(
+      "Engine",
+      h(
+        RadioGroup,
+        { defaultValue: "gemini" },
+        h("label", null, h(RadioGroupItem, { value: "gemini" }), "Gemini Live"),
+        h("label", null, h(RadioGroupItem, { value: "cascade" }), "Cascade")
+      )
+    ),
+    (container) => {
+      const label = container.querySelector(
+        '[data-slot="field-label"]'
+      ) as HTMLLabelElement
+      const targets = elementsForLabel(container, label)
+      assert.equal(targets.length, 1)
+      assert.ok(targets[0] === container.querySelector('[role="radiogroup"]'))
+      assert.deepEqual(names(container, '[role="radiogroup"]'), ["Engine"])
+      assert.deepEqual(names(container, '[role="radio"]'), [
+        "Gemini Live",
+        "Cascade",
+      ])
+    }
+  )
+})
+
+test("explicit checkbox groups and ToggleGroup receive only the group name", async () => {
+  await render(
+    h(
+      "div",
+      null,
+      h(
+        Field,
+        { role: "group" },
+        h(FieldLabel, null, "Events"),
+        h("label", null, h(Checkbox), "Email sent"),
+        h("label", null, h(Checkbox), "Email delivered")
+      ),
+      field(
+        "Display",
+        h(
+          ToggleGroup,
+          null,
+          h(ToggleGroupItem, { value: "list" }, "List"),
+          h(ToggleGroupItem, { value: "grid" }, "Grid")
+        )
+      ),
+      h(
+        FieldSet,
+        null,
+        h(FieldLegend, null, "Channels"),
+        h("label", null, h(Checkbox), "Email")
+      )
+    ),
+    (container) => {
+      assert.deepEqual(names(container, '[role="group"]'), [
+        "Events",
+        "Display",
+      ])
+      assert.deepEqual(names(container, '[role="checkbox"]'), [
+        "Email sent",
+        "Email delivered",
+        "Email",
+      ])
+      assert.deepEqual(names(container, '[data-slot="toggle-group-item"]'), [
+        "List",
+        "Grid",
+      ])
+      assert.deepEqual(names(container, "fieldset"), ["Channels"])
+      for (const label of container.querySelectorAll<HTMLLabelElement>(
+        '[data-slot="field-label"]'
+      )) {
+        assert.equal(elementsForLabel(container, label).length, 1)
+      }
+    }
+  )
+})
 
 test("provider radios retain option names and name only their group Engine", async () => {
   await render(
