@@ -10,19 +10,19 @@ This report is committed separately. Both commits include the requested co-autho
 | 1. Failed email reason | Terminal send failures retain a friendly explanation and the original provider message. Email detail, message lists and email broadcast recipient outcomes show the explanation; detail and broadcast outcomes offer the provider message. Email GET/list responses and SDK types expose optional `failed.reason` and `failed.provider_message`. Common SES credential, verification/sandbox, throttling/quota, suppression and rejection errors have shared friendly wording. | SES action/storage/dashboard-query/API detail and list tests; broadcast settlement and recipient query tests; shared mapping tests. |
 | 2. Send readiness | Disabled sending, DNS verification, domain provisioning, tenant setup/pause, regional setup, callback connection, regional pause and sandbox each identify the domain and the corrective action. REST preserves `403` and `validation_error`. | Extended `convex/emails.test.ts` cause-by-cause assertions, including batch and installation-email regressions; updated SES expectations. |
 | 3. Invalid OpenAPI YAML | Expanded every alias and removed every anchor, including repeated names beyond the reported `a1`. Added a repeatable plain-YAML exporter and a strict parser test. The API failure extension and scope order are reflected in the contract. | SDK contract loads YAML using js-yaml with duplicate-anchor rejection, verifies that the rejection works on a duplicate fixture, and checks for remaining anchors/aliases. Backend OpenAPI contracts continue to validate responses. |
-| 4. SES layout and double borders | `CardFrame` and the shared `.frame` wrapper now leave the border to their child surface. This applies to settings, Inbox, email previews, contact panels and all shared Surface/PanelTabs users. SES intro sits under the title; AWS/SES sections precede a separate Instance settings section containing storage and telemetry. Routes and docs-link destinations remain available. | Shared DOM surface regression; extended SES browser assertions for intro and section order. |
-| 5. Empty segment | Added an Add contacts action with the existing searchable contact picker and membership mutation. Segment tables now query the segment's members. Empty copy explains this picker, contact-detail Add to segment and the Contacts bulk action. | Added browser coverage for an empty segment, searching an existing contact, adding it and seeing membership update. |
+| 4. Instance layout and double borders | `CardFrame` and the shared `.frame` wrapper now leave the border to their child surface. This applies to settings, Inbox, email previews, contact panels and all shared Surface/PanelTabs users. A shared instance layout places SES/Meta introductions under their titles before their own sections. Storage and telemetry have one dashboard home at `/instance/general`. Existing SES/Meta routes and docs-link destinations remain available. | Shared DOM surface and instance-layout regressions; extended SES, Meta and general-settings browser assertions for intro, section order, navigation and docs links. |
+| 5. Empty segment | Added an Add contacts action with the existing searchable contact picker and membership mutation. It is the first, filled empty-state action; Go to contacts is secondary. Segment tables now query the segment's members. Empty copy explains this picker, contact-detail Add to segment and the Contacts bulk action. | Added browser coverage for an empty segment, action priority, searching an existing contact, adding it and seeing membership update. |
 | 6. WhatsApp template editor | Added a labeled name field, focus/select on newly created untitled templates, Meta naming guidance and validation before submission. Header breadcrumb is read-only with a distinct accessible label. WhatsApp actions say Submit for review and display the target account, including when only one is connected. Account fallback labels use public names/numbers instead of WABA IDs. | Naming/publish-label unit tests, account-label backend regression, updated browser name/focus/invalid-submit and review-button assertions. |
 | 7. API keys | Custom keys require at least one scope in both the dashboard and backend. Inline feedback sits by the scope table. Shared catalog order is Messaging (Email first), Audience, Content & campaigns, Setup, Calling. Creation uses Create API key / Create consistently. | Backend create/update/REST rejection tests, catalog order tests, browser empty-scope assertion and updated creation selectors. |
 | 8. Unknown senders | `contactIdentity` defines the channel-specific fallback, such as Messenger user and Instagram user. Message logs delegate to it, matching Inbox. Receiving account handles use the shared formatter so Instagram To and From both include `@`. | Contact/message identity unit tests, Messenger/Instagram log regressions including unknown Receiving identities and Instagram account handle, updated related expectations. |
 | 9. Send message defaults | Options follow `CHANNEL_IDS` with Email first. The default prefers the chosen contact's connected channel, otherwise the team's first available sending channel. Disconnected/unregistered senders are excluded. With none available, the form explains what to connect and cannot submit. | Default-selection unit tests, team-scoped connected-sender backend tests and browser Email-first assertion. |
 | 10. Invite-only sign-up | Verified the HTTP flow: the atomic user-create admission trigger was hidden behind BetterAuth's generic error. A server preflight now returns the explicit invite-only explanation with HTTP 422, while atomic admission remains enforced. The existing signup UI displays that server message. | HTTP regression asserts the exact explanation and that no rejected user is inserted; browser signup assertion uses the exact message. |
-| 11. Unexplained states | Inbox distinguishes disconnected, connected-empty and filtered-empty states. Calls explains missing gateway/browser connection and TURN, with setup docs; softphone availability also requires configured calling. IVR creation explains provider/key/voice requirements while preserving audio-only drafts. Channel Calling settings explains gateway/TURN and links to the same docs. | Inbox copy tests, IVR browser requirement assertion, calling browser setup/help/docs assertions, existing calling backend coverage. |
+| 11. Unexplained states | Inbox distinguishes disconnected, connected-empty and filtered-empty states. Calls explains missing gateway/browser connection and optional TURN, with setup docs. Softphone away controls follow saved gateway routes to agents; transport readiness gates going online. IVR creation explains provider/key/voice requirements while preserving audio-only drafts. Channel Calling settings explains gateway/TURN and links to the same docs. | Inbox copy tests, IVR browser requirement assertion, calling browser setup/help/docs assertions, calling and softphone backend coverage. |
 | 12. Fractional timestamps | Sent email adapters round Convex creation timestamps to integer milliseconds, including the detail payload. | Test uses the reported fractional timestamp against the actual adapter and serialized payload. |
 
 ## Conservative decisions and limits
 
-- Storage and telemetry remain on `/instance/ses` in a clearly labeled instance-level section. This avoids breaking existing installation links and selectors while putting SES first.
+- Storage and telemetry now live at `/instance/general`, accessed through Instance settings in the administrator's account menu or command search. SES and Meta keep their own sections and the existing SES redirect.
 - `failed` on email retrieval is an additive Opensend extension using the existing Resend-shaped `email.failed` webhook's `reason` field. Existing response fields, status codes and error names are preserved.
 - Email and local Messenger/Instagram templates keep Publish because those local templates do not undergo Meta review. WhatsApp templates use Submit for review.
 - IVRs may still be created as audio-only drafts. Selecting a prompt provider requires its key and voice before creation; the UI explains both paths.
@@ -154,3 +154,46 @@ Validation:
 Browser E2E could not run locally: Docker cannot connect to the configured
 Colima socket because its daemon is unavailable. No E2E selectors changed.
 Nothing was pushed.
+
+## Follow-up: shared instance layout and segment action priority
+
+Browser QA on `dbc97c6` found that Meta still prepended File storage before its
+own introduction. Instance pages now share `/instance/layout.tsx`, which renders
+the page title and introduction together before any page content. Each instance
+destination declares its introduction in the shared navigation registry. The
+layout also applies the installation-admin/loading gate consistently.
+
+- **A — Instance pages:** SES begins with AWS connection; Meta begins with Meta
+  app. Neither includes File storage or Anonymous usage statistics. Both settings
+  now have one dashboard home at `/instance/general`, titled **Instance settings**,
+  reachable from the installation administrator's account menu and command
+  search. Searching for File storage or Anonymous usage statistics finds it.
+  SES and Meta routes and the `/settings/ses` redirect remain available. Setup
+  keeps its existing telemetry preference and Meta introduction. Documentation,
+  docs mappings, team navigation, and the screenshot/accessibility tour include
+  the new destination.
+- **B — Empty segment:** Add contacts is the first, filled empty-state action and
+  opens the existing picker in place. Go to contacts is the secondary outline
+  action. The browser regression now clicks the empty-state action specifically
+  and checks its priority before searching for and adding a contact.
+- Browser assertions cover SES → Meta → Instance settings client navigation:
+  introduction inside the title header, page-specific first section, absence of
+  generic settings on SES/Meta, exactly one storage/telemetry section on General,
+  account-menu/search discovery, and telemetry persistence/preview on its new
+  page. Shared layout rendering tests cover all registered instance pages and
+  settings visibility for loading and non-admin states.
+
+Validation:
+
+| Command | Follow-up result |
+| --- | --- |
+| `pnpm typecheck` | Passed |
+| `pnpm lint` | Passed, no warnings |
+| `pnpm test` | Passed: 745 tests |
+| `pnpm exec tsx --test lib/dashboard/instance-layout.test.ts lib/dashboard/nav.test.ts lib/dashboard/team-navigation.test.ts lib/docs-links.test.ts` | Passed: 16 tests |
+| `pnpm exec vitest run --config vitest.auth.config.ts convex/telemetry.test.ts convex/segmentsUnbounded.test.ts --maxWorkers=2` | Passed: 15 tests |
+| `pnpm exec playwright test --list` | Collected: 111 tests in 28 files |
+
+The updated browser assertions could not execute locally: Docker cannot connect
+to the configured Colima socket because its daemon is unavailable. Nothing was
+pushed.

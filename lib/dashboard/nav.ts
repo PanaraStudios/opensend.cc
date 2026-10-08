@@ -37,9 +37,29 @@ export const EMAIL_CHANNELS_HREF = "/channels?type=email"
 /** Installation-wide pages only the installation admin opens, from the
     account menu and ⌘K. Amazon SES comes first. */
 export const INSTANCE_PAGES = [
-  { href: "/instance/ses", title: "Amazon SES", icon: CloudIcon },
-  { href: "/instance/meta", title: "Meta app", icon: MessagesSquareIcon },
-] as const satisfies readonly NavItem[]
+  {
+    href: "/instance/ses",
+    title: "Amazon SES",
+    description: "Manage the AWS connection used by all teams.",
+    icon: CloudIcon,
+    keywords: ["AWS", "email"],
+  },
+  {
+    href: "/instance/meta",
+    title: "Meta app",
+    description:
+      "Manage the Meta app every team uses to connect WhatsApp, Messenger and Instagram.",
+    icon: MessagesSquareIcon,
+    keywords: ["WhatsApp", "Messenger", "Instagram"],
+  },
+  {
+    href: "/instance/general",
+    title: "Instance settings",
+    description: "Manage storage and usage sharing for the whole instance.",
+    icon: SettingsIcon,
+    keywords: ["File storage", "Anonymous usage statistics", "telemetry"],
+  },
+] as const satisfies readonly (NavItem & { description: string })[]
 
 export const isInstancePage = (pathname: string) =>
   INSTANCE_PAGES.some((page) => page.href === pathname)

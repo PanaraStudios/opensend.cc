@@ -668,6 +668,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     const profileItems = owner.getByRole("menuitem")
     await expect(profileItems.nth(0)).toHaveText("My profile")
     await expect(profileItems.nth(1)).toHaveText("Amazon SES")
+    await expect(profileItems.nth(2)).toHaveText("Meta app")
+    await expect(profileItems.nth(3)).toHaveText("Instance settings")
     // Not full page: resizing for the capture can close the open menu.
     await owner.screenshot({
       path: test.info().outputPath("ses-profile-menu.png"),
@@ -680,19 +682,72 @@ test.describe.serial("Docker self-hosted authentication", () => {
     await expect(owner).toHaveURL(/\/instance\/ses$/)
     await expect(owner.getByTestId("ses-settings")).toBeVisible()
     await expect(
-      owner.getByText("Manage the AWS connection used by all teams.", {
+      owner
+        .getByRole("heading", { name: "Amazon SES", level: 1 })
+        .locator("..")
+        .getByText("Manage the AWS connection used by all teams.", {
+          exact: true,
+        })
+    ).toBeVisible()
+    await expect(owner.getByRole("heading", { level: 2 }).first()).toHaveText(
+      "AWS connection"
+    )
+    await expect(
+      owner.getByRole("heading", { name: "File storage", exact: true })
+    ).toHaveCount(0)
+    await expect(
+      owner.getByRole("heading", {
+        name: "Anonymous usage statistics",
         exact: true,
       })
+    ).toHaveCount(0)
+
+    // Client navigation retains the shared instance layout and updates its intro.
+    await owner.getByRole("button", { name: /^Search/ }).click()
+    await owner.getByRole("combobox").fill("Meta app")
+    await owner.getByRole("option", { name: "Meta app", exact: true }).click()
+    await expect(owner).toHaveURL(/\/instance\/meta$/)
+    await expect(owner.getByTestId("meta-settings")).toBeVisible()
+    await expect(
+      owner
+        .getByRole("heading", { name: "Meta app", level: 1 })
+        .locator("..")
+        .getByText(
+          "Manage the Meta app every team uses to connect WhatsApp, Messenger and Instagram.",
+          { exact: true }
+        )
     ).toBeVisible()
-    const settingsHeadings = await owner
-      .getByRole("heading", { level: 2 })
-      .allTextContents()
-    expect(settingsHeadings.indexOf("AWS connection")).toBeLessThan(
-      settingsHeadings.indexOf("Instance settings")
+    await expect(owner.getByRole("heading", { level: 2 }).first()).toHaveText(
+      "Meta app"
     )
-    expect(settingsHeadings.indexOf("Instance settings")).toBeLessThan(
-      settingsHeadings.indexOf("File storage")
-    )
+    await expect(
+      owner.getByRole("heading", { name: "File storage", exact: true })
+    ).toHaveCount(0)
+    await expect(
+      owner.getByRole("heading", {
+        name: "Anonymous usage statistics",
+        exact: true,
+      })
+    ).toHaveCount(0)
+
+    await owner.getByRole("button", { name: /^Search/ }).click()
+    await owner.getByRole("combobox").fill("File storage")
+    await owner
+      .getByRole("option", { name: "Instance settings", exact: true })
+      .click()
+    await expect(owner).toHaveURL(/\/instance\/general$/)
+    await expect(
+      owner
+        .getByRole("heading", { name: "Instance settings", level: 1 })
+        .locator("..")
+        .getByText("Manage storage and usage sharing for the whole instance.", {
+          exact: true,
+        })
+    ).toBeVisible()
+    await expect(owner.getByRole("heading", { level: 2 })).toHaveText([
+      "File storage",
+      "Anonymous usage statistics",
+    ])
     await expect(
       owner.getByText("Anonymous usage statistics", { exact: true })
     ).toBeVisible()
@@ -736,6 +791,8 @@ test.describe.serial("Docker self-hosted authentication", () => {
     expect(payloadJson).not.toMatch(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
     await owner.keyboard.press("Escape")
     await expect(telemetryDialog).toBeHidden()
+    await owner.goto("/instance/ses")
+    await expect(owner.getByTestId("ses-settings")).toBeVisible()
     await expect(owner.getByTestId("installation-wizard")).toHaveCount(0)
     await expect(owner.getByText(/Step \d+ of \d+/)).toHaveCount(0)
     await expect(

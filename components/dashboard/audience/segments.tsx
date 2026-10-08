@@ -352,11 +352,13 @@ function SegmentPage({
             }
             description="Use Add contacts to choose existing contacts. You can also use Add to segment on a contact’s detail page or select contacts and use the bulk action in Contacts."
           >
-            <Button nativeButton={false} render={<Link href="/contacts" />}>
+            <Button onClick={() => setAdding(true)}>Add contacts</Button>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/contacts" />}
+            >
               Go to contacts
-            </Button>
-            <Button variant="outline" onClick={() => setAdding(true)}>
-              Add contacts
             </Button>
           </EmptyState>
         ) : (

@@ -6,9 +6,26 @@ import {
   EMAIL_CHANNELS_HREF,
   EMAIL_TABS,
   PLAYGROUND_TABS,
+  INSTANCE_PAGES,
+  isInstancePage,
   navItemActive,
   tabActive,
 } from "./nav"
+
+test("instance destinations include general settings and a shared header description", () => {
+  for (const href of ["/instance/ses", "/instance/meta", "/instance/general"]) {
+    const page = INSTANCE_PAGES.find((item) => item.href === href)
+    assert.ok(page?.description, href)
+    assert.equal(isInstancePage(href), true)
+  }
+  assert.equal(isInstancePage("/instance/general-other"), false)
+  assert.equal(isInstancePage("/settings/team"), false)
+  const general = INSTANCE_PAGES.find(
+    (item) => item.href === "/instance/general"
+  )!
+  assert.ok(general.keywords.includes("File storage"))
+  assert.ok(general.keywords.includes("Anonymous usage statistics"))
+})
 
 test("Messages has delivery logs and Playground has the engine testers", () => {
   assert.deepEqual(EMAIL_TABS, [

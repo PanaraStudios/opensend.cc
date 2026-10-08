@@ -1,6 +1,4 @@
 "use client"
-import { TelemetrySettings } from "./settings-telemetry"
-import { FileStorageSettings } from "./file-storage"
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
 import { KeyRoundIcon, PencilIcon, ShieldIcon } from "lucide-react"
@@ -140,16 +138,6 @@ export function SettingsSes() {
           <TenantCleanup />
         </>
       )}
-      <section aria-label="Instance settings" className="flex flex-col gap-6">
-        <div>
-          <h2 className="text-base font-medium">Instance settings</h2>
-          <p className="text-sm text-muted-foreground">
-            Storage and usage sharing for the whole instance.
-          </p>
-        </div>
-        <FileStorageSettings />
-        <TelemetrySettings />
-      </section>
       <ChangePublicUrlDialog open={moving} onOpenChange={setMoving} />
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-lg">

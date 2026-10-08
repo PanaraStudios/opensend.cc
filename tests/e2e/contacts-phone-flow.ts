@@ -95,10 +95,24 @@ export function contactsPhoneTests(state: () => { owner: Page }) {
       owner.getByText("No contacts in this segment", { exact: true })
     ).toBeVisible()
     await expect(owner.getByText(/bulk action in Contacts/)).toBeVisible()
-    await owner
-      .getByRole("button", { name: "Add contacts", exact: true })
-      .first()
-      .click()
+    const emptyState = owner.locator('[data-slot="empty"]').filter({
+      has: owner.getByText("No contacts in this segment", { exact: true }),
+    })
+    const add = emptyState.getByRole("button", {
+      name: "Add contacts",
+      exact: true,
+    })
+    const contacts = emptyState.getByRole("button", {
+      name: "Go to contacts",
+      exact: true,
+    })
+    await expect(add).toHaveClass(/bg-primary/)
+    await expect(contacts).toHaveClass(/bg-background/)
+    await expect(contacts).toHaveAttribute("href", "/contacts")
+    await expect(
+      emptyState.locator('[data-slot="empty-content"] > *').first()
+    ).toHaveText("Add contacts")
+    await add.click()
     const dialog = owner.getByRole("dialog", {
       name: "Add contacts",
       exact: true,

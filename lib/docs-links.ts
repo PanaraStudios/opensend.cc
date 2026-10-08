@@ -21,6 +21,7 @@ export const DOCS_LINKS = {
     "/emails/receiving": "/docs/dashboard/receiving/introduction",
     "/emails/suppressions": "/docs/dashboard/emails/suppressions",
     "/instance/meta": "/docs/self-hosting/requirements",
+    "/instance/general": "/docs/self-hosting/requirements",
     "/instance/ses": "/docs/self-hosting/aws-ses",
     "/logs": "/docs/dashboard/logs",
     "/metrics": "/docs/dashboard/emails/metrics",
