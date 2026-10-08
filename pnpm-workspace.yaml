@@ -18,3 +18,6 @@ minimumReleaseAgeExclude:
   - mailparser@3.9.29
   - nodemailer@10.0.11
   - smtp-server@3.19.14
+
+overrides:
+  convex-helpers: 0.1.127
