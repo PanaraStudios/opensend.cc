@@ -92,7 +92,9 @@ function localModule(filename, specifier) {
 }
 
 test("migrate dependencies cover the Convex runtime graph and match root versions", () => {
-  const required = new Set(["convex"])
+  // zod is a pinned peer: without it the image resolves the zod peer of
+  // convex-helpers and better-auth differently from the root install.
+  const required = new Set(["convex", "zod"])
   const pending = sourceFiles(join(root, "convex"))
   const visited = new Set()
   while (pending.length) {
