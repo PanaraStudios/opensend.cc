@@ -203,7 +203,7 @@ export function fileStorageTests(
         { timeout: 45_000 }
       )
       .toBe("sent")
-    await owner.goto("/instance/meta")
+    await owner.goto("/instance/general")
     await expect(
       owner.getByText("Convex storage", { exact: true })
     ).toBeVisible()
