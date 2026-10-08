@@ -1,5 +1,6 @@
 import { stream } from "convex-helpers/server/stream"
 import { pgTimestamp } from "../../lib/dashboard/exports"
+import { pastKey } from "../../lib/stream-bounds"
 import { v, ConvexError } from "convex/values"
 import { mutation, query } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
@@ -530,14 +531,7 @@ export const listRest = query({
       .order(before ? "asc" : "desc")
     const key = anchor ? [organizationId, anchor._creationTime, anchor._id] : []
     const rows = await (
-      anchor
-        ? source.narrow({
-            lowerBound: before ? key : [],
-            lowerBoundInclusive: false,
-            upperBound: before ? [] : key,
-            upperBoundInclusive: false,
-          })
-        : source
+      anchor ? source.narrow(pastKey(key, !!before)) : source
     ).take(limit + 1)
     const page = rows.slice(0, limit)
     if (before) page.reverse()
