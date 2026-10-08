@@ -50,7 +50,7 @@ docker rm opensend-backup
 cd ..
 
 curl -fsSL https://opensend.cc/install.sh | sh -s -- upgrade --dir ./opensend
-# Or pin the upgrade: ... | sh -s -- upgrade v0.1.0 --dir ./opensend
+# Or pin the upgrade: ... | sh -s -- upgrade v0.1.2 --dir ./opensend
 curl -fsSL https://opensend.cc/install.sh | sh -s -- uninstall --dir ./opensend
 ```
 
