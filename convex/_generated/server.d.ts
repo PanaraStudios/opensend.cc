@@ -38,6 +38,7 @@ type Env = {
   readonly OPENSEND_INSTALL_METHOD: string | undefined;
   readonly OPENSEND_ARCH: string | undefined;
   readonly OPENSEND_CALLING: string | undefined;
+  readonly CALL_AGENT_WSS_URL: string | undefined;
   readonly CALL_GATEWAY_RECORDINGS_DIR: string | undefined;
   readonly CALL_STUN_URLS: string | undefined;
   readonly CALL_TURN_URLS: string | undefined;

@@ -36,6 +36,7 @@ import {
   callTimer,
   offerIsFresh,
   presenceIsCurrent,
+  hasAgentRoute,
   type SoftphonePhase,
 } from "@/lib/meta/softphone"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -752,12 +753,7 @@ function TeamSoftphone({
         ),
         online,
         busy: !!currentId || working || phase === "connecting",
-        available:
-          !!organizationId &&
-          !!setup?.configured &&
-          !!setup.numbers.some(
-            (n) => n.mode === "gateway" && n.routing === "agents"
-          ),
+        available: !!organizationId && hasAgentRoute(setup?.numbers),
         connecting: phase === "connecting",
         working,
         callLabel: incoming

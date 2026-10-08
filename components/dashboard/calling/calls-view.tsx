@@ -5,7 +5,7 @@ import {
   callOutcomeLabel,
   callRouteLabel,
 } from "@/lib/dashboard/voice-playground"
-import { agentPresenceLabel } from "@/lib/meta/softphone"
+import { agentPresenceLabel, hasAgentRoute } from "@/lib/meta/softphone"
 import {
   cursorListIsEmpty,
   cursorNext,
@@ -66,14 +66,15 @@ export function CallsView() {
           size="sm"
           icon={PhoneIcon}
           title="Calling is not configured"
-          description="Ask your instance administrator to configure the calling gateway, its secure browser connection, and a TURN relay for browser audio across restricted networks. Then choose Media gateway and team agents in your WhatsApp channel’s Calling settings."
+          description={
+            setup.routingConfigured
+              ? "Ask your instance administrator to configure the calling gateway’s trusted secure browser connection before going online. TURN is only needed when your browser’s network requires an audio relay."
+              : "Ask your instance administrator to configure the calling gateway and its credentials, then a trusted secure browser connection, before going online. TURN is only needed when your browser’s network requires an audio relay."
+          }
         >
           <DocsButton href={CALLING_DOCS_HREF} />
         </EmptyState>
-      ) : setup &&
-        !setup.numbers.some(
-          (number) => number.mode === "gateway" && number.routing === "agents"
-        ) ? (
+      ) : setup && !hasAgentRoute(setup.numbers) ? (
         <EmptyState
           size="sm"
           icon={PhoneIcon}

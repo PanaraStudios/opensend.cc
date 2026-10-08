@@ -6,6 +6,8 @@ import { CallGatewayClient } from "../services/call-gateway/src/client"
 import { upsertChannelThread } from "./channels/identity"
 import { patchRow } from "./counts"
 import { inboundFixture, fakeGraph, PHONE_ID } from "./testHelpers/meta.fixture"
+import { hasAgentRoute } from "../lib/meta/softphone"
+import { DEFAULT_STUN_URLS } from "../lib/calling/ice"
 beforeEach(() => {
   vi.useFakeTimers()
   vi.stubEnv("SES_ENCRYPTION_KEY", "ab".repeat(32))
@@ -58,6 +60,113 @@ async function setup() {
   )
   return { ...f, ownerArgs: owner, memberArgs: member, call, online }
 }
+test("saved agent routing exposes away controls while missing transport still prevents going online", async () => {
+  vi.stubEnv("CALL_GATEWAY_URL", "")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "")
+  vi.stubEnv("CALL_AGENT_WSS_URL", "")
+  vi.stubEnv("CALL_TURN_URLS", "")
+  vi.stubEnv("CALL_TURN_SECRET", "")
+  vi.stubEnv("CALL_STUN_URLS", "")
+  const f = await inboundFixture()
+  const team = { organizationId: f.owner.team }
+  const browser = { ...team, browserId: "away-browser" }
+  const setup = () =>
+    f.owner.client.query(api.calling.playgroundState.setup, team)
+  expect(hasAgentRoute((await setup()).numbers)).toBe(false)
+  await f.t.mutation(internal.calling.settingsState.store, {
+    accountId: f.account,
+    mode: "gateway",
+    routing: { kind: "agents" },
+    settings: "{}",
+  })
+  const away = await setup()
+  expect(away).toMatchObject({
+    configured: false,
+    routingConfigured: false,
+    numbers: [{ id: f.account, mode: "gateway", routing: "agents" }],
+  })
+  expect(hasAgentRoute(away.numbers)).toBe(true)
+  await expect(
+    f.owner.client.action(api.calling.softphone.session, browser)
+  ).rejects.toThrow("Set CALL_AGENT_WSS_URL")
+  vi.stubEnv("CALL_AGENT_WSS_URL", "wss://calling.example.test:7443")
+  expect((await setup()).configured).toBe(false)
+  await expect(
+    f.owner.client.action(api.calling.softphone.session, browser)
+  ).rejects.toThrow("The calling gateway is not configured")
+
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "g".repeat(64))
+  expect(await setup()).toMatchObject({
+    configured: true,
+    routingConfigured: true,
+  })
+  vi.spyOn(CallGatewayClient.prototype, "agentSession").mockResolvedValue({
+    extension: "2000",
+    password: "browser-session-credential",
+    expiresAt: Date.now() + 120000,
+  })
+  await expect(
+    f.owner.client.action(api.calling.softphone.session, browser)
+  ).resolves.toMatchObject({ wssUrl: "wss://calling.example.test:7443" })
+  // TURN is optional: ICE configuration includes default STUN without a relay.
+  await expect(
+    f.owner.client.action(api.calling.softphone.iceServers, browser)
+  ).resolves.toEqual({
+    iceServers: [{ urls: DEFAULT_STUN_URLS }],
+    expiresAt: null,
+  })
+  await f.t.mutation(internal.calling.settingsState.store, {
+    accountId: f.account,
+    mode: "api",
+    settings: "{}",
+  })
+  expect(hasAgentRoute((await setup()).numbers)).toBe(false)
+  await f.t.mutation(internal.calling.settingsState.store, {
+    accountId: f.account,
+    mode: "gateway",
+    routing: { kind: "agents" },
+    settings: "{}",
+  })
+  const outsider = await f.outsider.client.query(
+    api.calling.playgroundState.setup,
+    {
+      organizationId: f.outsider.team,
+    }
+  )
+  expect(hasAgentRoute(outsider.numbers)).toBe(false)
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, {
+      status: "disconnected",
+      disconnectedAt: Date.now(),
+    })
+  )
+  expect(hasAgentRoute((await setup()).numbers)).toBe(false)
+})
+test("setup and session agree when the browser endpoint is missing or invalid", async () => {
+  vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "g".repeat(64))
+  const f = await inboundFixture()
+  const team = { organizationId: f.owner.team }
+  for (const url of [
+    "",
+    "wss://",
+    "ws://calling.example.test",
+    "wss://user:secret@calling.example.test",
+    "wss://calling.example.test/#fragment",
+  ]) {
+    vi.stubEnv("CALL_AGENT_WSS_URL", url)
+    expect(
+      await f.owner.client.query(api.calling.playgroundState.setup, team)
+    ).toMatchObject({ configured: false, routingConfigured: true })
+    await expect(
+      f.owner.client.action(api.calling.softphone.session, {
+        ...team,
+        browserId: "invalid-endpoint",
+      })
+    ).rejects.toThrow("Set CALL_AGENT_WSS_URL")
+  }
+})
 test("two online agents race for a call: exactly one wins, the other cannot answer or control it", async () => {
   const f = await setup()
   const results = await Promise.allSettled([

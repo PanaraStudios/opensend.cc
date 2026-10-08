@@ -98,3 +98,59 @@ Validation:
 
 Browser E2E could not run locally: Docker cannot connect to the configured
 Colima socket because its daemon is unavailable. Nothing was pushed.
+
+## Follow-up: softphone away controls and calling readiness
+
+Browser QA on `6b608f2` found the missing Go online button. The shared
+softphone provider hid both header controls and the sidebar entry with this rule:
+
+```ts
+!!organizationId &&
+  !!setup?.configured &&
+  setup.numbers.some((n) => n.mode === "gateway" && n.routing === "agents")
+```
+
+The rule is now:
+
+```ts
+!!organizationId && hasAgentRoute(setup?.numbers)
+// hasAgentRoute: a number has mode === "gateway" and routing === "agents".
+```
+
+- Team eligibility uses the backend setup query's connected WhatsApp numbers,
+  stored calling settings, and backend default gateway/API mode. Away controls
+  remain accessible even when instance transport configuration is incomplete.
+  API mode, routes to IVRs/bots, disconnected numbers, and other teams' numbers
+  do not enable the controls. Loaded route changes update the controls directly.
+- The E2E setup explicitly saves a gateway route to agents and checks the away
+  panel; it does not go online or establish browser media. That is a valid saved
+  routing state for these controls. The test and all its assertions are unchanged.
+- Going online still requires the backend session action's secure WSS endpoint
+  and gateway URL/credentials. The setup query now reuses the backend gateway
+  readiness helper and the session action's exact WSS validator, rather than
+  accepting any string beginning with `wss://`. The existing WSS environment
+  setting has an optional typed declaration; its generated server declaration
+  was regenerated with the installed Convex template locally, without deploying.
+- The Calls tab retains its setup explanation and docs link. Its description
+  distinguishes missing gateway credentials from a missing/invalid secure
+  browser endpoint. TURN remains optional, matching the backend's STUN fallback;
+  the copy explains that a relay is needed only when the browser network needs
+  one. No server connectivity or actual audio success is inferred from settings.
+- Regression tests cover saved agent routing with missing transport, subsequent
+  transport setup, API mode, disconnected/team-isolated accounts, invalid WSS
+  endpoints, session rejection when configuration is missing, and provisioning
+  and ICE configuration without TURN.
+
+Validation:
+
+| Command | Follow-up result |
+| --- | --- |
+| `pnpm typecheck` | Passed |
+| `pnpm lint` | Passed, no warnings |
+| `pnpm test` | Passed: 742 tests |
+| `pnpm exec tsx --test lib/meta/softphone.test.ts lib/meta/calling.test.ts lib/meta/call-card.test.ts lib/calling-ice.test.ts lib/dashboard/voice-playground.test.ts` | Passed: 29 tests |
+| `pnpm exec vitest run --config vitest.auth.config.ts convex/softphone.test.ts convex/calling.test.ts convex/playground.test.ts convex/turn.test.ts --maxWorkers=2` | Passed: 63 tests |
+
+Browser E2E could not run locally: Docker cannot connect to the configured
+Colima socket because its daemon is unavailable. No E2E selectors changed.
+Nothing was pushed.
