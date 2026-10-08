@@ -1,6 +1,6 @@
 import { CHANNEL_IDS, BROADCAST_CAPABILITIES } from "../../lib/channels"
-import { stream } from "convex-helpers/server/stream"
-import { pastKey } from "../../lib/stream-bounds"
+import { stream, type QueryStream } from "convex-helpers/server/stream"
+import { pastAnchor } from "../../lib/stream-bounds"
 import { idempotent } from "./idempotency"
 import { v, type Infer } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -229,8 +229,10 @@ export const recipientPage = internalQuery({
         ("type" in anchor ? anchor.type !== type : !anchor.sent))
     )
       throw invalid("Invalid recipient cursor.")
-    const order = before ? ("asc" as const) : ("desc" as const)
-    const source =
+    const order = before ? "asc" : "desc"
+    const source: QueryStream<
+      Doc<"broadcastRecipients"> | Doc<"broadcastEvents">
+    > =
       type === "sent"
         ? stream(ctx.db, schema)
             .query("broadcastRecipients")
@@ -244,21 +246,8 @@ export const recipientPage = internalQuery({
               q.eq("broadcastId", broadcast._id).eq("type", type)
             )
             .order(order)
-    const bounded = anchor
-      ? source.narrow(
-          pastKey(
-            [
-              broadcast._id,
-              type === "sent" ? true : type,
-              anchor._creationTime,
-              anchor._id,
-            ],
-            before
-          )
-        )
-      : source
     // Each transaction reads at most 100 candidates; the action fills filtered pages.
-    const rows = await bounded.take(100)
+    const rows = await pastAnchor(source, anchor).take(100)
     const data: Infer<typeof recipientView>[] = []
     for (const row of rows) {
       if (email && !row.email.toLowerCase().includes(email.toLowerCase()))
@@ -346,16 +335,7 @@ export const clickedLinks = internalQuery({
         q.eq("broadcastId", broadcast._id)
       )
       .order(before ? "asc" : "desc")
-    const rows = await (
-      anchor
-        ? source.narrow(
-            pastKey(
-              [broadcast._id, anchor.clicks, anchor._creationTime, anchor._id],
-              !!before
-            )
-          )
-        : source
-    ).take(limit + 1)
+    const rows = await pastAnchor(source, anchor).take(limit + 1)
     const page = rows.slice(0, limit)
     if (before) page.reverse()
     return {
