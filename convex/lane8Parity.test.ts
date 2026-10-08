@@ -524,6 +524,19 @@ test("broadcast recipients and clicked links preserve repeated counts, unique cl
   })
   const base = `/broadcasts/${broadcast.id}`
   expect((await f.json(base + "/recipients?type=sent")).data).toHaveLength(2)
+  const newestSent = await f.json(base + "/recipients?type=sent&limit=1")
+  const olderSent = await f.json(
+    base + `/recipients?type=sent&limit=1&after=${newestSent.data[0].id}`
+  )
+  expect(olderSent.data).toHaveLength(1)
+  expect(olderSent.data[0].id).not.toBe(newestSent.data[0].id)
+  expect(
+    (
+      await f.json(
+        base + `/recipients?type=sent&limit=1&before=${olderSent.data[0].id}`
+      )
+    ).data.map((row: { id: string }) => row.id)
+  ).toEqual([newestSent.data[0].id])
   const clicked = await f.json(base + "/recipients?type=clicked&email=one")
   expect(clicked.data).toEqual([
     {
