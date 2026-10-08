@@ -12,6 +12,9 @@ export function pastAnchor<T extends NonNullable<unknown>>(
   if (!anchor) return source
   const row = anchor as Record<string, Value>
   const key = source.getIndexFields().map((field) => row[field])
+  // Callers resolve the anchor within the same filters; fail loudly if not.
+  if (source.getEqualityIndexFilter().some((value, i) => key[i] !== value))
+    throw new Error("The cursor row is not part of this list")
   return source.narrow(
     source.getOrder() === "asc"
       ? {
