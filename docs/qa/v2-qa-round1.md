@@ -50,3 +50,51 @@ The final isolated broadcast and read-cost rerun passed all 32 tests. An earlier
 extra concurrent run hit the existing large-audience test's 30-second timeout;
 that test passed in the full requested suite and in the isolated rerun without
 changing its timeout.
+
+## Follow-up: channel select after asynchronous sender loading
+
+Browser QA on `cda7ff9` found a blank Channel select in Send message. The
+default was already recomputed on every render; the shared `OptionSelect`
+passed `undefined` initially, which made Base UI fix the select as uncontrolled.
+It then ignored the controlled Email value when senders arrived. A DOM regression
+reproduced the blank value and Base UI's controlled/uncontrolled warning before
+the fix.
+
+- `OptionSelect` now treats an explicitly provided empty value as controlled
+  from the first render, using Base UI's `null` empty value. Omitting `value`
+  still supports uncontrolled `defaultValue` usage. `SearchableSelect` follows
+  the same distinction and no longer restores an old internal choice when its
+  controlled value is cleared.
+- Send message distinguishes a loading sender query from a loaded empty list.
+  Loading shows a disabled Loading channels select; the connect-channel
+  explanation appears only after a loaded query returns no sending channels.
+  The loaded default prefers the contact's connected channel, otherwise the
+  first available channel in `CHANNEL_IDS` order. A valid manual choice wins
+  and remains visible during reloads. A genuinely removed sender falls back
+  to an available channel. Submission waits for availability to load.
+- Reviewed the other changed forms: API key creation uses static permission
+  and all-domain defaults; editing receives an already loaded key. The segment
+  picker waits for a user selection and retains its selected label. WhatsApp
+  editors mount after the template loads, and WABA selection is assigned on
+  the backend. IVR provider/language defaults are static, with ElevenLabs voice
+  adoption explicitly waiting for its catalog. SES and Calling edits use loaded
+  records; the playground tester derives its account fallback from current
+  setup data. No additional one-time defaults from unloaded queries were found.
+- New helper and DOM tests cover loading → loaded, contact preference, manual
+  dropdown selection → loading → loaded, actual empty results, clearing a
+  controlled value, and uncontrolled default/selection behavior. Both ordinary
+  and searchable select variants are exercised. The existing Messages browser
+  assertion remains unchanged.
+
+Validation:
+
+| Command | Follow-up result |
+| --- | --- |
+| `pnpm typecheck` | Passed |
+| `pnpm lint` | Passed, no warnings |
+| `pnpm test` | Passed: 740 tests |
+| `pnpm exec tsx --test lib/dashboard/send-channels.test.ts lib/dashboard/field-accessibility.test.ts` | Passed: 26 tests |
+| `pnpm exec vitest run --config vitest.auth.config.ts convex/conversations.test.ts --maxWorkers=2` | Passed: 21 tests |
+
+Browser E2E could not run locally: Docker cannot connect to the configured
+Colima socket because its daemon is unavailable. Nothing was pushed.

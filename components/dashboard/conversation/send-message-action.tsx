@@ -87,16 +87,14 @@ function StartConversationForm({
   const [search, setSearch] = React.useState("")
   const contacts = useContactSearch(search, !contact)
   const [contactId, setContactId] = React.useState(contact?.id)
-  const connected =
-    useTeamQuery(api.conversations.connectedChannels, { sending: true }) ?? []
+  const connected = useTeamQuery(api.conversations.connectedChannels, {
+    sending: true,
+  })
   const [chosenChannel, setChannel] = React.useState<Channel>()
   const [pickedContact, setPickedContact] =
     React.useState<(typeof contacts)[number]>()
   const selectedContact = contact ?? pickedContact
-  const channel =
-    chosenChannel && connected.includes(chosenChannel)
-      ? chosenChannel
-      : defaultSendChannel(connected, selectedContact)
+  const channel = defaultSendChannel(connected, selectedContact, chosenChannel)
   const [accountId, setAccountId] = React.useState<string>()
   const [pending, setPending] = React.useState(false)
   const start = useMutation(api.conversations.start)
@@ -130,7 +128,14 @@ function StartConversationForm({
       className="flex flex-col gap-4"
       onSubmit={async (event) => {
         event.preventDefault()
-        if (!activeTeamId || !channel || !contactId || pending) return
+        if (
+          !activeTeamId ||
+          connected === undefined ||
+          !channel ||
+          !contactId ||
+          pending
+        )
+          return
         setPending(true)
         try {
           const id = await start({
@@ -179,15 +184,20 @@ function StartConversationForm({
             id="send-channel"
             value={channel}
             items={CHANNEL_ITEMS.filter((item) =>
-              connected.includes(item.value)
+              connected?.includes(item.value)
             )}
+            selectedItem={CHANNEL_ITEMS.find((item) => item.value === channel)}
+            disabled={connected === undefined || !connected.length}
+            placeholder={
+              connected === undefined ? "Loading channels…" : "Choose a channel"
+            }
             onChange={(value) => {
               setChannel(value as Channel)
               setAccountId(undefined)
             }}
           />
         </Field>
-        {!channel ? (
+        {connected !== undefined && !connected.length ? (
           <FieldDescription>
             Connect a sending channel in Channels to send a message.
           </FieldDescription>
@@ -214,6 +224,7 @@ function StartConversationForm({
       <Button
         type="submit"
         disabled={
+          connected === undefined ||
           !channel ||
           !contactId ||
           (channel !== "email" && !accountId) ||

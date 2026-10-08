@@ -1901,20 +1901,7 @@ export type SelectSearch = {
 }
 
 /** The searchable popup shared by ordinary selects and the email paper. */
-export function SearchableSelect({
-  value,
-  defaultValue,
-  onChange,
-  items,
-  selectedItem,
-  search,
-  trigger,
-  name,
-  disabled,
-  align = "start",
-  contentClassName,
-  emptyLabel,
-}: {
+export function SearchableSelect(props: {
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
@@ -1928,8 +1915,22 @@ export function SearchableSelect({
   contentClassName?: string
   emptyLabel?: string
 }) {
+  const {
+    value,
+    defaultValue,
+    onChange,
+    items,
+    selectedItem,
+    search,
+    trigger,
+    name,
+    disabled,
+    align = "start",
+    contentClassName,
+    emptyLabel,
+  } = props
   const [uncontrolledValue, setUncontrolledValue] = React.useState(defaultValue)
-  const selectedValue = value ?? uncontrolledValue
+  const selectedValue = "value" in props ? value : uncontrolledValue
   const found =
     items.find((item) => item.value === selectedValue) ??
     (selectedItem?.value === selectedValue ? selectedItem : undefined)
@@ -2073,23 +2074,7 @@ export function SearchableSelect({
 
 /** Single-value select driven by an options array. Renders the items once,
     for both the trigger value and the list. */
-export function OptionSelect({
-  value,
-  defaultValue,
-  onChange,
-  items,
-  selectedItem,
-  search,
-  id,
-  name,
-  size = "default",
-  align = "start",
-  className,
-  disabled,
-  placeholder,
-  emptyLabel,
-  "aria-label": ariaLabel,
-}: {
+export function OptionSelect(props: {
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
@@ -2107,11 +2092,32 @@ export function OptionSelect({
   disabled?: boolean
   "aria-label"?: string
 }) {
+  const {
+    value,
+    defaultValue,
+    onChange,
+    items,
+    selectedItem,
+    search,
+    id,
+    name,
+    size = "default",
+    align = "start",
+    className,
+    disabled,
+    placeholder,
+    emptyLabel,
+    "aria-label": ariaLabel,
+  } = props
+  // An explicitly empty controlled value must stay controlled while async
+  // options load. Base UI treats undefined as uncontrolled and fixes that
+  // decision on mount, so use its null empty value from the first render.
+  const controlled = "value" in props
   const fieldLabel = useFieldLabel({ "aria-label": ariaLabel })
   if (search)
     return (
       <SearchableSelect
-        value={value}
+        {...(controlled ? { value } : {})}
         defaultValue={defaultValue}
         onChange={onChange}
         items={items}
@@ -2154,7 +2160,7 @@ export function OptionSelect({
       : items
   return (
     <Select
-      value={value}
+      value={controlled ? (value ?? null) : undefined}
       defaultValue={defaultValue}
       onValueChange={(next) => {
         if (next && onChange) onChange(next)
