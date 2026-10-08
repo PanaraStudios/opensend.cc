@@ -563,13 +563,17 @@ test("broadcast recipients and clicked links preserve repeated counts, unique cl
       .id
   ).toBe(first.data[0].id)
   const rp = await f.json(base + "/recipients?type=clicked&limit=1")
+  const older = await f.json(
+    base + `/recipients?type=clicked&limit=1&after=${rp.data[0].id}`
+  )
+  expect(older.data).toHaveLength(1)
   expect(
     (
       await f.json(
-        base + `/recipients?type=clicked&limit=1&after=${rp.data[0].id}`
+        base + `/recipients?type=clicked&limit=1&before=${older.data[0].id}`
       )
-    ).data
-  ).toHaveLength(1)
+    ).data.map((row: { id: string }) => row.id)
+  ).toEqual([rp.data[0].id])
   for (const route of [
     base + "/recipients?type=sent",
     base + "/clicked-links",
@@ -648,6 +652,11 @@ test("OAuth grants use bearer keys, return revocation metadata and paginate with
     ],
   })
   expect((await f.json(`/oauth/grants?after=${second}`)).data[0].id).toBe(first)
+  expect(
+    (await f.json(`/oauth/grants?before=${first}`)).data.map(
+      (row: { id: string }) => row.id
+    )
+  ).toEqual([second])
   await error(
     await f.call(`/oauth/grants/${foreign}`, "DELETE"),
     404,
