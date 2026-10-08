@@ -1,5 +1,6 @@
 import { CHANNEL_IDS, BROADCAST_CAPABILITIES } from "../../lib/channels"
-import { stream, type IndexKey } from "convex-helpers/server/stream"
+import { stream } from "convex-helpers/server/stream"
+import { pastKey } from "../../lib/stream-bounds"
 import { idempotent } from "./idempotency"
 import { v, type Infer } from "convex/values"
 import type { HttpRouter } from "convex/server"
@@ -196,12 +197,6 @@ const recipientView = v.object({
     v.array(v.object({ url: v.string(), clicks: v.number() }))
   ),
 })
-const narrowed = (key: IndexKey, before: boolean) => ({
-  lowerBound: before ? key : [],
-  lowerBoundInclusive: false,
-  upperBound: before ? [] : key,
-  upperBoundInclusive: false,
-})
 export const recipientPage = internalQuery({
   args: {
     caller: callerValue,
@@ -251,7 +246,7 @@ export const recipientPage = internalQuery({
             .order(order)
     const bounded = anchor
       ? source.narrow(
-          narrowed(
+          pastKey(
             [
               broadcast._id,
               type === "sent" ? true : type,
@@ -354,7 +349,7 @@ export const clickedLinks = internalQuery({
     const rows = await (
       anchor
         ? source.narrow(
-            narrowed(
+            pastKey(
               [broadcast._id, anchor.clicks, anchor._creationTime, anchor._id],
               !!before
             )

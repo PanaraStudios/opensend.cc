@@ -1,6 +1,7 @@
 import { v, type Value } from "convex/values"
 import { QueryStream } from "convex-helpers/server/stream"
 import { invalid } from "./caller"
+import { pastKey } from "../../lib/stream-bounds"
 
 export const listArgs = {
   limit: v.number(),
@@ -42,14 +43,7 @@ export async function cursorPage<T extends Row>(
           .getIndexFields()
           .map((field) => (row as Record<string, Value>)[field])
       : []
-    const bounded = row
-      ? source.narrow({
-          lowerBound: before ? key : [],
-          lowerBoundInclusive: false,
-          upperBound: before ? [] : key,
-          upperBoundInclusive: false,
-        })
-      : source
+    const bounded = row ? source.narrow(pastKey(key, before)) : source
     rows = await bounded.take(page.limit + 1)
   }
   const data = rows.slice(0, page.limit)
