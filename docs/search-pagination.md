@@ -30,7 +30,7 @@ The scan budgets below are passed as named constants by each list. They are desi
 | Custom events / `EVENT_SEARCH_BUDGET` | 512 | 4 MiB | None |
 | Export history / `EXPORT_SEARCH_BUDGET` | 1,024 | 4 MiB | None; metadata only |
 
-The byte budget includes **source document bytes plus reservations for subsequent hydration**. The installed `convex-helpers` 0.1.122 `QueryStream` paginator walks an ordinary index, counts rejected rows, and retains each inspected row's index key. The shared `SearchStream` wrapper adds a reservation only when a row passes the predicate. It does not fetch drafts for rejected rows. A template search can scan 512 nonmatches, or at most eight matches needing drafts.
+The byte budget includes **source document bytes plus reservations for subsequent hydration**. The installed `convex-helpers` 0.1.127 `QueryStream` paginator walks an ordinary index, counts rejected rows, and retains each inspected row's index key. The shared `SearchStream` wrapper adds a reservation only when a row passes the predicate. It does not fetch drafts for rejected rows. A template search can scan 512 nonmatches, or at most eight matches needing drafts.
 
 The budget is independent of the UI's requested result count: requesting just one additional match still permits a full bounded scan. The same row and byte ceilings apply during an `endCursor` replay, when ordinary pagination ignores `numItems`. Stricter caller ceilings are honored; zero cannot disable them. The final inspected row may cross the byte threshold, so the arithmetic below reserves headroom for that overshoot.
 
