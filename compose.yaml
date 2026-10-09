@@ -1,7 +1,7 @@
 name: opensend
 services:
   convex:
-    image: ${CONVEX_IMAGE:-ghcr.io/get-convex/convex-backend@sha256:1b0dcd93a3d126400d16e256aea1106a2ee9538882dda545d2c979f28cff1483}
+    image: ${CONVEX_IMAGE:-ghcr.io/get-convex/convex-backend@sha256:d715e9ec088784407ca4ba2d3db592702cd328d02c76cdca3852c0018f2a76b4}
     restart: unless-stopped
     stop_grace_period: 20s
     stop_signal: SIGINT
@@ -34,7 +34,7 @@ services:
       retries: 30
   dashboard:
     profiles: [debug]
-    image: ${CONVEX_DASHBOARD_IMAGE:-ghcr.io/get-convex/convex-dashboard@sha256:63e94c62940a09acd36464e02e1b0a7589f7ef48227003de78510f9523bb4e6b}
+    image: ${CONVEX_DASHBOARD_IMAGE:-ghcr.io/get-convex/convex-dashboard@sha256:f85cf0d0448b9c835ae3df5c7c1c6f0145dd4c8f0f92eb0245daf304efdd9f1a}
     restart: unless-stopped
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-6791}:6791"
