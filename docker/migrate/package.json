@@ -20,7 +20,7 @@
     "@react-email/render": "^2.1.0",
     "better-auth": "1.6.15",
     "chrono-node": "^2.10.1",
-    "convex": "^1.45.0",
+    "convex": "^1.46.0",
     "convex-helpers": "0.1.127",
     "date-fns": "^4.4.0",
     "fflate": "^0.8.3",
@@ -28,6 +28,7 @@
     "mailparser": "3.9.29",
     "mammoth": "^1.13.0",
     "parse5": "8.0.0",
-    "unpdf": "^1.8.1"
+    "unpdf": "^1.8.1",
+    "zod": "3.25.76"
   }
 }
