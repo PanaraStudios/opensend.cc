@@ -19,4 +19,4 @@ minimumReleaseAgeExclude:
   - smtp-server@3.19.14
 
 overrides:
-  convex-helpers: $convex-helpers
+  convex-helpers: 0.1.127

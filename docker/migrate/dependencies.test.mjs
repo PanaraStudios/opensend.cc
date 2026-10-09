@@ -135,3 +135,14 @@ test("migrate dependencies cover the Convex runtime graph and match root version
       `${name} must match the root version`
     )
 })
+
+test("the workspace override pins convex-helpers to the root version", () => {
+  const overrides = readFileSync(
+    join(root, "pnpm-workspace.yaml"),
+    "utf8"
+  ).split(/^overrides:$/m)[1]
+  assert.equal(
+    overrides?.match(/^\s+convex-helpers: (\S+)$/m)?.[1],
+    readJson("package.json").dependencies["convex-helpers"]
+  )
+})
