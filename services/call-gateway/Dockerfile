@@ -9,8 +9,6 @@ RUN --mount=type=cache,id=opensend-pnpm,target=/root/.local/share/pnpm/store \
     && CI=true pnpm --config.inject-workspace-packages=true --filter @opensendcc/call-gateway deploy /gateway
 FROM dependencies AS production-deps
 WORKDIR /gateway
-# Keep the repository's existing build approvals for the standalone prune.
-COPY pnpm-workspace.yaml /gateway/pnpm-workspace.yaml
 RUN --mount=type=cache,id=opensend-pnpm,target=/root/.local/share/pnpm/store \
     CI=true pnpm prune --prod
 
