@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { expect, type Page } from "@playwright/test"
 import { ConvexHttpClient } from "convex/browser"
 import { api } from "../../convex/_generated/api"
+import { syntheticSesConnection } from "./ses-fixture-data.mjs"
 
 function assertTestOwnership() {
   const path = process.env.OPENSEND_ENV_FILE ?? ""
@@ -77,15 +78,8 @@ export async function client(page: Page) {
   result.setAuth(token)
   return result
 }
-// Synthetic ciphertext deliberately cannot authenticate an AWS request.
-const connection = {
-  accountId: "123456789012",
-  credentialKind: "keys",
-  encryptedCredentials: "test-fixture-no-aws-access",
-  accessKeyLast4: "TEST",
-  defaultRegion: "us-east-1",
-  credentialRevision: 1,
-}
+// Shared synthetic SES state; never usable as AWS credentials.
+const connection = syntheticSesConnection
 
 export async function seedSesConnection(page: Page) {
   const status = await (await client(page)).query(api.installation.status)

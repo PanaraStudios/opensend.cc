@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "packages/convex/example"
   - "docker/smtp"
   - "docker/migrate"
   - "services/*"

@@ -48,6 +48,8 @@ pnpm build
 
 See [SES onboarding](docs/ses-onboarding.md).
 
+For Convex applications, use the [OpenSend Convex component](docs/convex-component.md) to queue email, retry delivery, and track signed webhooks.
+
 ## Deployment boundary
 
 Deploy the app and marketing website from their own repositories and environment

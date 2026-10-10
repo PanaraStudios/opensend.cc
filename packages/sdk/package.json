@@ -1,6 +1,6 @@
 {
   "name": "@opensendcc/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Node.js library for the Opensend API, a port of Resend's Node.js SDK",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -22,10 +22,20 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./convex": {
+      "import": {
+        "types": "./dist/convex.d.mts",
+        "default": "./dist/convex.mjs"
+      },
+      "require": {
+        "types": "./dist/convex.d.cts",
+        "default": "./dist/convex.cjs"
+      }
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format esm,cjs --dts",
+    "build": "tsdown src/index.ts src/convex.ts --format esm,cjs --dts",
     "prepublishOnly": "pnpm run build",
     "test": "vitest run --maxWorkers=2",
     "typecheck": "tsc --noEmit"
