@@ -4,7 +4,7 @@ Dashboard searches scan ordinary, team-scoped indexes and keep rows containing t
 
 ## Why full-text candidates were incomplete
 
-The backend image pinned in `compose.yaml`, `sha256:1b0dcd93a3d126400d16e256aea1106a2ee9538882dda545d2c979f28cff1483`, identifies source revision `b7cce5a2331854895d36b683d1eab17c47ef13a9` in its `org.opencontainers.image.revision` label. The findings below were checked against that revision:
+The findings below were checked against backend source revision `b7cce5a2331854895d36b683d1eab17c47ef13a9` (the `org.opencontainers.image.revision` label of the image pinned at the time). `compose.yaml` now pins revision `5c7cb5bc7db457290f1769f95f1d1340912f7fd7`:
 
 - [`MAX_UNIQUE_QUERY_TERMS = 64`](https://github.com/get-convex/convex-backend/blob/b7cce5a2331854895d36b683d1eab17c47ef13a9/crates/search/src/constants.rs#L40-L42) caps expanded terms across memory and disk. [`search`](https://github.com/get-convex/convex-backend/blob/b7cce5a2331854895d36b683d1eab17c47ef13a9/crates/search/src/lib.rs#L477-L575) adds equality-filter terms to the same pool. The [aggregator](https://github.com/get-convex/convex-backend/blob/b7cce5a2331854895d36b683d1eab17c47ef13a9/crates/search/src/aggregation.rs#L55-L129) retains the best 64 unique terms. With one team filter, only 63 distinct prefix expansions remain. This explains the reported `contact0900`–`contact0962` result: discarded terms never reach pagination or the substring predicate. Additional filters can reduce this further.
 - [`MAX_CANDIDATE_REVISIONS = 1024`](https://github.com/get-convex/convex-backend/blob/b7cce5a2331854895d36b683d1eab17c47ef13a9/crates/search/src/constants.rs#L17-L18) independently limits candidate revisions. The [search iterator](https://github.com/get-convex/convex-backend/blob/b7cce5a2331854895d36b683d1eab17c47ef13a9/crates/database/src/query/search_query.rs#L220-L245) errors at that scan limit; it does not explain a silent 63-row result.
@@ -30,7 +30,7 @@ The scan budgets below are passed as named constants by each list. They are desi
 | Custom events / `EVENT_SEARCH_BUDGET` | 512 | 4 MiB | None |
 | Export history / `EXPORT_SEARCH_BUDGET` | 1,024 | 4 MiB | None; metadata only |
 
-The byte budget includes **source document bytes plus reservations for subsequent hydration**. The installed `convex-helpers` 0.1.122 `QueryStream` paginator walks an ordinary index, counts rejected rows, and retains each inspected row's index key. The shared `SearchStream` wrapper adds a reservation only when a row passes the predicate. It does not fetch drafts for rejected rows. A template search can scan 512 nonmatches, or at most eight matches needing drafts.
+The byte budget includes **source document bytes plus reservations for subsequent hydration**. The installed `convex-helpers` 0.1.127 `QueryStream` paginator walks an ordinary index, counts rejected rows, and retains each inspected row's index key. The shared `SearchStream` wrapper adds a reservation only when a row passes the predicate. It does not fetch drafts for rejected rows. A template search can scan 512 nonmatches, or at most eight matches needing drafts.
 
 The budget is independent of the UI's requested result count: requesting just one additional match still permits a full bounded scan. The same row and byte ceilings apply during an `endCursor` replay, when ordinary pagination ignores `numItems`. Stricter caller ceilings are honored; zero cannot disable them. The final inspected row may cross the byte threshold, so the arithmetic below reserves headroom for that overshoot.
 

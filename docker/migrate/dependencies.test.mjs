@@ -92,7 +92,9 @@ function localModule(filename, specifier) {
 }
 
 test("migrate dependencies cover the Convex runtime graph and match root versions", () => {
-  const required = new Set(["convex"])
+  // zod is a pinned peer: without it the image resolves the zod peer of
+  // convex-helpers and better-auth differently from the root install.
+  const required = new Set(["convex", "zod"])
   const pending = sourceFiles(join(root, "convex"))
   const visited = new Set()
   while (pending.length) {
@@ -132,4 +134,15 @@ test("migrate dependencies cover the Convex runtime graph and match root version
       rootDependencies[name],
       `${name} must match the root version`
     )
+})
+
+test("the workspace override pins convex-helpers to the root version", () => {
+  const overrides = readFileSync(
+    join(root, "pnpm-workspace.yaml"),
+    "utf8"
+  ).split(/^overrides:$/m)[1]
+  assert.equal(
+    overrides?.match(/^\s+convex-helpers: (\S+)$/m)?.[1],
+    readJson("package.json").dependencies["convex-helpers"]
+  )
 })
