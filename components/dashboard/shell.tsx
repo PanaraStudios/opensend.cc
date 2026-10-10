@@ -265,6 +265,7 @@ function CommandMenu({
                 <CommandItem
                   key={item.href}
                   value={item.title}
+                  keywords={[...item.keywords]}
                   onSelect={() => go(item.href)}
                 >
                   {item.title}

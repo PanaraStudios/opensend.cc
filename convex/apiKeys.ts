@@ -97,6 +97,10 @@ async function settle(
     )
   }
   if (input.permission !== "custom") scopes = undefined
+  if (input.permission === "custom" && !scopes?.length)
+    throw new ConvexError(
+      "Choose at least one resource scope for a Custom API key"
+    )
   const settled = { name, permission: input.permission, scopes }
   const domainAllowed =
     input.permission === "sending_access" ||

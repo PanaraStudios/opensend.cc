@@ -1,6 +1,9 @@
 import { pathMatches } from "./dashboard/nav"
 import { DOCS_URL } from "./site"
 
+export const CALLING_DOCS_HREF =
+  "https://github.com/PanaraStudios/opensend.cc/blob/v2/docs/browser-softphone.md"
+
 export type DocsPath = "/docs" | `/docs/${string}`
 
 /** Paths are checked against the public site's pages by docs-links.test.ts. */
@@ -18,6 +21,7 @@ export const DOCS_LINKS = {
     "/emails/receiving": "/docs/dashboard/receiving/introduction",
     "/emails/suppressions": "/docs/dashboard/emails/suppressions",
     "/instance/meta": "/docs/self-hosting/requirements",
+    "/instance/general": "/docs/self-hosting/requirements",
     "/instance/ses": "/docs/self-hosting/aws-ses",
     "/logs": "/docs/dashboard/logs",
     "/metrics": "/docs/dashboard/emails/metrics",

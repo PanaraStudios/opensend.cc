@@ -8,9 +8,9 @@ There are no page-load events or browser tracking scripts.
 ## Control sharing
 
 The installation administrator can turn **Share anonymous usage statistics** off
-in the setup wizard or in **Instance → Amazon SES**, beside the other instance
-settings. It starts on. **View what's sent** builds the JSON from current usage
-without contacting the collector. The timestamp and usage refresh when sent.
+in the setup wizard or in **Instance settings** (`/instance/general`), opened
+from the account menu. It starts on. **View what's sent** builds the JSON from
+current usage without contacting the collector. The timestamp and usage refresh when sent.
 Turning sharing off stops the next ping, including one already queued. Opensend
 does not send a goodbye ping.
 

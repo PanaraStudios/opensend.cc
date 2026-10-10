@@ -13,6 +13,9 @@ export function docsLinksTests(state: () => { owner: Page }) {
       ["/webhooks", "/webhooks/introduction", 2],
       ["/settings/smtp", "/self-hosting/smtp-gateway", 1],
       ["/settings/sso", "/dashboard/team/sso", 1],
+      ["/instance/ses", "/self-hosting/aws-ses", 1],
+      ["/instance/meta", "/self-hosting/requirements", 1],
+      ["/instance/general", "/self-hosting/requirements", 1],
     ] as const) {
       await owner.goto(route)
       const links = owner.getByRole("link", { name: "Docs", exact: true })

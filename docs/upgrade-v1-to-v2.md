@@ -9,7 +9,7 @@ updating API clients.
 
 **Anonymous usage statistics are on by default**, including on an existing
 installation without a saved preference. Turn sharing off in the setup wizard
-or **Instance → Amazon SES**, pass `--telemetry no` to the installer, or set
+or **Instance settings** in the account menu, pass `--telemetry no` to the installer, or set
 `OPENSEND_TELEMETRY=0` in the Convex backend for a locked hard off. To prevent
 sharing from the first v2 start, use the installer flag or set the environment
 value before running migration.
@@ -409,8 +409,8 @@ Test with real accounts before enabling production sends or calls.
 
 ## 6. Check telemetry settings
 
-In setup or **Instance → Amazon SES**, turn **Share anonymous usage statistics**
-off if desired. **View what's sent** previews the current payload without a
+In setup or **Instance settings** (`/instance/general` in the account menu), turn
+**Share anonymous usage statistics** off if desired. **View what's sent** previews the current payload without a
 network request. Turning sharing off stops the next ping, including a queued one.
 No goodbye ping is sent.
 

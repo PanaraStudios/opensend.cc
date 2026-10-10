@@ -335,6 +335,19 @@ function CreateIvr({
             value={draft.promptVoice}
             onChange={(promptVoice) => setDraft({ ...draft, promptVoice })}
           />
+          {!draft.promptVoice ? (
+            <p className="text-sm text-muted-foreground">
+              Create an IVR draft, then upload prompt audio in the editor. To
+              generate spoken prompts, choose a prompt provider, a key and a
+              voice.
+            </p>
+          ) : null}
+          {draft.promptVoice &&
+          (!draft.promptVoice.credentialId || !draft.promptVoice.voice) ? (
+            <p className="text-sm text-muted-foreground">
+              Choose a prompt provider key and a voice before creating this IVR.
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-destructive">
               {error}
@@ -345,7 +358,17 @@ function CreateIvr({
           <Button type="button" variant="outline" onClick={close}>
             Cancel
           </Button>
-          <Button type="submit" disabled={busy || !draft.name.trim()}>
+          <Button
+            type="submit"
+            disabled={
+              busy ||
+              !draft.name.trim() ||
+              !!(
+                draft.promptVoice &&
+                (!draft.promptVoice.credentialId || !draft.promptVoice.voice)
+              )
+            }
+          >
             {busy ? "Creating…" : "Create"}
           </Button>
         </DialogFooter>
@@ -662,6 +685,13 @@ function IvrForm({ row }: { row: IvrResource }) {
               </>
             }
           />
+          {draft.promptVoice &&
+          (!draft.promptVoice.credentialId || !draft.promptVoice.voice) ? (
+            <p className="text-sm text-muted-foreground">
+              Choose a prompt provider key and a voice to generate spoken
+              prompts.
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-destructive">
               {error}

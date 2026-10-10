@@ -61,6 +61,20 @@ export function createAuth(
     database: authComponent.adapter(ctx),
     hooks: {
       before: createAuthMiddleware(async (context) => {
+        if (
+          context.path === "/sign-up/email" &&
+          typeof context.body?.email === "string"
+        ) {
+          const allowed = await ctx.runQuery(
+            components.betterAuth.policy.checkRegistration,
+            { email: context.body.email, now: Date.now() }
+          )
+          if (!allowed)
+            throw new APIError("UNPROCESSABLE_ENTITY", {
+              message:
+                "This instance is invite-only. Ask a team admin for an invitation.",
+            })
+        }
         // All team operations run through our atomic component API. No alternate
         // organization endpoint may bypass SSO, ownership, or deletion checks.
         if (

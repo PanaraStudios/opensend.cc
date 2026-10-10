@@ -49,7 +49,10 @@ export function contactIdentity(
   if (contact.phone)
     return { label: contact.phone, secondary, kind: "phone", channel }
   return {
-    label: handle || channelIdentity?.profileName?.trim() || "Unknown contact",
+    label:
+      handle ||
+      channelIdentity?.profileName?.trim() ||
+      (channel ? `${CHANNELS[channel].label} user` : "Unknown contact"),
     secondary,
     kind: "channel",
     channel,

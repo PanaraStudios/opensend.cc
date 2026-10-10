@@ -1,4 +1,5 @@
 "use client"
+import { emailFailureMessage } from "@/lib/dashboard/email-failure"
 import { contactIdentity } from "@/lib/dashboard/contacts"
 
 import * as React from "react"
@@ -43,6 +44,7 @@ import {
   PanelTabs,
   ResourceTable,
   Th,
+  JsonSection,
   useDeleteRecord,
   useLoadedPagination,
   ListPagination,
@@ -64,7 +66,7 @@ import { actionError } from "@/lib/action-error"
 import {
   useBroadcast,
   useBroadcastCommands,
-  useWhatsAppBroadcastRecipients,
+  useBroadcastRecipients,
 } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainByName } from "@/lib/domains/use-domains"
 import { useSegmentOptions, useTopics } from "@/lib/audience/use-audience"
@@ -278,6 +280,10 @@ function BroadcastReport({ item }: { item: Broadcast }) {
           <ListPagination {...pagination} embedded noun="recipient" />
         </TabsContent>
       </PanelTabs>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium">Recipient outcomes</h2>
+        <BroadcastRecipients item={item} />
+      </section>
     </>
   )
 }
@@ -440,7 +446,6 @@ export function BroadcastDetail() {
 }
 
 function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
-  const { pageRows, pagination } = useWhatsAppBroadcastRecipients(item.id)
   const stats = item.whatsappStats
   if (!stats) return <Skeleton className="h-40 w-full" />
 
@@ -463,6 +468,16 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
         )}
         testIdPrefix={`${item.channel}-stat`}
       />
+      <BroadcastRecipients item={item} />
+    </div>
+  )
+}
+
+function BroadcastRecipients({ item }: { item: Broadcast }) {
+  const { pageRows, pagination } = useBroadcastRecipients(item.id)
+  const email = (item.channel ?? "email") === "email"
+  return (
+    <>
       <ResourceTable
         headers={
           <>
@@ -474,27 +489,47 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
         {pageRows.map((recipient) => (
           <TableRow key={recipient._id}>
             <TableCell>
-              {
+              {email ? (
+                recipient.emailId ? (
+                  <Link href={`/emails/${recipient.emailId}`}>
+                    {recipient.email}
+                  </Link>
+                ) : (
+                  recipient.email
+                )
+              ) : (
                 contactIdentity(
                   recipient.contact ?? {
                     email: recipient.email,
                     phone: recipient.phone,
                   }
                 ).label
-              }
+              )}
             </TableCell>
             <TableCell>
               <RecipientOutcomeBadge
                 skipReason={recipient.skipReason}
+                emailStatus={recipient.emailStatus}
                 messageStatus={recipient.messageStatus}
                 failed={recipient.failed}
                 sent={recipient.sent}
               />
+              {recipient.failureReason ? (
+                <p className="mt-1 text-xs text-destructive">
+                  {emailFailureMessage(recipient.failureReason)}
+                </p>
+              ) : null}
+              {recipient.providerError ? (
+                <JsonSection
+                  title="Provider message"
+                  value={recipient.providerError}
+                />
+              ) : null}
             </TableCell>
           </TableRow>
         ))}
       </ResourceTable>
       <ListPagination {...pagination} noun="recipient" />
-    </div>
+    </>
   )
 }

@@ -1,0 +1,199 @@
+# v2 QA fixes, round 1
+
+Worktree: `qa-fixes`, branch `fix/v2-qa-round1`, based on `origin/v2` at
+`0f32d0f`. All twelve requested items are implemented. Nothing was pushed.
+Implementation commit: `8e04200` (`fix: resolve v2 QA round 1 failures and dashboard gaps`).
+This report is committed separately. Both commits include the requested co-author trailer.
+
+| Item | Change | Regression coverage |
+| --- | --- | --- |
+| 1. Failed email reason | Terminal send failures retain a friendly explanation and the original provider message. Email detail, message lists and email broadcast recipient outcomes show the explanation; detail and broadcast outcomes offer the provider message. Email GET/list responses and SDK types expose optional `failed.reason` and `failed.provider_message`. Common SES credential, verification/sandbox, throttling/quota, suppression and rejection errors have shared friendly wording. | SES action/storage/dashboard-query/API detail and list tests; broadcast settlement and recipient query tests; shared mapping tests. |
+| 2. Send readiness | Disabled sending, DNS verification, domain provisioning, tenant setup/pause, regional setup, callback connection, regional pause and sandbox each identify the domain and the corrective action. REST preserves `403` and `validation_error`. | Extended `convex/emails.test.ts` cause-by-cause assertions, including batch and installation-email regressions; updated SES expectations. |
+| 3. Invalid OpenAPI YAML | Expanded every alias and removed every anchor, including repeated names beyond the reported `a1`. Added a repeatable plain-YAML exporter and a strict parser test. The API failure extension and scope order are reflected in the contract. | SDK contract loads YAML using js-yaml with duplicate-anchor rejection, verifies that the rejection works on a duplicate fixture, and checks for remaining anchors/aliases. Backend OpenAPI contracts continue to validate responses. |
+| 4. Instance layout and double borders | `CardFrame` and the shared `.frame` wrapper now leave the border to their child surface. This applies to settings, Inbox, email previews, contact panels and all shared Surface/PanelTabs users. A shared instance layout places SES/Meta introductions under their titles before their own sections. Storage and telemetry have one dashboard home at `/instance/general`. Existing SES/Meta routes and docs-link destinations remain available. | Shared DOM surface and instance-layout regressions; extended SES, Meta and general-settings browser assertions for intro, section order, navigation and docs links. |
+| 5. Empty segment | Added an Add contacts action with the existing searchable contact picker and membership mutation. It is the first, filled empty-state action; Go to contacts is secondary. Segment tables now query the segment's members. Empty copy explains this picker, contact-detail Add to segment and the Contacts bulk action. | Added browser coverage for an empty segment, action priority, searching an existing contact, adding it and seeing membership update. |
+| 6. WhatsApp template editor | Added a labeled name field, focus/select on newly created untitled templates, Meta naming guidance and validation before submission. Header breadcrumb is read-only with a distinct accessible label. WhatsApp actions say Submit for review and display the target account, including when only one is connected. Account fallback labels use public names/numbers instead of WABA IDs. | Naming/publish-label unit tests, account-label backend regression, updated browser name/focus/invalid-submit and review-button assertions. |
+| 7. API keys | Custom keys require at least one scope in both the dashboard and backend. Inline feedback sits by the scope table. Shared catalog order is Messaging (Email first), Audience, Content & campaigns, Setup, Calling. Creation uses Create API key / Create consistently. | Backend create/update/REST rejection tests, catalog order tests, browser empty-scope assertion and updated creation selectors. |
+| 8. Unknown senders | `contactIdentity` defines the channel-specific fallback, such as Messenger user and Instagram user. Message logs delegate to it, matching Inbox. Receiving account handles use the shared formatter so Instagram To and From both include `@`. | Contact/message identity unit tests, Messenger/Instagram log regressions including unknown Receiving identities and Instagram account handle, updated related expectations. |
+| 9. Send message defaults | Options follow `CHANNEL_IDS` with Email first. The default prefers the chosen contact's connected channel, otherwise the team's first available sending channel. Disconnected/unregistered senders are excluded. With none available, the form explains what to connect and cannot submit. | Default-selection unit tests, team-scoped connected-sender backend tests and browser Email-first assertion. |
+| 10. Invite-only sign-up | Verified the HTTP flow: the atomic user-create admission trigger was hidden behind BetterAuth's generic error. A server preflight now returns the explicit invite-only explanation with HTTP 422, while atomic admission remains enforced. The existing signup UI displays that server message. | HTTP regression asserts the exact explanation and that no rejected user is inserted; browser signup assertion uses the exact message. |
+| 11. Unexplained states | Inbox distinguishes disconnected, connected-empty and filtered-empty states. Calls explains missing gateway/browser connection and optional TURN, with setup docs. Softphone away controls follow saved gateway routes to agents; transport readiness gates going online. IVR creation explains provider/key/voice requirements while preserving audio-only drafts. Channel Calling settings explains gateway/TURN and links to the same docs. | Inbox copy tests, IVR browser requirement assertion, calling browser setup/help/docs assertions, calling and softphone backend coverage. |
+| 12. Fractional timestamps | Sent email adapters round Convex creation timestamps to integer milliseconds, including the detail payload. | Test uses the reported fractional timestamp against the actual adapter and serialized payload. |
+
+## Conservative decisions and limits
+
+- Storage and telemetry now live at `/instance/general`, accessed through Instance settings in the administrator's account menu or command search. SES and Meta keep their own sections and the existing SES redirect.
+- `failed` on email retrieval is an additive Opensend extension using the existing Resend-shaped `email.failed` webhook's `reason` field. Existing response fields, status codes and error names are preserved.
+- Email and local Messenger/Instagram templates keep Publish because those local templates do not undergo Meta review. WhatsApp templates use Submit for review.
+- IVRs may still be created as audio-only drafts. Selecting a prompt provider requires its key and voice before creation; the UI explains both paths.
+- Previously sanitized provider messages cannot be reconstructed. New terminal send failures retain the original message, limited to 4,000 characters; existing saved reasons still receive friendly rendering.
+- The browser tests were extended but not executed: this worktree has no configured fresh QA stack/deployment. Live SES/Meta checks were not run; provider failures and API flows are exercised with the existing test fixtures. No deployment or `convex dev` was run.
+- Schema changes only add optional diagnostic fields and indexes. Package scripts are unchanged; the only new package dependencies support strict YAML contract testing.
+
+## Checks
+
+| Command | Result |
+| --- | --- |
+| `pnpm typecheck` | Passed |
+| `pnpm lint` | Passed, no warnings |
+| `pnpm test` | Passed: 737 tests |
+| `pnpm test:auth --maxWorkers=2` | Passed: 1,403 tests across 97 files |
+| `pnpm test:sdk` | Passed: 683 tests; 4 existing live-test skips |
+| `pnpm test:mcp` | Passed: 666 tests; 1 existing live-test skip |
+
+Focused email regressions also passed after the final provider-mapping refinement.
+Email broadcast recipients use the shared email status badge, including suppression
+and cancellation; the recipient page hydrates email statuses with bounded,
+deduplicated reads.
+
+The final isolated broadcast and read-cost rerun passed all 32 tests. An earlier
+extra concurrent run hit the existing large-audience test's 30-second timeout;
+that test passed in the full requested suite and in the isolated rerun without
+changing its timeout.
+
+## Follow-up: channel select after asynchronous sender loading
+
+Browser QA on `cda7ff9` found a blank Channel select in Send message. The
+default was already recomputed on every render; the shared `OptionSelect`
+passed `undefined` initially, which made Base UI fix the select as uncontrolled.
+It then ignored the controlled Email value when senders arrived. A DOM regression
+reproduced the blank value and Base UI's controlled/uncontrolled warning before
+the fix.
+
+- `OptionSelect` now treats an explicitly provided empty value as controlled
+  from the first render, using Base UI's `null` empty value. Omitting `value`
+  still supports uncontrolled `defaultValue` usage. `SearchableSelect` follows
+  the same distinction and no longer restores an old internal choice when its
+  controlled value is cleared.
+- Send message distinguishes a loading sender query from a loaded empty list.
+  Loading shows a disabled Loading channels select; the connect-channel
+  explanation appears only after a loaded query returns no sending channels.
+  The loaded default prefers the contact's connected channel, otherwise the
+  first available channel in `CHANNEL_IDS` order. A valid manual choice wins
+  and remains visible during reloads. A genuinely removed sender falls back
+  to an available channel. Submission waits for availability to load.
+- Reviewed the other changed forms: API key creation uses static permission
+  and all-domain defaults; editing receives an already loaded key. The segment
+  picker waits for a user selection and retains its selected label. WhatsApp
+  editors mount after the template loads, and WABA selection is assigned on
+  the backend. IVR provider/language defaults are static, with ElevenLabs voice
+  adoption explicitly waiting for its catalog. SES and Calling edits use loaded
+  records; the playground tester derives its account fallback from current
+  setup data. No additional one-time defaults from unloaded queries were found.
+- New helper and DOM tests cover loading → loaded, contact preference, manual
+  dropdown selection → loading → loaded, actual empty results, clearing a
+  controlled value, and uncontrolled default/selection behavior. Both ordinary
+  and searchable select variants are exercised. The existing Messages browser
+  assertion remains unchanged.
+
+Validation:
+
+| Command | Follow-up result |
+| --- | --- |
+| `pnpm typecheck` | Passed |
+| `pnpm lint` | Passed, no warnings |
+| `pnpm test` | Passed: 740 tests |
+| `pnpm exec tsx --test lib/dashboard/send-channels.test.ts lib/dashboard/field-accessibility.test.ts` | Passed: 26 tests |
+| `pnpm exec vitest run --config vitest.auth.config.ts convex/conversations.test.ts --maxWorkers=2` | Passed: 21 tests |
+
+Browser E2E could not run locally: Docker cannot connect to the configured
+Colima socket because its daemon is unavailable. Nothing was pushed.
+
+## Follow-up: softphone away controls and calling readiness
+
+Browser QA on `6b608f2` found the missing Go online button. The shared
+softphone provider hid both header controls and the sidebar entry with this rule:
+
+```ts
+!!organizationId &&
+  !!setup?.configured &&
+  setup.numbers.some((n) => n.mode === "gateway" && n.routing === "agents")
+```
+
+The rule is now:
+
+```ts
+!!organizationId && hasAgentRoute(setup?.numbers)
+// hasAgentRoute: a number has mode === "gateway" and routing === "agents".
+```
+
+- Team eligibility uses the backend setup query's connected WhatsApp numbers,
+  stored calling settings, and backend default gateway/API mode. Away controls
+  remain accessible even when instance transport configuration is incomplete.
+  API mode, routes to IVRs/bots, disconnected numbers, and other teams' numbers
+  do not enable the controls. Loaded route changes update the controls directly.
+- The E2E setup explicitly saves a gateway route to agents and checks the away
+  panel; it does not go online or establish browser media. That is a valid saved
+  routing state for these controls. The test and all its assertions are unchanged.
+- Going online still requires the backend session action's secure WSS endpoint
+  and gateway URL/credentials. The setup query now reuses the backend gateway
+  readiness helper and the session action's exact WSS validator, rather than
+  accepting any string beginning with `wss://`. The existing WSS environment
+  setting has an optional typed declaration; its generated server declaration
+  was regenerated with the installed Convex template locally, without deploying.
+- The Calls tab retains its setup explanation and docs link. Its description
+  distinguishes missing gateway credentials from a missing/invalid secure
+  browser endpoint. TURN remains optional, matching the backend's STUN fallback;
+  the copy explains that a relay is needed only when the browser network needs
+  one. No server connectivity or actual audio success is inferred from settings.
+- Regression tests cover saved agent routing with missing transport, subsequent
+  transport setup, API mode, disconnected/team-isolated accounts, invalid WSS
+  endpoints, session rejection when configuration is missing, and provisioning
+  and ICE configuration without TURN.
+
+Validation:
+
+| Command | Follow-up result |
+| --- | --- |
+| `pnpm typecheck` | Passed |
+| `pnpm lint` | Passed, no warnings |
+| `pnpm test` | Passed: 742 tests |
+| `pnpm exec tsx --test lib/meta/softphone.test.ts lib/meta/calling.test.ts lib/meta/call-card.test.ts lib/calling-ice.test.ts lib/dashboard/voice-playground.test.ts` | Passed: 29 tests |
+| `pnpm exec vitest run --config vitest.auth.config.ts convex/softphone.test.ts convex/calling.test.ts convex/playground.test.ts convex/turn.test.ts --maxWorkers=2` | Passed: 63 tests |
+
+Browser E2E could not run locally: Docker cannot connect to the configured
+Colima socket because its daemon is unavailable. No E2E selectors changed.
+Nothing was pushed.
+
+## Follow-up: shared instance layout and segment action priority
+
+Browser QA on `dbc97c6` found that Meta still prepended File storage before its
+own introduction. Instance pages now share `/instance/layout.tsx`, which renders
+the page title and introduction together before any page content. Each instance
+destination declares its introduction in the shared navigation registry. The
+layout also applies the installation-admin/loading gate consistently.
+
+- **A — Instance pages:** SES begins with AWS connection; Meta begins with Meta
+  app. Neither includes File storage or Anonymous usage statistics. Both settings
+  now have one dashboard home at `/instance/general`, titled **Instance settings**,
+  reachable from the installation administrator's account menu and command
+  search. Searching for File storage or Anonymous usage statistics finds it.
+  SES and Meta routes and the `/settings/ses` redirect remain available. Setup
+  keeps its existing telemetry preference and Meta introduction. Documentation,
+  docs mappings, team navigation, and the screenshot/accessibility tour include
+  the new destination.
+- **B — Empty segment:** Add contacts is the first, filled empty-state action and
+  opens the existing picker in place. Go to contacts is the secondary outline
+  action. The browser regression now clicks the empty-state action specifically
+  and checks its priority before searching for and adding a contact.
+- Browser assertions cover SES → Meta → Instance settings client navigation:
+  introduction inside the title header, page-specific first section, absence of
+  generic settings on SES/Meta, exactly one storage/telemetry section on General,
+  account-menu/search discovery, and telemetry persistence/preview on its new
+  page. Shared layout rendering tests cover all registered instance pages and
+  settings visibility for loading and non-admin states.
+
+Validation:
+
+| Command | Follow-up result |
+| --- | --- |
+| `pnpm typecheck` | Passed |
+| `pnpm lint` | Passed, no warnings |
+| `pnpm test` | Passed: 745 tests |
+| `pnpm exec tsx --test lib/dashboard/instance-layout.test.ts lib/dashboard/nav.test.ts lib/dashboard/team-navigation.test.ts lib/docs-links.test.ts` | Passed: 16 tests |
+| `pnpm exec vitest run --config vitest.auth.config.ts convex/telemetry.test.ts convex/segmentsUnbounded.test.ts --maxWorkers=2` | Passed: 15 tests |
+| `pnpm exec playwright test --list` | Collected: 111 tests in 28 files |
+
+The updated browser assertions could not execute locally: Docker cannot connect
+to the configured Colima socket because its daemon is unavailable. Nothing was
+pushed.

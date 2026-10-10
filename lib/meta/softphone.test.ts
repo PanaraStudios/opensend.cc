@@ -1,7 +1,9 @@
 import { agentQueues } from "../../services/call-gateway/src/queues"
 import { test } from "node:test"
 import assert from "node:assert/strict"
+import { validAgentWssUrl } from "../calling/configuration"
 import {
+  hasAgentRoute,
   agentPresenceLabel,
   callElapsed,
   callEventLabel,
@@ -13,6 +15,47 @@ import {
   softphoneTransition as step,
   type SoftphonePhase,
 } from "./softphone"
+test("away controls follow loaded gateway agent routes independently of transport readiness", () => {
+  assert.equal(hasAgentRoute(undefined), false)
+  assert.equal(hasAgentRoute([]), false)
+  const setup = {
+    configured: false,
+    routingConfigured: false,
+    numbers: [{ mode: "gateway", routing: "agents" }],
+  }
+  assert.equal(hasAgentRoute(setup.numbers), true)
+  assert.equal(hasAgentRoute([{ mode: "api", routing: "agents" }]), false)
+  assert.equal(hasAgentRoute([{ mode: "gateway", routing: null }]), false)
+  assert.equal(hasAgentRoute([{ mode: "gateway", routing: "api" }]), false)
+  assert.equal(
+    hasAgentRoute([{ mode: "gateway", routing: "ivr:reception" }]),
+    false
+  )
+  assert.equal(
+    hasAgentRoute([{ mode: "gateway", routing: "bot:assistant" }]),
+    false
+  )
+  assert.equal(
+    hasAgentRoute([
+      { mode: "api", routing: "agents" },
+      { mode: "gateway", routing: "agents" },
+    ]),
+    true
+  )
+})
+test("browser readiness validates the same secure endpoint as session provisioning", () => {
+  for (const value of [
+    undefined,
+    "",
+    "wss://",
+    "https://calling.example.test",
+    "ws://calling.example.test",
+    "wss://user:secret@calling.example.test",
+    "wss://calling.example.test/#fragment",
+  ])
+    assert.equal(validAgentWssUrl(value), false, value)
+  assert.equal(validAgentWssUrl("wss://calling.example.test:7443"), true)
+})
 test("registration, claim, connect, hold, resume and hangup obey the softphone lifecycle", () => {
   let phase: SoftphonePhase = "away"
   for (const [event, expected] of [

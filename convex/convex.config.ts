@@ -17,6 +17,7 @@ const app = defineApp({
     OPENSEND_INSTALL_METHOD: v.optional(v.string()),
     OPENSEND_ARCH: v.optional(v.string()),
     OPENSEND_CALLING: v.optional(v.string()),
+    CALL_AGENT_WSS_URL: v.optional(v.string()),
     CALL_GATEWAY_RECORDINGS_DIR: v.optional(v.string()),
     CALL_STUN_URLS: v.optional(v.string()),
     CALL_TURN_URLS: v.optional(v.string()),

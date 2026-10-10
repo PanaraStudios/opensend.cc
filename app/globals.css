@@ -823,9 +823,9 @@
   .icon-tile {
     @apply inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface/50 text-primary shadow-tile dark:bg-surface [&_svg]:size-[18px];
   }
-  /* card frame: the 18px outer shell. 10% line, 1px white glow outside, 8px gutter, blur. */
+  /* Layout wrapper; its panel owns the single visible surface. */
   .frame {
-    @apply min-w-0 rounded-[18px] border border-border-double p-2 shadow-[0_0_0_1px_var(--border-double-glow)] backdrop-blur-[8px];
+    @apply min-w-0;
   }
   /* card panel: the 14px inner surface. Ink-cast gradient + hairline ring. */
   .panel {

@@ -64,6 +64,67 @@ import { replyHeaders, replySubject } from "../lib/dashboard/conversations"
    email sender. Sending goes through the channels' own entry points
    (createChannelMessage, createEmail), so every rule there applies. */
 
+export const connectedChannels = query({
+  args: { organizationId: v.string(), sending: v.optional(v.boolean()) },
+  returns: v.array(channelValue),
+  handler: async (ctx, { organizationId, sending }) => {
+    await requireTeam(ctx, organizationId)
+    const domains = ctx.db.query("domains")
+    const email = sending
+      ? (
+          await Promise.all(
+            (["verified", "partially_verified"] as const).map((status) =>
+              domains
+                .withIndex(
+                  "by_organizationId_and_deleted_and_sending_and_status",
+                  (q) =>
+                    q
+                      .eq("organizationId", organizationId)
+                      .eq("deleted", false)
+                      .eq("sending", true)
+                      .eq("status", status)
+                )
+                .filter((q) =>
+                  status === "verified"
+                    ? q.eq(q.field("status"), "verified")
+                    : q.and(
+                        q.eq(q.field("sesVerified"), true),
+                        q.eq(q.field("dkimVerified"), true),
+                        q.eq(q.field("mailFromVerified"), true)
+                      )
+                )
+                .take(1)
+            )
+          )
+        ).flat()
+      : await domains
+          .withIndex("by_organizationId_and_deleted", (q) =>
+            q.eq("organizationId", organizationId).eq("deleted", false)
+          )
+          .take(1)
+    const channels: Infer<typeof channelValue>[] = email.length ? ["email"] : []
+    for (const channel of ["whatsapp", "messenger", "instagram"] as const) {
+      const account = await ctx.db
+        .query("channelAccounts")
+        .withIndex(
+          "by_organizationId_and_channel_and_status_and_registeredAt",
+          (q) => {
+            const range = q
+              .eq("organizationId", organizationId)
+              .eq("channel", channel)
+              .eq("status", "active")
+            return sending && channel === "whatsapp"
+              ? range.gt("registeredAt", 0)
+              : range
+          }
+        )
+        .take(1)
+      if (account.length) channels.push(channel)
+    }
+    return channels
+  },
+})
+
 const listFilters = v.object({
   organizationId: v.string(),
   channel: v.optional(channelValue),

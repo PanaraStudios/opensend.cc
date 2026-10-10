@@ -38,6 +38,7 @@ import {
   ListToolbar,
   MoreMenu,
   NotFoundState,
+  OptionSelect,
   ResourceTable,
   Surface,
   Th,
@@ -57,6 +58,7 @@ import {
   asSegment,
   useAudienceCommands,
   useContactList,
+  useContactSearch,
   useSegmentList,
 } from "@/lib/audience/use-audience"
 import { actionError } from "@/lib/action-error"
@@ -280,7 +282,11 @@ function SegmentPage({
     if (next.trim()) await updateSegment(segment.id, next)
   })
   const title = name.draft.trim() || segment.name
-  const candidates = useContactList({ search })
+  const [adding, setAdding] = React.useState(false)
+  const candidates = useContactList({
+    search,
+    segmentId: segment.id as Id<"segments">,
+  })
   const { pageRows, pagination } = candidates
   /* Membership is checked for the page on view: a contact can be in any
      number of segments, so list rows do not carry them. */
@@ -305,9 +311,15 @@ function SegmentPage({
         icon={LayersIcon}
         description={`${pluralize(segment.count, "contact")} · Created ${formatDate(segment.createdAt)}`}
         actions={
-          <Button variant="outline" onClick={() => setPendingDelete(true)}>
-            Delete
-          </Button>
+          <>
+            <Button onClick={() => setAdding(true)}>
+              <PlusIcon />
+              Add contacts
+            </Button>
+            <Button variant="outline" onClick={() => setPendingDelete(true)}>
+              Delete
+            </Button>
+          </>
         }
       />
 
@@ -335,10 +347,17 @@ function SegmentPage({
         ) : candidates.rows.length === 0 ? (
           <EmptyState
             icon={LayersIcon}
-            title="No matching contacts"
-            description="Add contacts first, then assign them to this segment."
+            title={
+              search ? "No matching contacts" : "No contacts in this segment"
+            }
+            description="Use Add contacts to choose existing contacts. You can also use Add to segment on a contact’s detail page or select contacts and use the bulk action in Contacts."
           >
-            <Button nativeButton={false} render={<Link href="/contacts" />}>
+            <Button onClick={() => setAdding(true)}>Add contacts</Button>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/contacts" />}
+            >
               Go to contacts
             </Button>
           </EmptyState>
@@ -394,6 +413,14 @@ function SegmentPage({
         )}
       </section>
 
+      <Dialog open={adding} onOpenChange={setAdding}>
+        {adding ? (
+          <AddSegmentContacts
+            segmentId={segment.id}
+            close={() => setAdding(false)}
+          />
+        ) : null}
+      </Dialog>
       <ConfirmDialog
         open={pendingDelete}
         onOpenChange={setPendingDelete}
@@ -405,5 +432,80 @@ function SegmentPage({
         }}
       />
     </>
+  )
+}
+
+function AddSegmentContacts({
+  segmentId,
+  close,
+}: {
+  segmentId: string
+  close: () => void
+}) {
+  const [search, setSearch] = React.useState("")
+  const [selected, setSelected] = React.useState<{
+    value: string
+    label: string
+  }>()
+  const [pending, setPending] = React.useState(false)
+  const contacts = useContactSearch(search)
+  const { setContactSegment } = useAudienceCommands()
+  return (
+    <DialogContent>
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          if (!selected || pending) return
+          setPending(true)
+          try {
+            await setContactSegment(selected.value, segmentId, true)
+            toast.add({ type: "success", title: "Contact added to segment" })
+            close()
+          } catch (error) {
+            toast.add({ type: "error", title: actionError(error) })
+          } finally {
+            setPending(false)
+          }
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Add contacts</DialogTitle>
+          <DialogDescription>
+            Search for an existing contact to add to this segment.
+          </DialogDescription>
+        </DialogHeader>
+        <Field>
+          <FieldLabel htmlFor="segment-contact">Contact</FieldLabel>
+          <OptionSelect
+            id="segment-contact"
+            value={selected?.value}
+            selectedItem={selected}
+            items={contacts.map((contact) => ({
+              value: contact.id,
+              label: contactIdentity(contact).label,
+            }))}
+            search={{ onChange: setSearch, placeholder: "Search contacts…" }}
+            placeholder="Choose a contact"
+            onChange={(id) => {
+              const contact = contacts.find((contact) => contact.id === id)
+              if (contact)
+                setSelected({
+                  value: id,
+                  label: contactIdentity(contact).label,
+                })
+            }}
+          />
+        </Field>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={!selected || pending}>
+            Add contact
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
   )
 }

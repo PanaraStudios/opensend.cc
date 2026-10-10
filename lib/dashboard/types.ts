@@ -217,6 +217,8 @@ export type SentEmail = {
   scheduledAt: number | null
   html: string
   text: string
+  error?: string
+  providerError?: string
   events: EmailEvent[]
   broadcastId: string | null
 }

@@ -5,8 +5,20 @@ import { internal } from "../_generated/api"
 import { agentPresence, requireAvailable } from "./agentAccess"
 import { own as ownIvr } from "../ivr/definitions"
 import { v } from "convex/values"
-import { query, internalQuery, internalMutation } from "../_generated/server"
-import { authorize, ownedCall, payload, defaultMode } from "./rows"
+import {
+  query,
+  internalQuery,
+  internalMutation,
+  env,
+} from "../_generated/server"
+import {
+  authorize,
+  ownedCall,
+  payload,
+  defaultMode,
+  gatewayConfigured,
+} from "./rows"
+import { validAgentWssUrl } from "../../lib/calling/configuration"
 import { callDetailValue } from "./values"
 import { audioFile } from "../ivr/definitions"
 import { fileUrl } from "../storage/urls"
@@ -36,12 +48,9 @@ export const setup = query({
       )
       .take(100)
     return {
-      routingConfigured:
-        !!process.env.CALL_GATEWAY_URL && !!process.env.CALL_GATEWAY_SECRET,
+      routingConfigured: gatewayConfigured(),
       configured:
-        !!process.env.CALL_GATEWAY_URL &&
-        !!process.env.CALL_GATEWAY_SECRET &&
-        !!process.env.CALL_AGENT_WSS_URL?.startsWith("wss://"),
+        gatewayConfigured() && validAgentWssUrl(env.CALL_AGENT_WSS_URL),
       numbers: await Promise.all(
         accounts
           .filter((a) => a.status !== "disconnected")

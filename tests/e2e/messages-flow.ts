@@ -57,6 +57,20 @@ export function messagesTests(
       })
       .toEqual(expect.arrayContaining(ids))
     await owner.goto("/emails")
+    await owner
+      .getByRole("button", { name: "Send message", exact: true })
+      .click()
+    const compose = owner.getByRole("dialog", {
+      name: "Send message",
+      exact: true,
+    })
+    await expect(compose.getByLabel("Channel", { exact: true })).toContainText(
+      "Email"
+    )
+    await compose.getByLabel("Channel", { exact: true }).click()
+    await expect(owner.getByRole("option").first()).toHaveText("Email")
+    await owner.keyboard.press("Escape")
+    await owner.keyboard.press("Escape")
     await owner.getByPlaceholder("Search messages…").fill(marker)
     await expect(
       owner.getByText(`${marker} email`, { exact: true })

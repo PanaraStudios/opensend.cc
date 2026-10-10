@@ -28,3 +28,13 @@ Media in root messages, template parameters and interactive/carousel headers app
 Polls cannot be sent through the Cloud API; poll_creation/poll_update are received as unsupported messages with raw data preserved. There is no separate video-note flag: video notes use `video`. GIF template headers belong to the Marketing Messages API. Footers, phone-number, request-contact-info and SPM template buttons are static parts of approved definitions and need no invented send parameter. Dashboard rendering and composers are deferred to Task 7a-2.
 
 Static template components and send parameters follow Meta’s [template components](https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/components) and [product carousel send syntax](https://developers.facebook.com/documentation/business-messaging/whatsapp/catalogs/product-card-carousel-template-messages).
+
+To export the checked-in contract as plain YAML without anchors or aliases, run
+`pnpm --filter @opensendcc/sdk exec tsx scripts/export-openapi.ts`. The exporter
+expands aliases and removes every anchor; the SDK contract test loads the result with
+js-yaml configured to reject duplicate anchors and rejects any remaining anchors or aliases.
+
+Failed send responses include an optional `failed` object in email detail and
+list results. Its `reason` matches the Resend-shaped `email.failed` webhook;
+`provider_message` preserves SES detail when available. This is an additive
+Opensend extension to the email retrieval response.

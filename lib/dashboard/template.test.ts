@@ -160,3 +160,15 @@ describe("publishedAtAfterEdit", () => {
     assert.equal(publishedAtAfterEdit(template({}), { name: "New" }, 9), null)
   })
 })
+
+it("WhatsApp submission is labeled as review while email publishing remains unchanged", () => {
+  assert.equal(
+    templatePublishLabel(template({ channel: "whatsapp" })),
+    "Submit for review"
+  )
+  assert.equal(templatePublishLabel(template({ channel: "email" })), "Publish")
+  assert.equal(
+    templatePublishLabel(template({ channel: "messenger" })),
+    "Publish"
+  )
+})

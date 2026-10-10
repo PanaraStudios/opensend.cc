@@ -8,6 +8,7 @@ import {
   pageBroadcastRecipient,
 } from "./broadcastMessaging"
 import { primaryContactIdentity } from "./audience"
+import { emailStatusValue } from "./tables/emails"
 import { contactChannelIdentityValue } from "./contacts"
 import {
   publicRecipientValue,
@@ -412,6 +413,7 @@ export const recipients = query({
         })
       ),
       messageStatus: v.optional(channelMessageStatusValue),
+      emailStatus: v.optional(emailStatusValue),
     })
   ),
   handler: async (ctx, { organizationId, id, paginationOpts }) => {
@@ -428,6 +430,11 @@ export const recipients = query({
       "contacts",
       result.page.map((r) => r.contactId)
     )
+    const emails = await readPageDocuments(
+      ctx,
+      "emails",
+      result.page.flatMap((r) => (r.emailId ? [r.emailId] : []))
+    )
     const statuses = recipientMessageStatuses(ctx, organizationId)
     const identities = new Map<
       Doc<"contacts">["_id"],
@@ -435,6 +442,7 @@ export const recipients = query({
     >()
     const page = await Promise.all(
       result.page.map(async (recipient) => {
+        const email = recipient.emailId ? emails.get(recipient.emailId) : null
         const loaded = contacts.get(recipient.contactId)
         const contact =
           loaded?.organizationId === organizationId ? loaded : null
@@ -454,6 +462,8 @@ export const recipients = query({
             : null,
           phone: contact?.phone,
           messageStatus: await statuses(recipient),
+          emailStatus:
+            email?.organizationId === organizationId ? email.status : undefined,
         }
       })
     )

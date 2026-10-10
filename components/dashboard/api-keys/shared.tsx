@@ -178,11 +178,19 @@ function ApiKeyForm({
     permission === "sending_access" ||
     (permission === "custom" && scopeAllows(scopes, "emails", "write"))
 
+  const scopeError =
+    permission === "custom" &&
+    !scopes.length &&
+    error === "Choose at least one resource scope for a Custom API key"
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (pending) return
     if (!name.trim()) {
       setError("Enter a name")
+      return
+    }
+    if (permission === "custom" && !scopes.length) {
+      setError("Choose at least one resource scope for a Custom API key")
       return
     }
     setPending(true)
@@ -226,7 +234,7 @@ function ApiKeyForm({
                 setError(null)
               }}
             />
-            {error ? <FieldError>{error}</FieldError> : null}
+            {error && !scopeError ? <FieldError>{error}</FieldError> : null}
           </Field>
           <Field>
             <div className="flex items-center gap-1">
@@ -250,7 +258,10 @@ function ApiKeyForm({
               id="api-key-permission"
               className="w-full"
               value={permission}
-              onChange={(next) => setPermission(next as ApiKeyPermission)}
+              onChange={(next) => {
+                setPermission(next as ApiKeyPermission)
+                setError(null)
+              }}
               items={PERMISSION_ITEMS}
             />
           </Field>
@@ -279,6 +290,7 @@ function ApiKeyForm({
                   </Button>
                 </div>
               </div>
+              {scopeError ? <FieldError>{error}</FieldError> : null}
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -318,6 +330,7 @@ function ApiKeyForm({
                             onValueChange={(values) => {
                               const access = values[0]
                               if (!access) return
+                              setError(null)
                               setScopes((current) => [
                                 ...current.filter(
                                   (s) => !s.startsWith(`${resource.id}:`)

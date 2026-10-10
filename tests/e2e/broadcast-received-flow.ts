@@ -21,9 +21,9 @@ export async function createApiKey(page: Page, name: string) {
     .getByRole("button", { name: "Create API key", exact: true })
     .first()
     .click()
-  const form = page.getByRole("dialog", { name: "Add API Key", exact: true })
+  const form = page.getByRole("dialog", { name: "Create API key", exact: true })
   await form.getByLabel("Name", { exact: true }).fill(name)
-  await form.getByRole("button", { name: "Add", exact: true }).click()
+  await form.getByRole("button", { name: "Create", exact: true }).click()
   const reveal = page.getByRole("dialog", { name: "View API Key", exact: true })
   await reveal
     .getByRole("button", { name: "Show API key", exact: true })
@@ -229,7 +229,22 @@ export function broadcastReceivedTests(state: () => State) {
     await expect
       .poll(async () => (await read())?.row.status, { timeout: 45_000 })
       .toBe("failed")
-    await expect(owner.getByText("Failed", { exact: true })).toBeVisible()
+    await expect(
+      owner
+        .getByRole("heading", { name, exact: true })
+        .locator("..")
+        .getByText("Failed", { exact: true })
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("heading", { name: "Recipient outcomes", exact: true })
+    ).toBeVisible()
+    await expect(
+      owner
+        .getByRole("row")
+        .filter({ hasText: "broadcast-ada@example.test" })
+        .getByText(/AWS|Amazon SES/)
+        .first()
+    ).toBeVisible()
     await expect(
       owner
         .getByRole("row")

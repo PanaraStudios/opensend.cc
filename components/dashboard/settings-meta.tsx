@@ -1,5 +1,4 @@
 "use client"
-import { FileStorageSettings } from "./file-storage"
 import * as React from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
@@ -82,11 +81,12 @@ export function SettingsMeta({ onboarding = false }: { onboarding?: boolean }) {
   const { connected, configIds } = status
   return (
     <div className="flex max-w-3xl flex-col gap-6" data-testid="meta-settings">
-      <FileStorageSettings />
-      <p className="text-sm text-muted-foreground">
-        Manage the Meta app every team uses to connect WhatsApp, Messenger and
-        Instagram.
-      </p>
+      {onboarding && (
+        <p className="text-sm text-muted-foreground">
+          Manage the Meta app every team uses to connect WhatsApp, Messenger and
+          Instagram.
+        </p>
+      )}
       {onboarding && !connected && (
         <MetaAppForm
           status={status}

@@ -60,7 +60,7 @@ import {
   formParameterFormat,
   storedComponents,
   templateCategoryLabel,
-  templateNameFrom,
+  isTemplateName,
   templateProblems,
   templateVariables,
   textParams,
@@ -137,6 +137,10 @@ export function WhatsAppTemplateEditorScreen({
   const accounts = useWhatsAppAccounts()
   const whatsapp = item.whatsapp
   const submitted = !!whatsapp?.metaTemplateId
+  const [templateName, setTemplateName] = React.useState(item.name)
+  const nameError = isTemplateName(templateName)
+    ? null
+    : "Use lowercase letters, numbers and underscores only (up to 512 characters)."
   const stored = React.useMemo(
     () => JSON.stringify(storedComponents(item.components)),
     [item.components]
@@ -210,7 +214,7 @@ export function WhatsAppTemplateEditorScreen({
   async function submit() {
     if (!whatsapp) return
     const found = templateProblems({
-      name: item.name,
+      name: templateName,
       language: whatsapp.language,
       category: whatsapp.category,
       parameterFormat: format,
@@ -218,8 +222,14 @@ export function WhatsAppTemplateEditorScreen({
     })
     setProblems(found)
     if (found.length) return
-    // What goes to Meta is the form on screen, so it is saved first.
-    if (await autosave.flush()) await publish(item)
+    try {
+      if (templateName !== item.name)
+        await updateWhatsAppTemplate(item.id, { name: templateName })
+      // What goes to Meta is the form on screen, so it is saved first.
+      if (await autosave.flush()) await publish(item)
+    } catch (error) {
+      toast.add({ type: "error", title: actionError(error) })
+    }
   }
 
   return (
@@ -229,8 +239,8 @@ export function WhatsAppTemplateEditorScreen({
         listHref="/templates"
         listLabel="Templates"
         name={item.name}
-        nameReadOnly={submitted}
-        onRename={(name) => commit({ name: templateNameFrom(name) })}
+        nameReadOnly
+        onRename={() => {}}
         badge={<TemplateBadge item={item} />}
       >
         <SaveIndicator save={save} />
@@ -248,10 +258,12 @@ export function WhatsAppTemplateEditorScreen({
         <Button
           size="sm"
           data-testid="editor-publish"
-          disabled={!publishLabel || readOnly}
+          disabled={
+            !publishLabel || readOnly || !!nameError || !accounts?.length
+          }
           onClick={() => void submit()}
         >
-          {publishLabel ?? "Published"}
+          {publishLabel ? "Submit for review" : "Submitted for review"}
         </Button>
       </EditorTopBar>
 
@@ -269,7 +281,7 @@ export function WhatsAppTemplateEditorScreen({
                 <AlertTitle>Meta rejected this template</AlertTitle>
                 <AlertDescription>
                   {whatsapp.rejectedReason ?? "Meta gave no reason."} Edit it
-                  and publish again to ask for another review.
+                  and submit again to ask for another review.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -300,7 +312,40 @@ export function WhatsAppTemplateEditorScreen({
             <FieldSet disabled={readOnly}>
               <FieldLegend>Settings</FieldLegend>
               <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                {accounts && accounts.length > 1 ? (
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="whatsapp-template-name">
+                    Template name
+                  </FieldLabel>
+                  <Input
+                    id="whatsapp-template-name"
+                    value={templateName}
+                    readOnly={submitted}
+                    autoFocus={
+                      !submitted &&
+                      /^untitled_template(?:_\d+)?$/.test(item.name)
+                    }
+                    onFocus={(event) => {
+                      if (/^untitled_template(?:_\d+)?$/.test(templateName))
+                        event.target.select()
+                    }}
+                    onChange={(event) => setTemplateName(event.target.value)}
+                    onBlur={() => {
+                      if (!nameError && templateName !== item.name)
+                        commit({ name: templateName })
+                    }}
+                    aria-invalid={!!nameError}
+                  />
+                  <FieldDescription>
+                    Meta requires lowercase letters, numbers and underscores,
+                    for example order_update.
+                  </FieldDescription>
+                  {nameError ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      {nameError}
+                    </p>
+                  ) : null}
+                </Field>
+                {accounts && accounts.length ? (
                   <Field className="sm:col-span-2">
                     <FieldLabel htmlFor="template-waba">
                       WhatsApp Business Account
@@ -312,12 +357,21 @@ export function WhatsAppTemplateEditorScreen({
                       value={whatsapp?.wabaId}
                       items={accounts.map((account) => ({
                         value: account.wabaId,
-                        label: account.name ?? account.wabaId,
+                        label: account.name || "Connected WhatsApp account",
                       }))}
                       onChange={(wabaId) => commit({ whatsapp: { wabaId } })}
                     />
+                    <FieldDescription>
+                      This template will be submitted to the selected WhatsApp
+                      Business Account.
+                    </FieldDescription>
                   </Field>
-                ) : null}
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Connect a WhatsApp Business Account in Channels before
+                    submitting for review.
+                  </p>
+                )}
                 <Field>
                   <FieldLabel htmlFor="template-language">Language</FieldLabel>
                   <OptionSelect

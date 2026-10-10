@@ -5,7 +5,7 @@ import {
   callOutcomeLabel,
   callRouteLabel,
 } from "@/lib/dashboard/voice-playground"
-import { agentPresenceLabel } from "@/lib/meta/softphone"
+import { agentPresenceLabel, hasAgentRoute } from "@/lib/meta/softphone"
 import {
   cursorListIsEmpty,
   cursorNext,
@@ -23,15 +23,18 @@ import {
   RelativeTime,
   EmptyState,
   MetaStrip,
+  DocsButton,
 } from "@/components/dashboard/primitives"
 import { Badge } from "@/components/ui/badge"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
+import { CALLING_DOCS_HREF } from "@/lib/docs-links"
 import { PhoneIcon } from "lucide-react"
 import { SoftphoneActions } from "./softphone-provider"
 export function CallsView() {
+  const setup = useTeamQuery(api.calling.playgroundState.setup)
   const [now, setNow] = useState(0)
   useEffect(() => {
     const tick = () => setNow(Date.now())
@@ -58,6 +61,31 @@ export function CallsView() {
       tabs={PLAYGROUND_TABS}
       actions={<SoftphoneActions />}
     >
+      {setup && !setup.configured ? (
+        <EmptyState
+          size="sm"
+          icon={PhoneIcon}
+          title="Calling is not configured"
+          description={
+            setup.routingConfigured
+              ? "Ask your instance administrator to configure the calling gateway’s trusted secure browser connection before going online. TURN is only needed when your browser’s network requires an audio relay."
+              : "Ask your instance administrator to configure the calling gateway and its credentials, then a trusted secure browser connection, before going online. TURN is only needed when your browser’s network requires an audio relay."
+          }
+        >
+          <DocsButton href={CALLING_DOCS_HREF} />
+        </EmptyState>
+      ) : setup && !hasAgentRoute(setup.numbers) ? (
+        <EmptyState
+          size="sm"
+          icon={PhoneIcon}
+          title="Set up a softphone channel"
+          description="Choose Media gateway and route calls to team agents in your WhatsApp channel’s Calling settings to use the softphone."
+        >
+          <Button nativeButton={false} render={<Link href="/channels" />}>
+            Open Channels
+          </Button>
+        </EmptyState>
+      ) : null}
       <MetaStrip
         items={[
           {

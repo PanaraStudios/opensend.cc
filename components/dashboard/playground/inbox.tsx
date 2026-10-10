@@ -31,6 +31,9 @@ import { threadHref } from "@/lib/messages/links"
 import { ConversationThread } from "../conversation/conversation-thread"
 
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
+import { useTeamQuery } from "@/components/auth/workspace"
+import { api } from "@/convex/_generated/api"
+import { inboxEmptyDescription } from "@/lib/dashboard/inbox-empty"
 import { SendMessageAction } from "../conversation/send-message-action"
 
 const STATE_ITEMS: readonly SelectOption[] = [
@@ -120,6 +123,8 @@ function ConversationList({ selected }: { selected: string | null }) {
     search: search.trim() || undefined,
   })
   const { rows, pageRows, pagination } = conversations
+  const connected = useTeamQuery(api.conversations.connectedChannels)
+  const filtered = !!search.trim() || channel !== "all" || state !== "all"
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -152,16 +157,18 @@ function ConversationList({ selected }: { selected: string | null }) {
             size="sm"
             icon={InboxIcon}
             title="No conversations"
-            description="Connect a channel to receive messages and start conversations here."
+            description={inboxEmptyDescription(!!connected?.length, filtered)}
           >
-            <Button
-              variant="outline"
-              size="sm"
-              nativeButton={false}
-              render={<Link href="/channels" />}
-            >
-              Connect a channel
-            </Button>
+            {!connected?.length && !filtered ? (
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href="/channels" />}
+              >
+                Connect a channel
+              </Button>
+            ) : null}
           </EmptyState>
         ) : (
           <ItemGroup className="gap-1">

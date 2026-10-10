@@ -113,6 +113,12 @@ export const domainTables = {
     .index("by_deleted_and_phase", ["deleted", "phase"])
     // The REST API lists newest first, like Resend.
     .index("by_organizationId_and_deleted", ["organizationId", "deleted"])
+    .index("by_organizationId_and_deleted_and_sending_and_status", [
+      "organizationId",
+      "deleted",
+      "sending",
+      "status",
+    ])
     .index("by_organizationId_and_deleted_and_name", [
       "organizationId",
       "deleted",

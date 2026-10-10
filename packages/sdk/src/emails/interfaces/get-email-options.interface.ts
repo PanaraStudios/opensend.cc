@@ -8,6 +8,7 @@ export interface GetEmailResponseSuccess {
   html: string | null;
   id: string;
   message_id: string;
+  failed?: { reason: string; provider_message?: string };
   last_event:
     | 'bounced'
     | 'canceled'

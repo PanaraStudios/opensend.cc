@@ -4,6 +4,7 @@ import { action, internalAction, env } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
 import { buildIceServers } from "../../lib/calling/turn"
+import { validAgentWssUrl } from "../../lib/calling/configuration"
 import { agentActor } from "./agentAccess"
 import {
   gateway,
@@ -44,16 +45,8 @@ export const session = action({
     }
   > => {
     await agentActor(ctx, args.organizationId)
-    const wssUrl = process.env.CALL_AGENT_WSS_URL ?? ""
-    let validWss = false
-    try {
-      const url = new URL(wssUrl)
-      validWss =
-        url.protocol === "wss:" && !url.username && !url.password && !url.hash
-    } catch {
-      /* Missing/invalid endpoint is a configuration error. */
-    }
-    if (!validWss)
+    const wssUrl = env.CALL_AGENT_WSS_URL ?? ""
+    if (!validAgentWssUrl(wssUrl))
       throw new ConvexError(
         "Set CALL_AGENT_WSS_URL to your trusted FreeSWITCH WSS endpoint"
       )

@@ -385,3 +385,27 @@ test("the reset HTTP flow keeps its generic response while withholding non-boots
     /outsider|reset-password/
   )
 })
+
+test("sign-up HTTP explains invite-only admission instead of hiding the trigger failure", async () => {
+  const f = await fixture()
+  const response = await f.t.fetch("/api/auth/sign-up/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "New user",
+      email: "new@example.test",
+      password: "safe-password123",
+    }),
+  })
+  expect(response.status).toBe(422)
+  expect(await response.json()).toMatchObject({
+    message:
+      "This instance is invite-only. Ask a team admin for an invitation.",
+  })
+  const users = await f.t.query(components.betterAuth.adapter.findMany, {
+    model: "user",
+    where: [{ field: "email", value: "new@example.test" }],
+    paginationOpts: { numItems: 10, cursor: null },
+  })
+  expect(users.page).toHaveLength(0)
+})

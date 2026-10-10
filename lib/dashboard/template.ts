@@ -100,8 +100,15 @@ export function templateAliasError(
     already this one. A published template edited since still sends the
     version before. */
 export function templatePublishLabel(
-  item: Pick<EmailTemplate, "status" | "updatedAt" | "publishedAt">
-): "Publish" | "Publish changes" | null {
+  item: Pick<EmailTemplate, "status" | "updatedAt" | "publishedAt"> & {
+    channel?: EmailTemplate["channel"]
+  }
+): "Publish" | "Publish changes" | "Submit for review" | null {
+  if (item.channel === "whatsapp")
+    return item.status === "draft" ||
+      (item.publishedAt !== null && item.updatedAt > item.publishedAt)
+      ? "Submit for review"
+      : null
   if (item.status === "draft") return "Publish"
   return item.publishedAt !== null && item.updatedAt > item.publishedAt
     ? "Publish changes"

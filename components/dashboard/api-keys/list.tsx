@@ -190,8 +190,8 @@ export function ApiKeysView() {
       <ApiKeyFormDialog
         open={adding}
         onOpenChange={setAdding}
-        title="Add API Key"
-        submitLabel="Add"
+        title="Create API key"
+        submitLabel="Create"
         onSubmit={async (values) => {
           const created = await createApiKey(values)
           setToken(created.token)

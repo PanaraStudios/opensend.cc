@@ -322,7 +322,8 @@ describe("sending", () => {
     expect(pending.status).toBe(403)
     expect(await pending.json()).toMatchObject({
       name: "validation_error",
-      message: "Domain is not ready to send",
+      message:
+        "mail.example.test is not verified for sending. Complete the DNS verification in Channels › mail.example.test.",
     })
     void other
   })
@@ -406,7 +407,8 @@ describe("sending", () => {
     await deliver(f, id)
     const failed = await email(f, id)
     expect(failed).toMatchObject({ status: "failed", attempts: 3 })
-    expect(failed.error).toMatch(/MessageRejected/)
+    expect(failed.error).toMatch(/SES rejected/)
+    expect(failed.providerError).toContain("MessageRejected: provider detail")
     expect(failed.error).not.toContain("provider detail")
     expect(sends(sent)).toHaveLength(3)
     expect(await timeline(f, id)).toEqual(["queued", "failed"])
@@ -617,7 +619,11 @@ describe("attachments, batches and templates", () => {
     const result = await response.json()
     expect(result.data).toHaveLength(2)
     expect(result.errors).toEqual([
-      { index: 1, message: "Domain is not ready to send" },
+      {
+        index: 1,
+        message:
+          "pending.example.test is not verified for sending. Complete the DNS verification in Channels › pending.example.test.",
+      },
       {
         index: 2,
         message:
@@ -1045,7 +1051,7 @@ describe("installation sender", () => {
       url: "https://opensend.test/reset?token=secret",
     })
     expect(error).toHaveBeenCalledWith(
-      "Account email not sent: Domain is not ready to send"
+      "Account email not sent: mail.example.test is not verified for sending. Complete the DNS verification in Channels › mail.example.test."
     )
     expect(JSON.stringify(error.mock.calls)).not.toContain("secret")
   })
@@ -1347,4 +1353,111 @@ test("REST list cursors visit batch emails without loss", async () => {
   expect(back.data.map((row: { id: string }) => row.id)).toEqual(
     first.data.map((row: { id: string }) => row.id)
   )
+})
+
+test("each send readiness cause gives a domain and a fix while preserving the REST error", async () => {
+  const cases = [
+    {
+      domain: { sending: false },
+      message: "Sending is turned off",
+      fix: "Enable Sending",
+    },
+    {
+      domain: { status: "pending" as const },
+      message: "not verified",
+      fix: "DNS verification",
+    },
+    {
+      domain: { tenantAssociated: false },
+      message: "setup",
+      fix: "provisioning",
+    },
+    { region: "missing", message: "region", fix: "finish region setup" },
+    {
+      region: "callback",
+      message: "Delivery updates",
+      fix: "callback connection",
+    },
+    { region: "paused", message: "paused sending", fix: "account health" },
+    { region: "sandbox", message: "sandbox mode", fix: "production access" },
+    { tenant: true, message: "paused", fix: "resume sending" },
+  ]
+  for (const cause of cases) {
+    const f = await setup()
+    await f.t.run(async (ctx) => {
+      if (cause.domain) await ctx.db.patch("domains", f.domain, cause.domain)
+      const domain = (await ctx.db.get("domains", f.domain))!
+      if (cause.tenant)
+        await ctx.db.patch("sesTenants", domain.tenantId!, {
+          sendingStatus: "DISABLED",
+        })
+      if (cause.region) {
+        const region = (await ctx.db.get("sesRegions", f.region._id))!
+        if (cause.region === "missing")
+          await ctx.db.delete("sesRegions", region._id)
+        else
+          await ctx.db.patch(
+            "sesRegions",
+            region._id,
+            cause.region === "callback"
+              ? { callbackConfirmed: false }
+              : {
+                  quota: {
+                    ...region.quota,
+                    ...(cause.region === "paused"
+                      ? { sendingEnabled: false }
+                      : { production: false }),
+                  },
+                }
+          )
+      }
+    })
+    const response = await post(f, EMAIL)
+    expect(response.status).toBe(403)
+    const body = await response.json()
+    expect(body.name).toBe("validation_error")
+    expect(body.message).toContain("mail.example.test")
+    expect(body.message).toContain(cause.message)
+    expect(body.message).toContain(cause.fix)
+  }
+})
+
+test("provider rejection is retained in the dashboard detail and REST list/detail", async () => {
+  const f = await setup()
+  ses(() => {
+    throw awsFailure("InvalidClientTokenId", 403)
+  })
+  const id = await sendOne(f)
+  await deliver(f, id)
+  const row = await email(f, id)
+  expect(row.error).toContain("AWS credentials are invalid")
+  expect(row.providerError).toBe("InvalidClientTokenId: provider detail")
+  const found = await f.owner.client.query(api.emails.get, { id })
+  expect(found?.email.providerError).toBe(row.providerError)
+  for (const path of [`/emails/${id}`, "/emails"]) {
+    const response = await request(f, path)
+    const body = await response.json()
+    const item = path === "/emails" ? body.data[0] : body
+    expect(item.failed).toEqual({
+      reason: row.error,
+      provider_message: row.providerError,
+    })
+  }
+})
+
+test("SES daily quota failures keep the quota explanation and provider detail", async () => {
+  const f = await setup()
+  ses(() => {
+    const error = awsFailure("LimitExceededException", 400)
+    error.message = "daily quota exceeded"
+    throw error
+  })
+  const id = await sendOne(f)
+  await deliver(f, id)
+  expect(await email(f, id)).toMatchObject({
+    status: "failed",
+    error:
+      "Amazon SES reached its sending limit. Wait before trying again, or ask your instance administrator to increase the sending quota.",
+    providerError: "LimitExceededException: daily quota exceeded",
+  })
 })

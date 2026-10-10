@@ -3,6 +3,9 @@ import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 import { connectWhatsApp, WABA, PHONE_ID } from "./meta-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
+import { client } from "./ses-fixtures"
+import { api } from "../../convex/_generated/api"
+import { CALLING_DOCS_HREF } from "../../lib/docs-links"
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"
 const BSUID = "US.13491208655302741918"
 export function callingTests(
@@ -14,7 +17,29 @@ export function callingTests(
       fake = process.env.OPENSEND_FAKE_GRAPH_URL!
     const accountId = await connectWhatsApp(owner, organizationId)
     const headers = await createApiKey(owner, "Calling E2E")
+    const setup = await (
+      await client(owner)
+    ).query(api.calling.playgroundState.setup, { organizationId })
+    if (!setup.configured) {
+      await owner.goto("/playground/calls")
+      await expect(
+        owner.getByText("Calling is not configured", { exact: true })
+      ).toBeVisible()
+      await expect(
+        owner.getByText(/configure the calling gateway/)
+      ).toBeVisible()
+      await expect(
+        owner.locator(`a[href="${CALLING_DOCS_HREF}"]`)
+      ).toBeVisible()
+      await expect(owner.locator('[aria-label="Softphone"]')).toHaveCount(0)
+    }
     await owner.goto(`/channels/${accountId}`)
+    await expect(
+      owner.getByText(/Configure a TURN relay for browser audio/)
+    ).toBeVisible()
+    await expect(
+      owner.getByRole("link", { name: "Calling setup docs", exact: true })
+    ).toHaveAttribute("href", CALLING_DOCS_HREF)
     await owner
       .getByRole("button", { name: "Refresh settings", exact: true })
       .click()

@@ -640,6 +640,7 @@ export function screensTourTests(state: TourState) {
       ["team", "/settings/team"],
       ["meta", "/instance/meta"],
       ["ses", "/instance/ses"],
+      ["instance", "/instance/general"],
       ["sso", "/settings/sso"],
       ["smtp", "/settings/smtp"],
       ["unsubscribe", "/settings/unsubscribe"],

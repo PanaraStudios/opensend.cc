@@ -36,6 +36,7 @@ import {
   callTimer,
   offerIsFresh,
   presenceIsCurrent,
+  hasAgentRoute,
   type SoftphonePhase,
 } from "@/lib/meta/softphone"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -115,14 +116,15 @@ export function SoftphoneActions() {
 export function SoftphoneSidebarEntry() {
   const phone = useSoftphone()
   const { setOpenMobile } = useSidebar()
+  const { callLabel, setPanelOpen } = phone
   useEffect(() => {
-    if (phone.callLabel !== "Incoming call") return
+    if (callLabel !== "Incoming call") return
     const frame = requestAnimationFrame(() => {
-      phone.setPanelOpen(false)
+      setPanelOpen(false)
       setOpenMobile(false)
     })
     return () => cancelAnimationFrame(frame)
-  }, [phone.callLabel, phone.setPanelOpen, setOpenMobile])
+  }, [callLabel, setPanelOpen, setOpenMobile])
   if (!phone.available) return null
   return (
     <SidebarMenuItem>
@@ -751,11 +753,7 @@ function TeamSoftphone({
         ),
         online,
         busy: !!currentId || working || phase === "connecting",
-        available:
-          !!organizationId &&
-          !!setup?.numbers.some(
-            (n) => n.mode === "gateway" && n.routing === "agents"
-          ),
+        available: !!organizationId && hasAgentRoute(setup?.numbers),
         connecting: phase === "connecting",
         working,
         callLabel: incoming

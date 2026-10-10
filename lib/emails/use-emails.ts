@@ -28,7 +28,9 @@ export function asEmail(
     to: row.to.join(", "),
     subject: row.subject,
     status: row.status,
-    createdAt: row._creationTime,
+    error: row.error,
+    providerError: row.providerError,
+    createdAt: Math.round(row._creationTime),
     scheduledAt: row.scheduledAt ?? null,
     html: detail?.html ?? "",
     text: detail?.text ?? "",
@@ -46,7 +48,7 @@ export function asSuppression(row: Doc<"suppressions">): Suppression {
     id: row._id,
     email: row.email,
     reason: row.reason,
-    createdAt: row._creationTime,
+    createdAt: Math.round(row._creationTime),
   }
 }
 

@@ -393,3 +393,27 @@ test("OAuth offline access alone grants no resource access", async () => {
   expect((await call(f, token, "/emails", "POST", email)).status).toBe(403)
   expect((await call(f, token, "/contacts")).status).toBe(403)
 })
+
+test("Custom keys need a scope on create and update, including REST writes", async () => {
+  const f = await fixture()
+  await expect(key(f, "custom", [])).rejects.toThrow(
+    "Choose at least one resource scope"
+  )
+  const full = await key(f, "full_access")
+  const response = await call(f, full.token, "/api-keys", "POST", {
+    name: "Empty",
+    permission: "custom",
+    scopes: [],
+  })
+  expect(response.status).toBe(422)
+  expect((await response.json()).message).toContain(
+    "Choose at least one resource scope"
+  )
+  const custom = await key(f, "custom", ["contacts:read"])
+  await expect(
+    f.owner.client.mutation(api.apiKeys.update, {
+      id: custom.id,
+      patch: { scopes: [] },
+    })
+  ).rejects.toThrow("Choose at least one resource scope")
+})

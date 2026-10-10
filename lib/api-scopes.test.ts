@@ -15,7 +15,7 @@ describe("API scopes", () => {
     assert.equal(new Set(API_SCOPES).size, 42)
     assert.deepEqual(
       [...new Set(API_RESOURCES.map((r) => r.group))],
-      ["Calling", "Messaging", "Audience", "Content", "Setup"]
+      ["Messaging", "Audience", "Content & campaigns", "Setup", "Calling"]
     )
     assert.ok(API_RESOURCES.some((resource) => resource.id === "ivrs"))
     assert.ok(API_RESOURCES.some((resource) => resource.id === "voice_bots"))

@@ -1018,7 +1018,18 @@ for (const channel of ["messenger", "instagram"] as const) {
     expect(
       log.page.map((row) => row.kind === "channel" && row.message._id)
     ).toEqual([sent])
-    expect(log.page[0]).toMatchObject({ partyLabel: "Contact" })
+    expect(log.page[0]).toMatchObject({
+      partyLabel: channel === "instagram" ? "Instagram user" : "Messenger user",
+    })
+    const incoming = await f.member.client.query(api.messages.receiving, {
+      organizationId: f.owner.team,
+      channel,
+      paginationOpts: page,
+    })
+    expect(incoming.page[0]).toMatchObject({
+      partyLabel: channel === "instagram" ? "Instagram user" : "Messenger user",
+      ...(channel === "instagram" ? { account: "@acme" } : {}),
+    })
     await f.t.run((ctx) =>
       ctx.db.patch("channelContacts", message!.channelContactId, {
         profileName: "Ada",
@@ -1267,4 +1278,25 @@ test("starting a conversation is idempotent, team scoped, and never opens a What
     (await f.member.client.query(api.conversations.get, { id: existing }))!
       .conversation
   ).toEqual(old)
+})
+
+test("connected channel defaults include only this team’s connected senders", async () => {
+  const f = await setup()
+  const args = { organizationId: f.owner.team, sending: true }
+  expect(
+    await f.member.client.query(api.conversations.connectedChannels, args)
+  ).toEqual(["email", "whatsapp"])
+  await f.t.run((ctx) =>
+    ctx.db.patch("channelAccounts", f.account, { registeredAt: undefined })
+  )
+  expect(
+    await f.member.client.query(api.conversations.connectedChannels, args)
+  ).toEqual(["email"])
+  await f.t.run((ctx) => ctx.db.patch("domains", f.domain, { deleted: true }))
+  expect(
+    await f.member.client.query(api.conversations.connectedChannels, args)
+  ).toEqual([])
+  await expect(
+    f.outsider.client.query(api.conversations.connectedChannels, args)
+  ).rejects.toThrow()
 })

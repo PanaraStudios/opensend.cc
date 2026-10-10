@@ -754,3 +754,125 @@ test("native and searchable option triggers keep readable empty-state text", asy
     )
   }
 })
+
+test("shared settings and layout frames render one card surface", async () => {
+  const { SettingsCard, Surface } =
+    await import("../../components/dashboard/primitives")
+  await render(
+    h(SettingsCard, { title: "AWS connection" }, "Content"),
+    (container) => {
+      const frame = container.querySelector('[data-slot="card-frame"]')!
+      assert.ok(frame)
+      assert.equal(frame.querySelectorAll('[data-slot="card"]').length, 1)
+      assert.doesNotMatch(frame.className, /(?:border|shadow|p-2)/)
+    }
+  )
+  await render(h(Surface, null, "Content"), (container) => {
+    assert.equal(container.querySelectorAll(".panel").length, 1)
+  })
+})
+
+test("option selects resolve loaded channel defaults and preserve a manual choice on reload", async () => {
+  const { useState } = await import("react")
+  const { defaultSendChannel } = await import("./send-channels")
+  const { CHANNELS, CHANNEL_IDS } = await import("../channels")
+  type Channel = (typeof CHANNEL_IDS)[number]
+  for (const search of [undefined, { onChange: () => {} }]) {
+    let loadSenders!: (channels: readonly Channel[] | undefined) => void
+    function ChannelField() {
+      const [connected, setConnected] = useState<readonly Channel[]>()
+      const [manual, setManual] = useState<Channel>()
+      loadSenders = setConnected
+      const channel = defaultSendChannel(connected, undefined, manual)
+      return field(
+        "Channel",
+        h(OptionSelect, {
+          value: channel,
+          selectedItem: channel
+            ? { value: channel, label: CHANNELS[channel].label }
+            : undefined,
+          items: CHANNEL_IDS.filter((value) => connected?.includes(value)).map(
+            (value) => ({ value, label: CHANNELS[value].label })
+          ),
+          onChange: (value) => setManual(value as Channel),
+          placeholder: "Choose a channel",
+          search,
+        })
+      )
+    }
+    await render(h(ChannelField), async (container) => {
+      const value = () =>
+        container.querySelector('[data-slot="select-value"]')!.textContent
+      assert.equal(value(), "Choose a channel")
+      await act(async () => loadSenders(["whatsapp", "email"]))
+      assert.equal(value(), "Email")
+      await act(async () =>
+        container
+          .querySelector<HTMLElement>('[data-slot="select-trigger"]')!
+          .click()
+      )
+      const whatsapp = [
+        ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+      ].find((option) => option.textContent === "WhatsApp")!
+      assert.ok(whatsapp)
+      await act(async () => whatsapp.click())
+      assert.equal(value(), "WhatsApp")
+      await act(async () => loadSenders(undefined))
+      assert.equal(value(), "WhatsApp")
+      await act(async () => loadSenders(["email", "whatsapp", "instagram"]))
+      assert.equal(value(), "WhatsApp")
+      await act(async () => loadSenders([]))
+      assert.equal(value(), "Choose a channel")
+    })
+  }
+})
+
+test("option selects preserve uncontrolled defaults and user choices", async () => {
+  for (const search of [undefined, { onChange: () => {} }]) {
+    await render(
+      field(
+        "Channel",
+        h(OptionSelect, {
+          defaultValue: "email",
+          items: [
+            { value: "email", label: "Email" },
+            { value: "whatsapp", label: "WhatsApp" },
+          ],
+          onChange: () => {},
+          search,
+        })
+      ),
+      async (container) => {
+        const value = () =>
+          container.querySelector('[data-slot="select-value"]')!.textContent
+        assert.equal(value(), "Email")
+        await act(async () =>
+          container
+            .querySelector<HTMLElement>('[data-slot="select-trigger"]')!
+            .click()
+        )
+        const whatsapp = [
+          ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+        ].find((option) => option.textContent === "WhatsApp")!
+        assert.ok(whatsapp)
+        await act(async () => whatsapp.click())
+        assert.equal(value(), "WhatsApp")
+      }
+    )
+  }
+})
+
+test("recipient outcomes retain email suppression and cancellation instead of showing Sending", async () => {
+  const { RecipientOutcomeBadge } =
+    await import("../../components/dashboard/primitives")
+  for (const [emailStatus, label] of [
+    ["suppressed", "Suppressed"],
+    ["canceled", "Canceled"],
+    ["failed", "Failed"],
+    ["delivered", "Delivered"],
+  ] as const) {
+    await render(h(RecipientOutcomeBadge, { emailStatus }), (container) => {
+      assert.equal(container.textContent, label)
+    })
+  }
+})

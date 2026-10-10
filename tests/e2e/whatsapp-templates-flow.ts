@@ -89,8 +89,18 @@ export function whatsappTemplatesTests(
     await expect(owner.getByTestId("editor-name")).toHaveValue(
       /^untitled_template/
     )
-    await owner.getByTestId("editor-name").fill(NAME)
-    await owner.getByTestId("editor-name").press("Tab")
+    await expect(
+      owner.getByLabel("Template name", { exact: true })
+    ).toBeFocused()
+    await owner
+      .getByLabel("Template name", { exact: true })
+      .fill("Invalid Name!")
+    await expect(owner.getByTestId("editor-publish")).toBeDisabled()
+    await expect(
+      owner.getByText(/Use lowercase letters, numbers and underscores only/)
+    ).toBeVisible()
+    await owner.getByLabel("Template name", { exact: true }).fill(NAME)
+    await owner.getByLabel("Template name", { exact: true }).press("Tab")
     await expect(owner.getByTestId("editor-name")).toHaveValue(NAME)
     await choose(owner, "Category", "Utility")
     await expect(
@@ -115,6 +125,9 @@ export function whatsappTemplatesTests(
     })
 
     // Publishing submits it to Meta; it waits for review.
+    await expect(owner.getByTestId("editor-publish")).toHaveText(
+      "Submit for review"
+    )
     await owner.getByTestId("editor-publish").click()
     await expect(toast(owner)).toContainText("Template submitted to Meta")
     await expect(owner.getByTestId("editor-topbar")).toContainText("Pending")

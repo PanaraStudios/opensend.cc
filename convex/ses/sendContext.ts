@@ -40,40 +40,58 @@ export async function sendContext(
     ? await ctx.db.get("sesTenants", domain.tenantId)
     : null
   if (!tenant || !tenantProvisioned(tenant) || !tenantMatches(tenant, domain))
-    throw new ConvexError("Team SES tenant is not ready to send")
+    throw new ConvexError(
+      `The team sending setup for ${domain.name} is incomplete. Ask your instance administrator to finish SES tenant setup in Amazon SES settings.`
+    )
   if (
     tenant.statusOperation ||
     !["ENABLED", "REINSTATED"].includes(tenant.sendingStatus ?? "")
   )
     throw new ConvexError(
-      "Sending is paused for this team. Ask your installation administrator to resume sending."
+      `Sending is paused for the team that owns ${domain.name}. Ask your instance administrator to resume sending in Amazon SES settings.`
+    )
+  if (!domain.sending)
+    throw new ConvexError(
+      `Sending is turned off for ${domain.name}. Turn on Enable Sending in Channels › ${domain.name}.`
+    )
+  if (
+    domain.status !== "verified" &&
+    !(
+      domain.status === "partially_verified" &&
+      domain.sesVerified &&
+      domain.dkimVerified &&
+      domain.mailFromVerified &&
+      domain.records.every((r) => !verifiesDomain(r) || r.status !== "pending")
+    )
+  )
+    throw new ConvexError(
+      `${domain.name} is not verified for sending. Complete the DNS verification in Channels › ${domain.name}.`
     )
   if (
     !domain.tenantAssociated ||
     !domain.configurationSet ||
-    !domain.sending ||
-    !provisioned(domain) ||
-    (domain.status !== "verified" &&
-      !(
-        domain.status === "partially_verified" &&
-        domain.sesVerified &&
-        domain.dkimVerified &&
-        domain.mailFromVerified &&
-        domain.records.every(
-          (r) => !verifiesDomain(r) || r.status !== "pending"
-        )
-      ))
+    !provisioned(domain)
   )
-    throw new ConvexError("Domain is not ready to send")
+    throw new ConvexError(
+      `The sending setup for ${domain.name} is incomplete. Ask your instance administrator to finish domain provisioning in Channels › ${domain.name}.`
+    )
   const region = await findRegion(ctx, domain.region)
-  if (
-    !region ||
-    region.phase !== "ready" ||
-    !region.callbackConfirmed ||
-    !region.quota.sendingEnabled ||
-    !region.quota.production
-  )
-    throw new ConvexError("AWS region is not ready for production sending")
+  if (!region || region.phase !== "ready")
+    throw new ConvexError(
+      `The AWS region for ${domain.name} is not ready for sending. Ask your instance administrator to finish region setup in Amazon SES settings.`
+    )
+  if (!region.callbackConfirmed)
+    throw new ConvexError(
+      `Delivery updates are not connected in the AWS region for ${domain.name}. Ask your instance administrator to confirm the callback connection in Amazon SES settings.`
+    )
+  if (!region.quota.sendingEnabled)
+    throw new ConvexError(
+      `Amazon SES has paused sending in the AWS region for ${domain.name}. Ask your instance administrator to review SES account health and enable regional sending in Amazon SES settings.`
+    )
+  if (!region.quota.production)
+    throw new ConvexError(
+      `Amazon SES is in sandbox mode in the AWS region for ${domain.name}. Ask your instance administrator to request production access in Amazon SES settings.`
+    )
   return {
     TenantName: tenant.name,
     ConfigurationSetName: domain.configurationSet,

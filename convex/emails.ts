@@ -494,8 +494,13 @@ async function settle(
   if (email.organizationId === SYSTEM_SCOPE)
     await deleteEmailContent(ctx, email._id)
 }
-async function fail(ctx: MutationCtx, email: Doc<"emails">, reason: string) {
-  await settle(ctx, email, "failed", { error: reason })
+async function fail(
+  ctx: MutationCtx,
+  email: Doc<"emails">,
+  reason: string,
+  providerError?: string
+) {
+  await settle(ctx, email, "failed", { error: reason, providerError })
   await emitEmail(ctx, email._id, "email.failed", { failed: { reason } })
 }
 
@@ -729,6 +734,7 @@ const outcomeValue = v.union(
     kind: v.literal("failed"),
     error: v.string(),
     retryable: v.boolean(),
+    providerError: v.optional(v.string()),
   })
 )
 /** SNS can arrive before the SendEmail response. Acceptance is recorded once,
@@ -784,7 +790,7 @@ async function recordOutcome(
     const next = args.generation + 1
     await patchEmail(ctx, email._id, { generation: next, claimed: false })
     await enqueue(ctx, email._id, next, RETRY_DELAYS[email.attempts - 1] ?? 0)
-  } else await fail(ctx, email, outcome.error)
+  } else await fail(ctx, email, outcome.error, outcome.providerError)
 }
 
 export const record = internalMutation({

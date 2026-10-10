@@ -1,3 +1,12 @@
+/** Away controls follow saved team routing; transport readiness gates going online. */
+export function hasAgentRoute(
+  numbers: readonly { mode: string; routing: string | null }[] | undefined
+) {
+  return !!numbers?.some(
+    (number) => number.mode === "gateway" && number.routing === "agents"
+  )
+}
+
 export type SoftphonePhase =
   | "away"
   | "registering"

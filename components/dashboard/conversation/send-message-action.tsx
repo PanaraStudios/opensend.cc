@@ -23,22 +23,22 @@ import {
   ListPagination,
   useTeamList,
 } from "@/components/dashboard/primitives"
-import { useTeamRole, useWorkspace } from "@/components/auth/workspace"
+import {
+  useTeamRole,
+  useWorkspace,
+  useTeamQuery,
+} from "@/components/auth/workspace"
 import { useContactSearch } from "@/lib/audience/use-audience"
 import { contactIdentity } from "@/lib/dashboard/contacts"
 import { actionError } from "@/lib/action-error"
 import { threadHref } from "@/lib/messages/links"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
-import { CHANNELS } from "@/lib/channels"
+import { defaultSendChannel } from "@/lib/dashboard/send-channels"
+import { CHANNELS, CHANNEL_IDS } from "@/lib/channels"
 import type { Contact, Channel } from "@/lib/dashboard/types"
 
-const SEND_CHANNELS = [
-  "whatsapp",
-  "messenger",
-  "instagram",
-  "email",
-] as const satisfies readonly Channel[]
+const SEND_CHANNELS = CHANNEL_IDS
 const CHANNEL_ITEMS = SEND_CHANNELS.map((value) => ({
   value,
   label: CHANNELS[value].label,
@@ -87,12 +87,14 @@ function StartConversationForm({
   const [search, setSearch] = React.useState("")
   const contacts = useContactSearch(search, !contact)
   const [contactId, setContactId] = React.useState(contact?.id)
-  const [channel, setChannel] = React.useState<Channel>(
-    contact?.phone
-      ? "whatsapp"
-      : (contact?.channelIdentity?.channel ??
-          (contact?.email ? "email" : "whatsapp"))
-  )
+  const connected = useTeamQuery(api.conversations.connectedChannels, {
+    sending: true,
+  })
+  const [chosenChannel, setChannel] = React.useState<Channel>()
+  const [pickedContact, setPickedContact] =
+    React.useState<(typeof contacts)[number]>()
+  const selectedContact = contact ?? pickedContact
+  const channel = defaultSendChannel(connected, selectedContact, chosenChannel)
   const [accountId, setAccountId] = React.useState<string>()
   const [pending, setPending] = React.useState(false)
   const start = useMutation(api.conversations.start)
@@ -115,15 +117,25 @@ function StartConversationForm({
     value: row.id,
     label: contactIdentity(row).label,
   }))
-  const selected = contact
-    ? { value: contact.id, label: contactIdentity(contact).label }
+  const selected = selectedContact
+    ? {
+        value: selectedContact.id,
+        label: contactIdentity(selectedContact).label,
+      }
     : contactItems.find((item) => item.value === contactId)
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={async (event) => {
         event.preventDefault()
-        if (!activeTeamId || !contactId || pending) return
+        if (
+          !activeTeamId ||
+          connected === undefined ||
+          !channel ||
+          !contactId ||
+          pending
+        )
+          return
         setPending(true)
         try {
           const id = await start({
@@ -151,7 +163,12 @@ function StartConversationForm({
             value={contactId}
             selectedItem={selected}
             items={contact ? [selected!] : contactItems}
-            onChange={setContactId}
+            onChange={(id) => {
+              setContactId(id)
+              setPickedContact(contacts.find((contact) => contact.id === id))
+              setChannel(undefined)
+              setAccountId(undefined)
+            }}
             disabled={!!contact}
             search={
               contact
@@ -166,14 +183,26 @@ function StartConversationForm({
           <OptionSelect
             id="send-channel"
             value={channel}
-            items={CHANNEL_ITEMS}
+            items={CHANNEL_ITEMS.filter((item) =>
+              connected?.includes(item.value)
+            )}
+            selectedItem={CHANNEL_ITEMS.find((item) => item.value === channel)}
+            disabled={connected === undefined || !connected.length}
+            placeholder={
+              connected === undefined ? "Loading channels…" : "Choose a channel"
+            }
             onChange={(value) => {
               setChannel(value as Channel)
               setAccountId(undefined)
             }}
           />
         </Field>
-        {channel !== "email" ? (
+        {connected !== undefined && !connected.length ? (
+          <FieldDescription>
+            Connect a sending channel in Channels to send a message.
+          </FieldDescription>
+        ) : null}
+        {channel && channel !== "email" ? (
           <Field>
             <FieldLabel htmlFor="send-account">Sender</FieldLabel>
             <OptionSelect
@@ -194,7 +223,13 @@ function StartConversationForm({
       </FieldGroup>
       <Button
         type="submit"
-        disabled={!contactId || (channel !== "email" && !accountId) || pending}
+        disabled={
+          connected === undefined ||
+          !channel ||
+          !contactId ||
+          (channel !== "email" && !accountId) ||
+          pending
+        }
       >
         Continue to conversation
       </Button>
