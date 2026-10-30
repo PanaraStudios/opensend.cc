@@ -10,6 +10,7 @@ import {
   numericId,
   manualToken,
   exchangeCode,
+  longLivedUserToken,
   unsubscribeAsset,
   markTokenInvalid,
   type App,
@@ -22,6 +23,7 @@ import {
   readPage,
   readPages,
   pageTokenProblem,
+  INSTAGRAM_SCOPES,
   type Page,
 } from "../../lib/meta/page-account"
 import type { Id } from "../_generated/dataModel"
@@ -64,8 +66,13 @@ async function attach(
       "Meta returned no Facebook Pages with messaging access"
     )
   const accounts: (typeof pageAccountValue.type)[] = []
+  // A linked Instagram account joins only when the login allowed it; the
+  // Page itself does not need it.
+  const instagram = INSTAGRAM_SCOPES.every((scope) =>
+    info.scopes.includes(scope)
+  )
   for (const page of pages) {
-    const problem = pageTokenProblem(info, app.appId, page.id, !!page.instagram)
+    const problem = pageTokenProblem(info, app.appId, page.id)
     if (problem) throw new ConvexError(problem)
     // Prefer the Page access token; a pasted Page token may already be it.
     const pageToken = page.token ?? token
@@ -79,7 +86,7 @@ async function attach(
       encryptedToken,
       tokenLast4: pageToken.slice(-4),
     })
-    if (page.instagram)
+    if (page.instagram && instagram)
       accounts.push({
         channel: "instagram",
         externalId: page.instagram.id,
@@ -116,26 +123,46 @@ async function attach(
   })
 }
 
-/** Facebook Login for Business uses the same installation app as WhatsApp. */
+/** Facebook Login for Business uses the same installation app as WhatsApp.
+    The login configuration decides what the browser gets: a "User access
+    token" configuration returns a user token (its codes are bound to the
+    SDK's hidden redirect URI and cannot be exchanged here), a "System-user
+    access token" one a code. */
 export const connectFacebookLogin = action({
-  args: { organizationId: v.string(), code: v.string() },
+  args: {
+    organizationId: v.string(),
+    code: v.optional(v.string()),
+    accessToken: v.optional(v.string()),
+  },
   returns: connectedPagesValue,
-  handler: async (ctx, { organizationId, code }): Promise<Connected> => {
+  handler: async (
+    ctx,
+    { organizationId, code, accessToken }
+  ): Promise<Connected> => {
     const app = await ctx.runQuery(internal.meta.connect.teamApp, {
       organizationId,
     })
-    if (!code.trim() || code.length > 2048)
+    const login = (accessToken ?? code)?.trim()
+    if (!login || login.length > 2048)
       throw new ConvexError("Meta returned no login code. Try again.")
     return friendly(ctx, async () => {
-      const token = await exchangeCode(
-        app,
-        code,
-        "Meta returned no login code. Try again.",
-        "Meta returned no access token"
-      )
-      const info = await debugToken(app, token)
+      const received = accessToken
+        ? login
+        : await exchangeCode(
+            app,
+            login,
+            "Meta returned no login code. Try again.",
+            "Meta returned no access token"
+          )
+      // Checked before anything else: a token from another app is refused.
+      const info = await debugToken(app, received)
       const problem = pageTokenProblem(info, app.appId)
       if (problem) throw new ConvexError(problem)
+      // A browser user token lasts hours; Page tokens read with a
+      // long-lived one do not expire.
+      const token = accessToken
+        ? await longLivedUserToken(app, received)
+        : received
       const pages: Page[] = []
       let after: string | undefined
       // Follow Graph cursors without fetching its untrusted paging.next URL.
@@ -164,13 +191,16 @@ export const connectFacebookLogin = action({
         if (i === 9)
           throw new ConvexError("Connect at most 100 Facebook Pages at a time")
       }
-      if (pages.some((page) => !page.token))
+      // A Page Meta returns without a token (the person cannot message for
+      // it) is skipped rather than failing the others.
+      const usable = pages.filter((page) => page.token)
+      if (pages.length && !usable.length)
         throw new ConvexError("Meta returned no Page access token")
       return attach(
         ctx,
         app,
         organizationId,
-        pages,
+        usable,
         token,
         "facebook_login",
         info

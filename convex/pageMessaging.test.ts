@@ -6,6 +6,7 @@ import {
   graphError,
   signedWebhook,
   APP_SECRET,
+  META_APP,
   metaFixture,
 } from "./testHelpers/meta.fixture"
 import {
@@ -17,6 +18,7 @@ import {
   IG_ID,
   PSID,
   IGSID,
+  PAGE_SCOPES,
   PAGE_TOKEN,
   USER_TOKEN,
 } from "./testHelpers/pages.fixture"
@@ -178,6 +180,85 @@ test("Facebook Login exchanges, debugs, lists Pages, subscribes with the Page to
       tokenLast4: PAGE_TOKEN.slice(-4),
     })
   }
+})
+test("a user-token Facebook Login is checked against the app, then made long-lived before listing Pages", async () => {
+  const f = await metaFixture()
+  const result = await f.owner.client.action(
+    api.meta.pageConnectActions.connectFacebookLogin,
+    { organizationId: f.owner.team, accessToken: "short-user-token" }
+  )
+  expect(result.accounts.map((a) => a.channel)).toEqual([
+    "messenger",
+    "instagram",
+  ])
+  expect(graph.calls.map((c) => c.path)).toEqual([
+    "/debug_token",
+    "/oauth/access_token",
+    "/me/accounts",
+    `/${PAGE_ID}/subscribed_apps`,
+  ])
+  expect(graph.to("/debug_token")[0].query).toMatchObject({
+    input_token: "short-user-token",
+  })
+  expect(graph.to("/oauth/access_token")[0].query).toMatchObject({
+    grant_type: "fb_exchange_token",
+    client_id: META_APP.appId,
+    fb_exchange_token: "short-user-token",
+  })
+  expect(graph.to("/me/accounts")[0]).toMatchObject({
+    authorization: `Bearer ${USER_TOKEN}`,
+  })
+
+  // A token issued to another app is refused before it is used.
+  graph.use({
+    path: "/debug_token",
+    respond: () => ({
+      data: { app_id: "999", is_valid: true, scopes: PAGE_SCOPES },
+    }),
+  })
+  graph.calls.length = 0
+  await expect(
+    f.owner.client.action(api.meta.pageConnectActions.connectFacebookLogin, {
+      organizationId: f.owner.team,
+      accessToken: "foreign-token",
+    })
+  ).rejects.toThrow("different Meta app")
+  expect(graph.calls.map((c) => c.path)).toEqual(["/debug_token"])
+})
+test("a Facebook Login without Instagram permissions connects the Page alone", async () => {
+  graph.use({
+    path: "/debug_token",
+    respond: () => ({
+      data: {
+        app_id: META_APP.appId,
+        is_valid: true,
+        scopes: ["pages_messaging", "pages_manage_metadata", "pages_show_list"],
+      },
+    }),
+  })
+  const f = await metaFixture()
+  const result = await f.owner.client.action(
+    api.meta.pageConnectActions.connectFacebookLogin,
+    { organizationId: f.owner.team, code: "login-code" }
+  )
+  expect(result.accounts.map((a) => a.channel)).toEqual(["messenger"])
+})
+test("a Page Meta lists without a token is skipped instead of failing the login", async () => {
+  graph.use({
+    path: "/me/accounts",
+    respond: () => ({
+      data: [{ id: "555000200", name: "No access" }, PAGE],
+    }),
+  })
+  const f = await metaFixture()
+  const result = await f.owner.client.action(
+    api.meta.pageConnectActions.connectFacebookLogin,
+    { organizationId: f.owner.team, code: "login-code" }
+  )
+  expect(result.accounts.map((a) => a.handle)).toEqual(["Acme Page", "acme"])
+  expect(graph.to(/subscribed_apps$/).map((c) => c.path)).toEqual([
+    `/${PAGE_ID}/subscribed_apps`,
+  ])
 })
 test("manual connect reuses rows; another team is refused before subscribing, and unauthorized callers cannot connect", async () => {
   const f = await pagesFixture()
