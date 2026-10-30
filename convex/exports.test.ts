@@ -493,6 +493,33 @@ test("domain exports honor the visible filters and map DNS fields", async () => 
   expect(parseCsv(await csv(f, excluded)).rows).toEqual([])
 })
 
+test("contact CSV lists at most 20 channel identities per contact", async () => {
+  const f = await setup()
+  const { createdIds } = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.owner.team,
+    segmentIds: [],
+    contacts: [{ email: "many@example.test" }],
+  })
+  await f.t.run(async (ctx) => {
+    for (let i = 0; i < 25; i++)
+      await ctx.db.insert("channelContacts", {
+        organizationId: f.owner.team,
+        contactId: createdIds[0],
+        channel: "whatsapp",
+        scopeId: "whatsapp-sender",
+        externalId: `recipient-${i}`,
+        marketingOptOut: false,
+      })
+  })
+  const exportId = await start(f, "contacts")
+  await drain(f)
+  const table = parseCsv(await csv(f, exportId))
+  const row = table.rows.find((row) => row[0] === createdIds[0])!
+  expect(
+    JSON.parse(row[table.headers.indexOf("channel_identities")])
+  ).toHaveLength(20)
+})
+
 test("contact CSV retains phone and all scoped channel identities, excluding other teams and merged identities", async () => {
   const f = await setup()
   const { createdIds } = await f.owner.client.mutation(api.contacts.upsert, {
