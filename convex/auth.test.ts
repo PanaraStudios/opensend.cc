@@ -489,6 +489,7 @@ test("a team IdP cannot take over an existing account by claiming its email", as
     revision: "one",
     accountId: "one:claimed-subject",
     email: "victim@example.test",
+    approvedDomains: [],
   }
   await expect(t.query(api.sso.authorizeIdentity, identity)).rejects.toThrow(
     "existing account"
@@ -528,4 +529,74 @@ test("a team IdP cannot take over an existing account by claiming its email", as
       accountId: "two:claimed-subject",
     })
   ).rejects.toThrow("existing account")
+})
+
+test("a team IdP creates new accounts only on installation-approved domains", async () => {
+  const t = setup()
+  const owner = await user(t, "owner@example.test")
+  const organizationId = await t.mutation(api.teams.create, {
+    sessionId: owner.sessionId,
+    name: "IdP",
+  })
+  for (const email of ["new@example.test", "new@corp.test"])
+    await t.mutation(api.teams.invite, {
+      sessionId: owner.sessionId,
+      organizationId,
+      email,
+      role: "member",
+    })
+  await t.mutation(api.sso.save, {
+    sessionId: owner.sessionId,
+    organizationId,
+    issuer: "https://idp.example.test",
+    clientId: "id",
+    encryptedSecret: "ciphertext",
+    revision: "one",
+  })
+  const identity = {
+    organizationId,
+    revision: "one",
+    accountId: "one:new",
+    email: "new@example.test",
+  }
+  // Invited, but no installation approval: sign up with a password first.
+  await expect(
+    t.query(api.sso.authorizeIdentity, { ...identity, approvedDomains: [] })
+  ).rejects.toThrow("email and password first")
+  await expect(
+    t.query(api.sso.authorizeIdentity, {
+      ...identity,
+      approvedDomains: ["corp.test"],
+    })
+  ).rejects.toThrow("email and password first")
+  await t.query(api.sso.authorizeIdentity, {
+    ...identity,
+    email: "new@corp.test",
+    approvedDomains: ["corp.test"],
+  })
+})
+
+test("unlinkProviders drops SSO links and keeps the password", async () => {
+  const t = setup()
+  const victim = await user(t, "victim@example.test")
+  await t.run(async (ctx) => {
+    for (const providerId of ["credential", "team-idp"])
+      await ctx.db.insert("account", {
+        accountId: `${providerId}:victim`,
+        providerId,
+        userId: victim.id,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+  })
+  expect(await t.mutation(api.sso.unlinkProviders, { userId: victim.id })).toBe(
+    1
+  )
+  const left = await t.run((ctx) =>
+    ctx.db
+      .query("account")
+      .withIndex("userId", (q) => q.eq("userId", victim.id))
+      .collect()
+  )
+  expect(left.map((a) => a.providerId)).toEqual(["credential"])
 })

@@ -6,6 +6,7 @@ import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth"
 import type { ActionCtx } from "./_generated/server"
 import { components, internal } from "./_generated/api"
 import { localHttpOrigin } from "../lib/net/public-host"
+import { parseDomains } from "./betterAuth/ssoPolicy"
 
 export async function loadProvider(ctx: ActionCtx, organizationId: string) {
   const connection = await ctx.runQuery(components.betterAuth.sso.connection, {
@@ -144,6 +145,7 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
           typeof state.opensendInitiatorSessionId === "string"
             ? state.opensendInitiatorSessionId
             : undefined,
+        approvedDomains: parseDomains(env.SSO_APPROVED_DOMAINS),
       })
       return {
         id: accountId,

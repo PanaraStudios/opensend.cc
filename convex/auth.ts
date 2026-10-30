@@ -52,6 +52,11 @@ export function createAuth(
         await ctx.runMutation(components.betterAuth.oauth.invalidateUser, {
           userId: user.id,
         })
+        // Whoever proves the mailbox owns the account: drop SSO links that may
+        // have been made before (e.g. a team IdP that pre-created the user).
+        await ctx.runMutation(components.betterAuth.sso.unlinkProviders, {
+          userId: user.id,
+        })
       },
     },
     baseURL: env.SITE_URL,
@@ -91,6 +96,26 @@ export function createAuth(
             message: "Use Opensend team and account settings",
           })
         }
+      }),
+      after: createAuthMiddleware(async (context) => {
+        // A successful password change also drops SSO links (see reset above).
+        if (context.path !== "/change-password") return
+        const returned: unknown = context.context.returned
+        if (
+          !returned ||
+          typeof returned !== "object" ||
+          !("user" in returned) ||
+          !returned.user ||
+          typeof returned.user !== "object" ||
+          !("id" in returned.user) ||
+          typeof returned.user.id !== "string"
+        )
+          return
+        if (!("runMutation" in ctx))
+          throw new Error("Password change requires a writable context")
+        await ctx.runMutation(components.betterAuth.sso.unlinkProviders, {
+          userId: returned.user.id,
+        })
       }),
     },
   })

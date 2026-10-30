@@ -2,6 +2,7 @@ import { v, ConvexError } from "convex/values"
 import { query, mutation } from "./_generated/server"
 import { requireMember, sessionUser } from "./policy"
 import { invalidate } from "./oauth"
+import { mayProvision } from "./ssoPolicy"
 const configValue = v.object({
   organizationId: v.string(),
   issuer: v.string(),
@@ -172,6 +173,9 @@ export const authorizeIdentity = query({
     accountId: v.string(),
     email: v.string(),
     initiatorSessionId: v.optional(v.string()),
+    // Installation-approved domains (SSO_APPROVED_DOMAINS); the component
+    // cannot read deployment env, so the app passes them in.
+    approvedDomains: v.array(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -207,6 +211,12 @@ export const authorizeIdentity = query({
       : null
     if (!member && !invited)
       throw new ConvexError("A team membership or invitation is required")
+    // Pre-hijack guard: a team admin's IdP can assert any verified email, so
+    // it may create a new account only on an installation-approved domain.
+    if (!user && !mayProvision(args.email, args.approvedDomains))
+      throw new ConvexError(
+        "Create your account with email and password first, then connect SSO"
+      )
     const linked = await ctx.db
       .query("account")
       .withIndex("accountId_providerId", (q) =>
@@ -232,5 +242,27 @@ export const authorizeIdentity = query({
         )
     }
     return null
+  },
+})
+
+/** Password reset/change: drop SSO links so a previously linked (possibly
+    attacker-controlled) IdP identity cannot keep signing in as this user.
+    The credential account is kept (break-glass email + password). */
+export const unlinkProviders = mutation({
+  args: { userId: v.string() },
+  returns: v.number(),
+  handler: async (ctx, { userId }) => {
+    const accounts = await ctx.db
+      .query("account")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .take(100)
+    let removed = 0
+    for (const account of accounts) {
+      if (account.providerId === "credential") continue
+      await ctx.db.delete("account", account._id)
+      removed++
+    }
+    if (removed) await invalidate(ctx, `user:${userId}`)
+    return removed
   },
 })

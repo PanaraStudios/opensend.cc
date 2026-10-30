@@ -47,6 +47,7 @@ type Env = {
   readonly BETTER_AUTH_SECRET: string;
   readonly SSO_ENCRYPTION_KEY: string;
   readonly ALLOW_LOCAL_OIDC: string | undefined;
+  readonly SSO_APPROVED_DOMAINS: string | undefined;
   readonly LOG_AUTH_LINKS: string | undefined;
   readonly SES_ENCRYPTION_KEY: string | undefined;
   readonly SES_CALLBACK_ORIGIN: string | undefined;
