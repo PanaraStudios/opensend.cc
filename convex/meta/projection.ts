@@ -14,6 +14,8 @@ import { CHANNEL_QUALITIES } from "../tables/channels"
 import { HIGH_THROUGHPUT_MPS } from "../../lib/meta/whatsapp-account"
 import { acceptChannelMessage } from "../channels/messages"
 import { enqueueMediaFetch } from "../channels/mediaState"
+import { forgetPayloadFiles } from "../channels/mediaCache"
+import { MEDIA_UNUSABLE_CODE } from "../../lib/meta/media"
 import { hydratedChannelMessage } from "../channels/payload"
 import { live, wabaByWabaId } from "./connect"
 import { templateWebhook } from "../whatsapp/templates"
@@ -361,6 +363,14 @@ async function status(
         : {}),
     }
   )
+  // An upload the number reused was gone: the next send uploads again.
+  if (
+    next === "failed" &&
+    content &&
+    message.direction === "outbound" &&
+    errors.some((error) => error.code === MEDIA_UNUSABLE_CODE)
+  )
+    await forgetPayloadFiles(ctx, account._id, content.payload)
   if (errors.some((error) => error.code === 131050)) {
     const identity = await ctx.db.get(
       "channelContacts",

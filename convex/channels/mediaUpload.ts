@@ -8,6 +8,7 @@ import { decryptSecret } from "../secrets"
 import { whatsappMediaMultipart } from "../../lib/meta/media"
 import { object, string } from "../../lib/meta/webhooks"
 import { MetaError } from "../../lib/meta/errors"
+import type { Id } from "../_generated/dataModel"
 
 const uploadInput = v.object({
   caller: callerValue,
@@ -79,3 +80,48 @@ export const upload = internalAction({
   returns: v.string(),
   handler: uploadMedia,
 })
+
+/** What a send did with the number's earlier uploads. */
+export type MediaCacheUse = {
+  /** Upload again instead of reusing: Meta no longer knew a reused id. */
+  fresh?: boolean
+  /** The earlier uploads this send reused. */
+  reused: {
+    accountId: Id<"channelAccounts">
+    fileId: Id<"storedFiles">
+    storageId: Id<"_storage">
+    mediaId: string
+  }[]
+}
+
+/** Uploads a stored file to a number once, then reuses the media id while
+    Meta keeps it (template headers, attachments). */
+export async function uploadStoredMedia(
+  ctx: ActionCtx,
+  args: Infer<typeof uploadInput> & { fileId: Id<"storedFiles"> },
+  cache?: MediaCacheUse
+): Promise<string> {
+  const { fileId, ...input } = args
+  const key = {
+    accountId: input.target.accountId,
+    fileId,
+    storageId: input.storageId,
+  }
+  if (!cache?.fresh) {
+    const cached: string | null = await ctx.runQuery(
+      internal.channels.mediaCache.find,
+      { ...key, now: Date.now() }
+    )
+    if (cached) {
+      cache?.reused.push({ ...key, mediaId: cached })
+      return cached
+    }
+  }
+  const mediaId = await uploadMedia(ctx, input)
+  await ctx.runMutation(internal.channels.mediaCache.remember, {
+    ...key,
+    organizationId: input.caller.organizationId,
+    mediaId,
+  })
+  return mediaId
+}

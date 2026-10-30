@@ -6,6 +6,8 @@ import { internal } from "../_generated/api"
 import { graph } from "../meta/graph"
 import { isUnreachableError } from "../../lib/net/public-fetch"
 import { MetaError } from "../../lib/meta/errors"
+import { isMediaIdGone } from "../../lib/meta/media"
+import type { MediaCacheUse } from "./mediaUpload"
 import { object, array, string } from "../../lib/meta/webhooks"
 
 export const deliver = internalAction({
@@ -23,8 +25,10 @@ export const deliver = internalAction({
           title?: string
           action: "retry" | "retry_after" | "final" | "token_invalid"
         }
-    try {
-      const result = object(
+    const payload: unknown = JSON.parse(claim.payload)
+    const cache: MediaCacheUse = { reused: [] }
+    const send = async () =>
+      object(
         await graph({
           token: claim.token,
           version: claim.version,
@@ -35,9 +39,10 @@ export const deliver = internalAction({
               ...object(
                 await mediaLinks(
                   ctx,
-                  JSON.parse(claim.payload),
+                  payload,
                   claim.organizationId,
-                  claim.accountId
+                  claim.accountId,
+                  cache
                 )
               ),
               ...(claim.messagingType
@@ -47,6 +52,25 @@ export const deliver = internalAction({
           },
         })
       )
+    try {
+      let result: Record<string, unknown>
+      try {
+        result = await send()
+      } catch (error) {
+        // Meta refused a reused upload it no longer knows: nothing was
+        // sent, so upload the files again and send once more.
+        if (
+          !(error instanceof MetaError) ||
+          !cache.reused.length ||
+          !isMediaIdGone(error)
+        )
+          throw error
+        await ctx.runMutation(internal.channels.mediaCache.forget, {
+          entries: cache.reused,
+        })
+        cache.fresh = true
+        result = await send()
+      }
       const externalId =
         string(result.message_id) ||
         string(object(array(result.messages)[0]).id)

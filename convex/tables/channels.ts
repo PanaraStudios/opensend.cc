@@ -351,6 +351,25 @@ export const channelTables = {
       "reactionTargetExternalId",
       "observedAt",
     ]),
+  /** Meta media ids of stored files a number already uploaded (template
+      headers, attachments), so each send reuses the upload instead of
+      uploading the same bytes again. Meta keeps an upload for 30 days. */
+  channelMediaCache: defineTable({
+    organizationId: v.string(),
+    accountId: v.id("channelAccounts"),
+    fileId: v.id("storedFiles"),
+    /** The file's bytes when uploaded; a replaced file uploads again. */
+    storageId: v.id("_storage"),
+    mediaId: v.string(),
+    expiresAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_accountId_and_fileId_and_storageId", [
+      "accountId",
+      "fileId",
+      "storageId",
+    ])
+    .index("by_expiresAt", ["expiresAt"]),
   channelMediaUploads: defineTable({
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),

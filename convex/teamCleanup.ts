@@ -65,6 +65,7 @@ export const TEAM_TABLES = [
   "contactImports",
   "webhookAttempts",
   "emailShares",
+  "channelMediaCache",
   "channelMediaUploads",
   "channelMessages",
   "conversations",

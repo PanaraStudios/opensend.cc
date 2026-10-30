@@ -4,6 +4,7 @@ import {
   whatsappMediaLimit,
   validateWhatsAppMedia,
   whatsappMediaMultipart,
+  isMediaIdGone,
 } from "./media"
 test("Meta media MIME types and limits, including OGG/Opus and animated stickers", () => {
   assert.equal(whatsappMediaLimit("image/png"), 5 * 1024 * 1024)
@@ -40,4 +41,32 @@ test("multipart round trip preserves non-UTF8 file bytes and sanitizes filenames
   const file = form.get("file") as File
   assert.equal(file.name, "a___.png")
   assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes)
+})
+
+test("a media id Meta no longer knows reads as gone; other refusals do not", () => {
+  assert.equal(
+    isMediaIdGone({ code: 131053, message: "Media upload error" }),
+    true
+  )
+  assert.equal(
+    isMediaIdGone({
+      code: 100,
+      message: "(#100) Invalid parameter",
+      details: "Invalid media id",
+    }),
+    true
+  )
+  assert.equal(
+    isMediaIdGone({ code: 131009, details: "Media ID is not valid" }),
+    true
+  )
+  assert.equal(
+    isMediaIdGone({ code: 100, message: "(#100) Invalid parameter" }),
+    false
+  )
+  assert.equal(
+    isMediaIdGone({ code: 131026, message: "Media undeliverable" }),
+    false
+  )
+  assert.equal(isMediaIdGone({}), false)
 })
