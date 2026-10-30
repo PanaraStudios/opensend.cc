@@ -72,6 +72,21 @@ async function bootstrapReclaimable(
     now - setup._creationTime > BOOTSTRAP_CLAIM_MS
   )
 }
+/** Deletes a stale, never-verified first account so its address can sign up
+    again. It never signed in, so it has no team or avatar; sessions,
+    provider accounts and two-factor rows are bounded per user. */
+async function releaseStaleUser(ctx: MutationCtx, userId: string) {
+  const id = ctx.db.normalizeId("user", userId)
+  const user = id ? await ctx.db.get("user", id) : null
+  if (!id || !user || user.emailVerified) return
+  for (const table of ["session", "account", "twoFactor"] as const)
+    for (const row of await ctx.db
+      .query(table)
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .take(100))
+      await ctx.db.delete(table, row._id)
+  await ctx.db.delete("user", id)
+}
 const INVITE_ONLY =
   "This instance is invite-only. Ask a team admin for an invitation."
 async function registrationAllowed(
@@ -112,6 +127,7 @@ export const admitUser = mutation({
     if (await bootstrapReclaimable(ctx, setup, Date.now())) {
       // A fresh row restarts the clock: the new claimant gets a full window.
       await ctx.db.delete(setup._id)
+      await releaseStaleUser(ctx, setup.userId)
       await ctx.db.insert("bootstrap", { key: "initial-account", userId })
       return null
     }

@@ -53,6 +53,15 @@ describe("registration policy", () => {
       userId: first.id,
       email: "typo@example.test",
     })
+    await t.run((ctx) =>
+      ctx.db.insert("account", {
+        accountId: first.id,
+        providerId: "credential",
+        userId: first.id,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+    )
     await expect(
       t.mutation(api.policy.admitUser, { userId: "b", email: "b@example.test" })
     ).rejects.toThrow("invitation")
@@ -73,6 +82,19 @@ describe("registration policy", () => {
       })
       const setup = await t.run((ctx) => ctx.db.query("bootstrap").collect())
       expect(setup.map((s) => s.userId)).toEqual([next.id])
+      // The stale account is gone, so its address can sign up again.
+      const left = await t.run(async (ctx) => ({
+        user: await ctx.db.get("user", first.id),
+        sessions: await ctx.db
+          .query("session")
+          .withIndex("userId", (q) => q.eq("userId", first.id))
+          .collect(),
+        accounts: await ctx.db
+          .query("account")
+          .withIndex("userId", (q) => q.eq("userId", first.id))
+          .collect(),
+      }))
+      expect(left).toEqual({ user: null, sessions: [], accounts: [] })
       // The new claimant gets a full window of its own.
       await expect(
         t.mutation(api.policy.admitUser, {
