@@ -64,35 +64,35 @@ describe("knownTotal", () => {
 })
 
 describe("pageLabel", () => {
-  it("reads like Resend's, with the known total", () => {
+  it("reads page of pages, then the known total", () => {
     assert.equal(
       pageLabel(pager({ total: 1000 }), "contact"),
-      "Page 1 – 25 of 1,000 contacts"
+      "Page 1 of 25 · 1,000 contacts"
     )
     assert.equal(
       pageLabel(pager({ loaded: 5, hasMore: false }), "log"),
-      "Page 1 – 1 of 5 logs"
+      "Page 1 of 1 · 5 logs"
     )
-    // The noun stays plural, as Resend's does.
+    // A single row takes the singular noun.
     assert.equal(
       pageLabel(pager({ loaded: 1, hasMore: false }), "domain"),
-      "Page 1 – 1 of 1 domains"
+      "Page 1 of 1 · 1 domain"
     )
     assert.equal(
       pageLabel(pager({ loaded: 3, hasMore: false }), "property", "properties"),
-      "Page 1 – 1 of 3 properties"
+      "Page 1 of 1 · 3 properties"
     )
   })
   it("counts what loaded, with a plus, while the size is unknown", () => {
     assert.equal(
       pageLabel(pager({ page: 1, loaded: 80 }), "contact"),
-      "Page 2 – 2+ of 80+ contacts"
+      "Page 2 of 2+ · 80+ contacts"
     )
   })
   it("reads sensibly for an empty list", () => {
     assert.equal(
       pageLabel(pager({ loaded: 0, hasMore: false }), "key"),
-      "Page 1 – 1 of 0 keys"
+      "Page 1 of 1 · 0 keys"
     )
   })
 })
