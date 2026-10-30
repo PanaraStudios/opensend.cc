@@ -18,8 +18,8 @@ BACKUP_DIR=${BACKUP_DIR:-$PWD/backups}
 KEEP_DAYS=${BACKUP_RETENTION_DAYS:-14}
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 name="opensend-export-$$"
-mkdir -p "$BACKUP_DIR"
 umask 077
+mkdir -p "$BACKUP_DIR"
 
 compose="docker compose --env-file $ENV_FILE"
 trap 'docker rm -f -v "$name" >/dev/null 2>&1 || true' EXIT

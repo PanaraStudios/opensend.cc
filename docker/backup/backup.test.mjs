@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from "node:fs"
@@ -76,6 +77,9 @@ test("a good dump is kept and old dumps are pruned", (t) => {
   const names = dumps(f)
   assert.equal(names.length, 1)
   assert.match(names[0], /^convex-\d{8}T\d{6}Z\.dump$/)
+  // Only the backup directory's owner can list or read dumps.
+  assert.equal(statSync(f.dir).mode & 0o777, 0o700)
+  assert.equal(statSync(join(f.dir, names[0])).mode & 0o777, 0o600)
 })
 
 test("a dump pg_restore cannot read is discarded and nothing is pruned", (t) => {
