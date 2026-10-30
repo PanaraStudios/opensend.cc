@@ -275,6 +275,9 @@ export const switchTeam = mutation({
       )
       .unique()
     if (!member) throw new ConvexError("You do not belong to this team")
+    /* No SSO check here: switching to an SSO-enforced team is how a member
+       reaches its "Continue with SSO" prompt. Every team read and write
+       still goes through requireMember, which enforces SSO. */
     await ctx.db.patch("session", session._id, {
       activeOrganizationId: args.organizationId,
     })

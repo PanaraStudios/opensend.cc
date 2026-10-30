@@ -330,6 +330,57 @@ describe("team authorization", () => {
   })
 })
 describe("SSO enforcement", () => {
+  test("switching to an enforced team only opens its SSO prompt", async () => {
+    const t = setup()
+    const a = await user(t, "a@example.test")
+    const organizationId = await t.mutation(api.teams.create, {
+      sessionId: a.sessionId,
+      name: "Alpha",
+    })
+    await t.mutation(api.sso.save, {
+      sessionId: a.sessionId,
+      organizationId,
+      issuer: "https://idp.example.test",
+      clientId: "test",
+      encryptedSecret: "ciphertext",
+      revision: "one",
+    })
+    await t.mutation(api.sso.complete, {
+      sessionId: a.sessionId,
+      organizationId,
+      revision: "one",
+    })
+    await t.mutation(api.sso.enforce, {
+      sessionId: a.sessionId,
+      organizationId,
+      enabled: true,
+    })
+    const other = await t.run((ctx) =>
+      ctx.db.insert("session", {
+        userId: a.id,
+        token: "second-session",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        expiresAt: Date.now() + 3600000,
+      })
+    )
+    await t.mutation(api.teams.create, { sessionId: other, name: "Beta" })
+    await t.mutation(api.teams.switchTeam, { sessionId: other, organizationId })
+    const snap = await t.query(api.teams.snapshot, { sessionId: other })
+    expect(snap.activeTeamId).toBe(organizationId)
+    expect(
+      snap.teams.find((team) => team.id === organizationId)?.ssoRequired
+    ).toBe(true)
+    expect(snap.members).toEqual([])
+    expect(snap.invitations).toEqual([])
+    await expect(
+      t.query(api.teams.members, {
+        sessionId: other,
+        organizationId,
+        paginationOpts: { numItems: 10, cursor: null },
+      })
+    ).rejects.toThrow("SSO_REQUIRED")
+  })
   test("requires a successful test, a session-specific proof, and the current revision", async () => {
     const t = setup()
     const a = await user(t, "a@example.test")
