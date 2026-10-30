@@ -512,6 +512,11 @@ describe("properties", () => {
         properties: { plan: "pro" },
       }))
     )
+    const before = 1
+    await f.t.run(async (ctx) => {
+      for (const row of await ctx.db.query("contacts").collect())
+        await ctx.db.patch("contacts", row._id, { updatedAt: before })
+    })
     await owner.mutation(api.contactProperties.remove, { id: plan })
     // Hidden at once, and its key stays taken until the values are gone.
     expect(
@@ -531,6 +536,9 @@ describe("properties", () => {
       {},
       {},
     ])
+    // Stripping a value changes the contact, so "updated since" readers see it.
+    for (const row of await contacts())
+      expect(row.updatedAt).toBeGreaterThan(before)
     await owner.mutation(api.contactProperties.create, {
       organizationId: org,
       key: "plan",
