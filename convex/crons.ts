@@ -35,6 +35,12 @@ crons.interval(
   internal.api.state.expireIdempotency,
   {}
 )
+crons.interval(
+  "stalled export watchdog",
+  { minutes: 10 },
+  internal.exports.failStalled,
+  {}
+)
 crons.interval("export expiry", { hours: 1 }, internal.exports.expire, {})
 crons.interval(
   "custom event retention",
