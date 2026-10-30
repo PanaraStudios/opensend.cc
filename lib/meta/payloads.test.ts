@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import {
   whatsappPayload,
+  whatsappPreview,
   pageMessageTextLimit,
   pageMessageContent,
 } from "./payloads"
@@ -343,4 +344,31 @@ test("channel strategies apply each channel's payload, endpoint and window rule"
       "page"
     )
   }
+})
+
+test("previews show interactive body text and fall back to the message type", () => {
+  const preview = (input: Parameters<typeof whatsappPayload>[0]) =>
+    whatsappPreview(whatsappPayload(input))
+  assert.equal(preview({ to, text: "Hello" }), "Hello")
+  assert.equal(
+    preview({
+      to,
+      interactive: {
+        type: "button",
+        body: { text: "Pick a slot" },
+        action: {
+          buttons: [{ type: "reply", reply: { id: "am", title: "Morning" } }],
+        },
+      },
+    }),
+    "Pick a slot"
+  )
+  assert.equal(
+    preview({ to, template: { name: "hello", language: "en_US" } }),
+    "[template: hello]"
+  )
+  assert.equal(
+    preview({ to, location: { latitude: 1, longitude: 2 } }),
+    "[location]"
+  )
 })
