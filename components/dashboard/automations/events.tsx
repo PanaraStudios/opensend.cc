@@ -192,8 +192,8 @@ export function AutomationEventsView() {
         title="Delete event?"
         description={
           deleting && deletingUsed
-            ? "Automations still use this event. They keep its name, and its payload is no longer checked."
-            : "Its payload is no longer checked when your app sends it."
+            ? "Automations still use this event. They keep its name, and new events are accepted without checking their fields."
+            : "New events with this name are accepted without checking their fields."
         }
         onConfirm={async () => {
           if (deleting) await deleteAutomationEvent(deleting.id)
