@@ -1,5 +1,7 @@
 "use client"
 import {
+  audienceCountLabel,
+  BROADCAST_ESTIMATE_NOTE,
   broadcastReachabilityLabel,
   broadcastSegmentItems,
   broadcastTopicItems,
@@ -49,7 +51,6 @@ import { useSegmentOptions, useTopicOptions } from "@/lib/audience/use-audience"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
 import type { Broadcast } from "@/lib/dashboard/types"
 import { actionError } from "@/lib/action-error"
-import { pluralize } from "@/lib/dashboard/format"
 import { formatScheduleHint } from "@/lib/dashboard/schedule"
 
 export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
@@ -83,6 +84,7 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
     recipients: number
     skipped: number
     noPhone: number
+    estimated: boolean
   } | null>(null)
   const [busy, setBusy] = React.useState(false)
   const reportError = (error: unknown) =>
@@ -253,7 +255,8 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
                   <p>
                     {broadcastReachabilityLabel(
                       estimate.recipients,
-                      estimate.skipped
+                      estimate.skipped,
+                      estimate.estimated
                     )}
                   </p>
                   <p>The others can’t be messaged until they write again.</p>
@@ -262,8 +265,12 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
               ) : (
                 <>
                   <p>
-                    {pluralize(estimate.recipients, "recipient")},{" "}
-                    {estimate.skipped.toLocaleString()} skipped
+                    {audienceCountLabel(
+                      estimate.recipients,
+                      "recipient",
+                      estimate.estimated
+                    )}
+                    , {estimate.skipped.toLocaleString()} skipped
                   </p>
                   <p>
                     {estimate.noPhone.toLocaleString()} skipped for lacking a
@@ -271,6 +278,7 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
                   </p>
                 </>
               )}
+              {estimate.estimated ? <p>{BROADCAST_ESTIMATE_NOTE}</p> : null}
             </div>
           ) : null}
           <DialogFooter>

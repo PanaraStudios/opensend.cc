@@ -145,15 +145,33 @@ export function broadcastTopicItems(
 
 export function broadcastReachabilityLabel(
   recipients: number,
-  skipped: number
+  skipped: number,
+  estimated = false
 ) {
-  return `${recipients.toLocaleString()} of ${(recipients + skipped).toLocaleString()} can be reached now`
+  return `${estimated ? "About " : ""}${recipients.toLocaleString()} of ${(recipients + skipped).toLocaleString()} can be reached now`
+}
+
+/** A review of a large audience reads its first pages and scales the rest
+    (convex/broadcasts.ts, `REVIEW_PAGES`). */
+export const BROADCAST_ESTIMATE_NOTE =
+  "Estimated from a sample of the audience. Each contact is checked again when the broadcast sends."
+
+/** "About 1,200 recipients" for an estimate, "3 recipients" for a count. */
+export function audienceCountLabel(
+  count: number,
+  noun: string,
+  estimated = false
+) {
+  return estimated
+    ? `About ${count.toLocaleString()} ${count === 1 ? noun : `${noun}s`}`
+    : pluralize(count, noun)
 }
 
 /** Pending audience counts must never look like an empty audience. */
 export function broadcastRecipientCheck(
   recipients: number | null,
-  failed = false
+  failed = false,
+  estimated = false
 ): {
   id: string
   level: "loading" | "error" | "ok"
@@ -174,6 +192,6 @@ export function broadcastRecipientCheck(
         ? "Loading contacts…"
         : recipients === 0
           ? "No contacts in this segment"
-          : `${pluralize(recipients, "contact")} will get this email`,
+          : `${audienceCountLabel(recipients, "contact", estimated)} will get this email${estimated ? " (estimated)" : ""}`,
   }
 }

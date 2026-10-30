@@ -282,7 +282,7 @@ test("segment, global opt-out, topic opt-out and suppression resolve server-side
       segmentId,
       topicId,
     })
-  ).toBe(1)
+  ).toEqual({ count: 1, estimated: false })
   const id = await f.create({ segmentId, topicId })
   const recipients = await f.fanout(id)
   expect(
@@ -331,7 +331,7 @@ test("review counts more than the newest 100 contacts and fan-out spans pages", 
       segmentId: null,
       topicId: null,
     })
-  ).toBe(120)
+  ).toEqual({ count: 120, estimated: false })
   const id = await f.create()
   expect(await f.fanout(id)).toHaveLength(120)
   expect((await f.stats(id)).recipients).toBe(120)
@@ -1000,7 +1000,7 @@ test("segment review and sending span membership pages", async () => {
       segmentId,
       topicId: null,
     })
-  ).toBe(110)
+  ).toEqual({ count: 110, estimated: false })
   expect(await f.fanout(await f.create({ segmentId }))).toHaveLength(110)
 })
 

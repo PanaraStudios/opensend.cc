@@ -154,3 +154,18 @@ it("recipient review distinguishes loading, failed, empty and populated audience
   )
   assert.equal(broadcastRecipientCheck(2).level, "ok")
 })
+
+it("an estimated audience count says it is one", async () => {
+  const { broadcastRecipientCheck, audienceCountLabel } =
+    await import("./broadcast")
+  assert.equal(
+    broadcastRecipientCheck(12000, false, true).label,
+    `About ${(12000).toLocaleString()} contacts will get this email (estimated)`
+  )
+  assert.equal(audienceCountLabel(3, "recipient"), "3 recipients")
+  assert.equal(audienceCountLabel(1, "recipient", true), "About 1 recipient")
+  assert.equal(
+    broadcastReachabilityLabel(1, 2, true),
+    "About 1 of 3 can be reached now"
+  )
+})

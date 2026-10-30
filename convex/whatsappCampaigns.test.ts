@@ -333,7 +333,7 @@ test("broadcast pages enqueue once per phone contact, record all skip reasons an
       organizationId: f.owner.team,
       id,
     })
-  ).toEqual({ recipients: 2, skipped: 4, noPhone: 1 })
+  ).toEqual({ recipients: 2, skipped: 4, noPhone: 1, estimated: false })
   await f.fanout(id)
   const recipients = await f.recipients(id)
   expect(
@@ -1258,7 +1258,7 @@ test("review, broadcast sending and automation sending share missing-variable el
       organizationId: f.owner.team,
       id,
     })
-  ).toEqual({ recipients: 0, skipped: 1, noPhone: 0 })
+  ).toEqual({ recipients: 0, skipped: 1, noPhone: 0, estimated: false })
   await f.fanout(id)
   expect((await f.recipients(id))[0]).toMatchObject({
     skipReason: "missing_variables",

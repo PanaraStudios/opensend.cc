@@ -50,19 +50,16 @@ import {
   ListPagination,
 } from "@/components/dashboard/primitives"
 import {
+  audienceCountLabel,
   audienceLabel,
+  BROADCAST_ESTIMATE_NOTE,
   broadcastActions,
   broadcastAsTemplateInput,
   isBroadcastDraftLike,
   type BroadcastEventTab,
 } from "@/lib/dashboard/broadcast"
 import { parseMailbox, senderDomainOf } from "@/lib/dashboard/email-send"
-import {
-  formatDateTime,
-  percent,
-  pluralize,
-  sentenceCase,
-} from "@/lib/dashboard/format"
+import { formatDateTime, percent, sentenceCase } from "@/lib/dashboard/format"
 import { useAction, useQuery, usePaginatedQuery } from "convex/react"
 import { requireTeamId, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
@@ -377,7 +374,7 @@ export function BroadcastDetail() {
     })
       .then((estimate) =>
         setSendSummary(
-          `${pluralize(estimate.recipients, "recipient")} will receive this broadcast${instead}; ${estimate.skipped.toLocaleString()} will be skipped.`
+          `${audienceCountLabel(estimate.recipients, "recipient", estimate.estimated)} will receive this broadcast${instead}; ${estimate.estimated ? "about " : ""}${estimate.skipped.toLocaleString()} will be skipped.${estimate.estimated ? ` ${BROADCAST_ESTIMATE_NOTE}` : ""}`
         )
       )
       .catch(reportError)

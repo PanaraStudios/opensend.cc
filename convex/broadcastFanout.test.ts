@@ -5,10 +5,11 @@ import type { Id } from "./_generated/dataModel"
 import { inboundFixture, WABA_ID } from "./testHelpers/meta.fixture"
 import { insertRow, patchRow } from "./counts"
 import { MAX_STEP_RECIPIENTS, sendStep } from "./broadcastSend"
+import { extrapolate, REVIEW_PAGES, REVIEW_PAGE_SIZE } from "./broadcasts"
 import { broadcastActions } from "../lib/dashboard/broadcast"
 
 /* WhatsApp fan-out on the paced, self-scheduling chain: steps sized to the
-   number's throughput, idempotent per recipient. */
+   number's throughput, idempotent per recipient, bounded audience review. */
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -320,3 +321,40 @@ test("Stop is refused once the paced send is going, and works before it starts",
     )
   ).toBeNull()
 })
+
+test("review reads at most REVIEW_PAGES pages, then estimates the rest", async () => {
+  const sampled = REVIEW_PAGES * REVIEW_PAGE_SIZE
+  const audience = sampled + 500
+  const f = await setup({ audience: 0 })
+  // Every 5th contact has no phone, every 4th is unsubscribed.
+  await addContacts(f, f.segmentId, 0, audience, (i) => ({
+    ...(i % 5 ? { phone: `+1555${String(i).padStart(7, "0")}` } : {}),
+    email: `person${i}@example.test`,
+    unsubscribed: i % 4 === 0,
+  }))
+  const whatsapp = await f.owner.client.action(api.broadcastWhatsApp.review, {
+    organizationId: f.owner.team,
+    id: f.id,
+  })
+  const reachable = (n: number) =>
+    Array.from({ length: n }, (_, i) => i).filter((i) => i % 5 && i % 4).length
+  // The first pages are counted exactly, the rest scaled from them.
+  expect(whatsapp.estimated).toBe(true)
+  expect(whatsapp.recipients).toBe(
+    reachable(sampled) +
+      Math.round((reachable(sampled) / sampled) * (audience - sampled))
+  )
+  expect(whatsapp.recipients).toBeCloseTo(reachable(audience), -1)
+  expect(whatsapp.recipients + whatsapp.skipped).toBe(audience)
+  expect(whatsapp.noPhone).toBe(audience / 5)
+  const email = await f.owner.client.action(api.broadcasts.review, {
+    organizationId: f.owner.team,
+    segmentId: f.segmentId,
+    topicId: null,
+  })
+  expect(email).toEqual({ count: (audience * 3) / 4, estimated: true })
+  // A smaller audience is still counted exactly.
+  expect(extrapolate({ count: 7 }, 10, 10)).toEqual({ count: 7 })
+  expect(extrapolate({ count: 7 }, 10, null)).toEqual({ count: 7 })
+  expect(extrapolate({ count: 5 }, 10, 30)).toEqual({ count: 15 })
+}, 120_000)

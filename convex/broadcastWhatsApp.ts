@@ -32,7 +32,13 @@ import { internal } from "./_generated/api"
 import type { Doc } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
-import { audience, recipientPage } from "./broadcasts"
+import {
+  audience,
+  extrapolate,
+  recipientPage,
+  REVIEW_PAGES,
+  REVIEW_PAGE_SIZE,
+} from "./broadcasts"
 import { findTopicChoice } from "./audience"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
 import {
@@ -405,7 +411,11 @@ export const reviewPage = internalQuery({
     context: v.optional(reviewContextValue),
     now: v.optional(v.number()),
   },
-  returns: estimateValue.extend({ done: v.boolean(), cursor: v.string() }),
+  returns: estimateValue.extend({
+    scanned: v.number(),
+    done: v.boolean(),
+    cursor: v.string(),
+  }),
   handler: async (ctx, { organizationId, id, cursor, context, now }) => {
     await requireTeam(ctx, organizationId)
     const row = context?.row ?? (await ctx.db.get("broadcasts", id))
@@ -433,7 +443,7 @@ export const reviewPage = internalQuery({
       row,
       cursor,
       undefined,
-      100,
+      REVIEW_PAGE_SIZE,
       false,
       topic
     )
@@ -470,30 +480,41 @@ export const reviewPage = internalQuery({
       recipients,
       skipped,
       noPhone,
+      scanned: page.scanned,
       done: page.isDone,
       cursor: page.continueCursor,
     }
   },
 })
+/** Who the broadcast will reach and skip. An audience larger than
+    `REVIEW_PAGES` pages is estimated (`estimated: true`): the pages read
+    are counted exactly and the rest scaled from them to its size. */
 export const review = action({
   args: scope,
-  returns: estimateValue,
+  returns: estimateValue.extend({ estimated: v.boolean() }),
   handler: async (
     ctx,
     args
-  ): Promise<{ recipients: number; skipped: number; noPhone: number }> => {
+  ): Promise<{
+    recipients: number
+    skipped: number
+    noPhone: number
+    estimated: boolean
+  }> => {
     const context: Infer<typeof reviewContextValue> = await ctx.runQuery(
       internal.broadcastWhatsApp.reviewContext,
       args
     )
     const now = Date.now()
     const result = { recipients: 0, skipped: 0, noPhone: 0 }
+    let scanned = 0
     let cursor: string | null = null
-    for (;;) {
+    for (let pages = 0; pages < REVIEW_PAGES; pages++) {
       const page: {
         recipients: number
         skipped: number
         noPhone: number
+        scanned: number
         done: boolean
         cursor: string
       } = await ctx.runQuery(internal.broadcastWhatsApp.reviewPage, {
@@ -505,9 +526,15 @@ export const review = action({
       result.recipients += page.recipients
       result.skipped += page.skipped
       result.noPhone += page.noPhone
-      if (page.done) return result
+      scanned += page.scanned
+      if (page.done) return { ...result, estimated: false }
       cursor = page.cursor
     }
+    const total: number | null = await ctx.runQuery(internal.broadcasts.size, {
+      organizationId: args.organizationId,
+      segmentId: context.row.segmentId,
+    })
+    return { ...extrapolate(result, scanned, total), estimated: true }
   },
 })
 /** Recipients that failed before reasons were kept on the row read their
