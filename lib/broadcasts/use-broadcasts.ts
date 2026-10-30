@@ -41,7 +41,6 @@ export function asBroadcast(
     segmentId: row.segmentId,
     topicId: row.topicId,
     status: row.status,
-    audienceDone: row.audienceDone,
     delivering:
       row.status === "queued" &&
       row.audienceDone &&

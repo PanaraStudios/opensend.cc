@@ -391,51 +391,6 @@ test("fan-out retry and a replayed cursor never enqueue a recipient twice", asyn
     2
   )
 })
-test("stopping mid-send ends the fan-out and sending again finishes the rest", async () => {
-  const f = await setup()
-  await f.contacts(
-    Array.from({ length: 15 }, (_, i) => ({ email: `p${i}@example.com` }))
-  )
-  const id = await f.create()
-  await f.owner.client.mutation(api.broadcasts.send, { id })
-  const first = (await f.read(id))!.generation
-  await f.t.mutation(internal.broadcastSend.start, { id, generation: first })
-  const firstWorkflow = (await f.read(id))!.workflowId
-  expect(
-    await f.t.mutation(internal.broadcastSend.batch, { id, generation: first })
-  ).toBe(false)
-  expect(await f.recipients(id)).toHaveLength(10)
-  await f.owner.client.mutation(api.broadcasts.cancel, { id })
-  expect((await f.read(id))?.status).toBe("canceled")
-  expect(
-    await f.t.mutation(internal.broadcastSend.batch, { id, generation: first })
-  ).toBe(true)
-  expect(await f.recipients(id)).toHaveLength(10)
-  await f.owner.client.mutation(api.broadcasts.send, { id })
-  const second = (await f.read(id))!.generation
-  await f.t.mutation(internal.broadcastSend.start, { id, generation: second })
-  // The second send starts its own fan-out rather than finding the old cutoff.
-  expect((await f.read(id))?.workflowId).not.toBe(firstWorkflow)
-  while (
-    !(await f.t.mutation(internal.broadcastSend.batch, {
-      id,
-      generation: second,
-    }))
-  ) {
-    /* drain */
-  }
-  const recipients = await f.recipients(id)
-  expect(recipients).toHaveLength(15)
-  expect(new Set(recipients.map((row) => row.email)).size).toBe(15)
-  // Every email is queued: the fan-out is over and there is nothing to stop.
-  expect(await f.read(id)).toMatchObject({
-    status: "queued",
-    audienceDone: true,
-  })
-  await expect(
-    f.owner.client.mutation(api.broadcasts.cancel, { id })
-  ).rejects.toThrow(/nothing left to stop/)
-})
 test("schedule, cancel, stale release and deleting a scheduled broadcast", async () => {
   const f = await setup()
   const id = await f.create()

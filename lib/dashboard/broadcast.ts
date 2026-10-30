@@ -57,17 +57,13 @@ export function emailEditorMode(
 }
 
 /** Which header actions a broadcast offers in its current status. A canceled
-    send behaves like a draft so it can be rescheduled or sent. A send can be
-    stopped until every recipient has been queued (`audienceDone`). */
-export function broadcastActions(
-  status: BroadcastStatus,
-  audienceDone = false
-) {
+    send behaves like a draft so it can be rescheduled or sent. */
+export function broadcastActions(status: BroadcastStatus) {
   const draftLike = status === "draft" || status === "canceled"
   return {
     canSchedule: draftLike,
     canSend: draftLike || status === "scheduled",
-    canCancel: status === "scheduled" || (status === "queued" && !audienceDone),
+    canCancel: status === "scheduled" || status === "queued",
   }
 }
 

@@ -276,9 +276,6 @@ export type Broadcast = EmailDraft & {
   }
   whatsappStats?: WhatsAppBroadcastStats
   status: BroadcastStatus
-  /** Every recipient has been queued; a sending broadcast can no longer be
-      stopped. */
-  audienceDone?: boolean
   /** A WhatsApp, Messenger or Instagram send whose recipients are all queued
       and that waits on delivery receipts (up to 24 hours after the last
       message) to settle. Lists read it as Sent. */

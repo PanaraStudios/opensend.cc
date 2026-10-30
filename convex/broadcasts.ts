@@ -249,9 +249,6 @@ export async function sendBroadcast(
     generation,
     scheduledAt: at,
     scheduledJob,
-    // A send stopped mid-fan-out starts over; recipients it already reached
-    // are skipped, and contacts added since then join the audience.
-    audienceBefore: undefined,
     audienceDone: false,
     cursor: undefined,
     error: undefined,
@@ -262,17 +259,12 @@ export async function cancelBroadcast(
   ctx: MutationCtx,
   row: Doc<"broadcasts">
 ) {
-  if (row.status === "queued" && row.audienceDone)
-    throw new ConvexError(
-      "Every message has already gone out, so there is nothing left to stop"
-    )
-  if (row.status !== "scheduled" && row.status !== "queued")
-    throw new ConvexError(
-      "Only scheduled or sending broadcasts can be canceled"
-    )
+  if (
+    row.status !== "scheduled" &&
+    !(row.status === "queued" && row.audienceBefore === undefined)
+  )
+    throw new ConvexError("Only scheduled broadcasts can be canceled")
   if (row.scheduledJob) await ctx.scheduler.cancel(row.scheduledJob)
-  // The new generation ends the fan-out at its next batch; messages already
-  // queued (at most one batch's worth) still go out.
   await patchRow(ctx, "broadcasts", row._id, {
     status: "canceled",
     settledAt: Date.now(),

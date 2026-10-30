@@ -71,7 +71,6 @@ describe("broadcastActions", () => {
       canSend: false,
       canCancel: true,
     })
-    assert.equal(broadcastActions("queued", true).canCancel, false)
     assert.deepEqual(broadcastActions("sent"), {
       canSchedule: false,
       canSend: false,

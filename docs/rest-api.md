@@ -359,13 +359,11 @@ Drafts and canceled broadcasts can be edited. Other statuses allow a name change
 only. Unsent drafts, canceled drafts and scheduled broadcasts can be deleted;
 deleting a schedule cancels its delivery, matching
 [Resend's deletion rule](https://resend.com/docs/api-reference/broadcasts/delete-broadcast).
-Cancel works until every recipient has been queued: it stops the fan-out at its
-next page, and messages already queued or submitted to SES still go out. Sending
-a canceled broadcast again continues with the recipients it has not reached. The
-existing UI calls in-flight work `queued` (shown as Sending). Completion is `sent`
-once all eligible recipient copies settle and at least one went out, or `failed`
-if fan-out fails or no recipient was reached. Delivery/bounce outcomes continue
-updating the report after sending finishes.
+Cancel works until audience resolution begins; messages already submitted to SES
+cannot be recalled. The existing UI calls in-flight work `queued` (shown as
+Sending). Completion is `sent` once all eligible recipient copies settle and at
+least one went out, or `failed` if fan-out fails or no recipient was reached.
+Delivery/bounce outcomes continue updating the report after sending finishes.
 
 Recipients are resolved in bounded pages when the send starts, with a creation
 cutoff so newly added contacts do not extend an in-progress broadcast. Segment
