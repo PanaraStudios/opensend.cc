@@ -520,7 +520,23 @@ export const review = action({
       organizationId: args.organizationId,
       segmentId: context.row.segmentId,
     })
-    return { ...extrapolate(result, scanned, total), estimated: true }
+    // Scale who is reached and who is reviewed, so the parts still add up.
+    const scaled = extrapolate(
+      {
+        recipients: result.recipients,
+        reviewed: result.recipients + result.skipped,
+        noPhone: result.noPhone,
+      },
+      scanned,
+      total
+    )
+    const skipped = scaled.reviewed - scaled.recipients
+    return {
+      recipients: scaled.recipients,
+      skipped,
+      noPhone: Math.min(scaled.noPhone, skipped),
+      estimated: true,
+    }
   },
 })
 /** Recipients that failed before reasons were kept on the row read their

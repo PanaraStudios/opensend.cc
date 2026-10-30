@@ -3,6 +3,7 @@ import {
   audienceCountLabel,
   BROADCAST_ESTIMATE_NOTE,
   broadcastReachabilityLabel,
+  broadcastSendBlocked,
   broadcastSegmentItems,
   broadcastTopicItems,
 } from "@/lib/dashboard/broadcast"
@@ -286,7 +287,7 @@ export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
               Back
             </Button>
             <Button
-              disabled={busy || !estimate?.recipients}
+              disabled={busy || !estimate || broadcastSendBlocked(estimate)}
               onClick={() => void send()}
             >
               {sendAt ? "Schedule broadcast" : "Send broadcast"}

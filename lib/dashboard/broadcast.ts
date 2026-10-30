@@ -154,7 +154,16 @@ export function broadcastReachabilityLabel(
 /** A review of a large audience reads its first pages and scales the rest
     (convex/broadcasts.ts, `REVIEW_PAGES`). */
 export const BROADCAST_ESTIMATE_NOTE =
-  "Estimated from a sample of the audience. Each contact is checked again when the broadcast sends."
+  "Estimated from the audience’s first 4,000 contacts, the oldest. Each contact is checked again when the broadcast sends."
+
+/** An estimate of none means none among the contacts checked, not an empty
+    audience: it never blocks a send. */
+export function broadcastSendBlocked(estimate: {
+  recipients: number
+  estimated?: boolean
+}) {
+  return estimate.recipients === 0 && !estimate.estimated
+}
 
 /** "About 1,200 recipients" for an estimate, "3 recipients" for a count. */
 export function audienceCountLabel(
@@ -174,24 +183,33 @@ export function broadcastRecipientCheck(
   estimated = false
 ): {
   id: string
-  level: "loading" | "error" | "ok"
+  level: "loading" | "error" | "warn" | "ok"
   label: string
 } {
+  if (failed)
+    return {
+      id: "recipients",
+      level: "error",
+      label: "Could not load contacts. Reopen review to try again.",
+    }
+  if (recipients === null)
+    return { id: "recipients", level: "loading", label: "Loading contacts…" }
+  if (recipients === 0)
+    return estimated
+      ? {
+          id: "recipients",
+          level: "warn",
+          label:
+            "None of the first 4,000 contacts can get this email; the rest are checked when it sends",
+        }
+      : {
+          id: "recipients",
+          level: "error",
+          label: "No contacts in this segment",
+        }
   return {
     id: "recipients",
-    level: failed
-      ? "error"
-      : recipients === null
-        ? "loading"
-        : recipients === 0
-          ? "error"
-          : "ok",
-    label: failed
-      ? "Could not load contacts. Reopen review to try again."
-      : recipients === null
-        ? "Loading contacts…"
-        : recipients === 0
-          ? "No contacts in this segment"
-          : `${audienceCountLabel(recipients, "contact", estimated)} will get this email${estimated ? " (estimated)" : ""}`,
+    level: "ok",
+    label: `${audienceCountLabel(recipients, "contact", estimated)} will get this email${estimated ? " (estimated)" : ""}`,
   }
 }

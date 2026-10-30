@@ -12,7 +12,11 @@ import {
 } from "./broadcastSend"
 import { extrapolate, REVIEW_PAGES, REVIEW_PAGE_SIZE } from "./broadcasts"
 import { SENT_MARK_MS } from "./broadcastMetrics"
-import { broadcastActions } from "../lib/dashboard/broadcast"
+import {
+  broadcastActions,
+  broadcastRecipientCheck,
+  broadcastSendBlocked,
+} from "../lib/dashboard/broadcast"
 
 /* WhatsApp fan-out on the paced, self-scheduling chain: steps sized to the
    number's throughput, idempotent per recipient, bounded audience review. */
@@ -392,11 +396,57 @@ test("review reads at most REVIEW_PAGES pages, then estimates the rest", async (
     topicId: null,
   })
   expect(email).toEqual({ count: (audience * 3) / 4, estimated: true })
+  // The sample is the oldest members, so an estimate of none (their first
+  // pages are all unreachable, newer members are not) never blocks a send.
+  const unreachable = await f.owner.client.mutation(api.segments.create, {
+    organizationId: f.owner.team,
+    name: "Old import first",
+  })
+  await f.t.run(async (ctx) => {
+    const add = (contactId: Id<"contacts">) =>
+      insertRow(ctx, "segmentMembers", {
+        organizationId: f.owner.team,
+        segmentId: unreachable,
+        contactId,
+      })
+    const contacts = await ctx.db
+      .query("contacts")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", f.owner.team)
+      )
+      .collect()
+    const neither = contacts.filter((c) => !c.phone && c.unsubscribed)
+    for (let n = 0; n <= sampled; n++)
+      await add(neither[n % neither.length]._id)
+    for (const c of contacts
+      .filter((c) => c.phone && !c.unsubscribed)
+      .slice(0, 50))
+      await add(c._id)
+  })
+  await f.owner.client.mutation(api.broadcasts.update, {
+    id: f.id,
+    segmentId: unreachable,
+  })
+  const none = await f.owner.client.action(api.broadcastWhatsApp.review, {
+    organizationId: f.owner.team,
+    id: f.id,
+  })
+  expect(none).toMatchObject({ recipients: 0, estimated: true })
+  expect(broadcastSendBlocked(none)).toBe(false)
+  const noEmail = await f.owner.client.action(api.broadcasts.review, {
+    organizationId: f.owner.team,
+    segmentId: unreachable,
+    topicId: null,
+  })
+  expect(noEmail).toEqual({ count: 0, estimated: true })
+  expect(broadcastRecipientCheck(0, false, true).level).toBe("warn")
+  expect(broadcastRecipientCheck(0).level).toBe("error")
+  expect(broadcastSendBlocked({ recipients: 0, estimated: false })).toBe(true)
   // A smaller audience is still counted exactly.
   expect(extrapolate({ count: 7 }, 10, 10)).toEqual({ count: 7 })
   expect(extrapolate({ count: 7 }, 10, null)).toEqual({ count: 7 })
   expect(extrapolate({ count: 5 }, 10, 30)).toEqual({ count: 15 })
-}, 120_000)
+}, 180_000)
 
 test("a step cut short reserves sends only for the recipients it wrote", async () => {
   const rate = 10
