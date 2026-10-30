@@ -2,12 +2,16 @@ import { recordBroadcastReport } from "./broadcastMetrics"
 import { recordMetric } from "./metricRows"
 import { projectEvent } from "./ses/projection"
 import { Migrations } from "@convex-dev/migrations"
+import { getFunctionName } from "convex/server"
+import { v } from "convex/values"
 import { components, internal } from "./_generated/api"
 import type { DataModel } from "./_generated/dataModel"
+import { internalMutation, type MutationCtx } from "./_generated/server"
 import { countRow, patchRow, type CountedTable } from "./counts"
 
-/* Online migrations, run after a deploy with
-   `pnpm backend run migrations:backfillCounts` (see docs/self-hosting.md).
+/* Online migrations. The migrate image starts `migrations:postDeploy` after
+   every deploy (docker/migrate/run.mjs); by hand it is
+   `pnpm backend run migrations:postDeploy` (see docs/self-hosting.md).
    The component tracks progress, so a rerun resumes or skips what is done. */
 export const migrations = new Migrations<DataModel>(components.migrations)
 
@@ -19,8 +23,8 @@ const backfill = <T extends CountedTable>(table: T) =>
   })
 
 export const countAutomationEvents = backfill("automationEvents")
-/** The one-shot migrate image starts this after deploying the functions.
- * The component resumes bounded batches without delaying the app restart. */
+/** Counts automation events only. The migrate image now starts `postDeploy`,
+ * which runs this step first; kept for scripts and tests that call it. */
 export const initializeEventCounts = migrations.runner(
   internal.migrations.countAutomationEvents
 )
@@ -103,7 +107,8 @@ export const dropWebhookStats = migrations.define({
   migrateOne: (ctx, row) => ctx.db.delete("webhookStats", row._id),
 })
 
-export const backfillCounts = migrations.runner([
+/** Every backfill, in order. New backfills go at the end. */
+const postDeployMigrations = [
   internal.migrations.countAutomationEvents,
   internal.migrations.countContactImports,
   internal.migrations.countReceivedEmails,
@@ -143,4 +148,67 @@ export const backfillCounts = migrations.runner([
   internal.migrations.countWebhookAttempts,
   internal.migrations.countDomains,
   internal.migrations.dropWebhookStats,
-])
+]
+
+/** How often, and how long, `postDeploy` waits for a step already running. */
+const POST_DEPLOY_RECHECK_MS = 5 * 60_000
+const POST_DEPLOY_RECHECKS = 288 // 24 hours
+
+/* The component skips a whole series while any of its steps runs. A step
+   started by another runner (such as the previous release's
+   `initializeEventCounts`) does not go on to the rest of this list, so wait
+   for it and start the series once nothing is running. A series that
+   `postDeploy` itself started carries on to the end alone, so there is
+   nothing to wait for. A recheck never resumes a step that was canceled or
+   failed meanwhile: that is an operator's call. */
+const postDeployRunner = {
+  args: { recheck: v.optional(v.number()) },
+  returns: v.null(),
+  handler: async (
+    ctx: MutationCtx,
+    { recheck = 0 }: { recheck?: number }
+  ): Promise<null> => {
+    const names = postDeployMigrations.map((ref) => getFunctionName(ref))
+    // A stale snapshot, as the component's own in-progress check reads it:
+    // a normal read would conflict with every batch a running step writes.
+    const statuses = await ctx.runQuery(
+      components.migrations.lib.getStatus,
+      { names },
+      { useStaleSnapshot: true }
+    )
+    const running = statuses.find((status) => status.state === "inProgress")
+    if (running) {
+      const rest = names.slice(names.indexOf(running.name) + 1)
+      if (rest.every((name) => running.next?.includes(name))) return null
+      if (recheck >= POST_DEPLOY_RECHECKS) {
+        console.warn(
+          `postDeploy: ${running.name} is still running; run migrations:postDeploy again once it finishes`
+        )
+        return null
+      }
+      await ctx.scheduler.runAfter(
+        POST_DEPLOY_RECHECK_MS,
+        internal.migrations.postDeploy,
+        { recheck: recheck + 1 }
+      )
+      return null
+    }
+    const stopped = statuses.find(
+      (status) => status.state === "canceled" || status.state === "failed"
+    )
+    if (recheck > 0 && stopped) {
+      console.warn(
+        `postDeploy: ${stopped.name} is ${stopped.state}; not resuming it. Run migrations:postDeploy to continue the backfills.`
+      )
+      return null
+    }
+    await migrations.runSerially(ctx, postDeployMigrations)
+    return null
+  },
+}
+
+/** Run by the migrate image after each deploy. The component records each
+    step by name, so a rerun skips finished steps. */
+export const postDeploy = internalMutation(postDeployRunner)
+/** Older name for `postDeploy`, kept for scripts and docs that call it. */
+export const backfillCounts = internalMutation(postDeployRunner)

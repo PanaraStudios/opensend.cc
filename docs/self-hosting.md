@@ -141,8 +141,8 @@ stopped; fix the failure and re-run. Copy the backup to another machine, and
 regularly rehearse restoring it into a separate project and volume.
 
 After backup, the installer pulls images, starts Convex, runs the one-shot migrate
-image to set the backend environment and deploy functions, requests the resumable
-`migrations:backfillCounts` backfill, then starts the application and any selected
+image to set the backend environment, deploy functions and start the resumable
+`migrations:postDeploy` backfills, then starts the application and any selected
 media services. The backfill runs in the background; older row totals may read
 low until it finishes. A failed deployment does not start the application or
 calling stack. The previous volume is never deleted. The migrate image deploys
@@ -614,6 +614,59 @@ are staged for background backfill; this release deliberately uses bounded
 creation-index scans until a later deployment promotes those indexes. The existing
 Better Auth verification expiry index is reused, never duplicated.
 
+### Production overlay
+
+The default Compose file keeps Convex's data in SQLite on the `convex-data` volume, which suits evaluation. For production, `compose.prod.yaml` adds:
+
+- Postgres 17 (pinned by digest) with data checksums, a `pg_isready` healthcheck, a named volume and no published port. Convex connects over the private Compose network via `POSTGRES_URL`.
+- A `backup` service that runs `pg_dump` every `BACKUP_INTERVAL_HOURS` (default 24) into `BACKUP_DIR` (default `./backups`), checks each dump with `pg_restore --list`, deletes dumps older than `BACKUP_RETENTION_DAYS` (default 14), and reports unhealthy once the first dump is overdue or the newest is older than two intervals. `pnpm setup` starts it after a successful deploy. It mounts `docker/backup/backup.sh`, so run it from a source checkout. `pnpm setup` creates the backup directory (`BACKUP_DIR`, default `./backups`) as the user running it; if you start the overlay another way, create it as the deploy user first (`mkdir -m 700 backups`), or Docker creates it as root: dumps are written `0600` and take that directory's owner, so a host cron that uploads them must run as that user or root.
+- Log rotation (`json-file`, `LOG_MAX_FILE` × `LOG_MAX_SIZE`, default 5 × 20 MB) on every service, memory limits (`POSTGRES_MEMORY=4g`, `CONVEX_MEMORY=6g`, `APP_MEMORY=1g`) and higher Convex concurrency limits (`APPLICATION_MAX_CONCURRENT_*`).
+
+Enable it before the first start:
+
+```sh
+# .env.docker
+COMPOSE_FILE=compose.yaml:compose.prod.yaml:compose.caddy.yaml
+```
+
+Then run `pnpm setup`. It generates a hex `POSTGRES_PASSWORD` and stops with a list of problems unless the three public URLs are `https://`, `LOG_AUTH_LINKS`, `ALLOW_LOCAL_OIDC` and `META_GRAPH_ORIGIN` are unset, and `POSTGRES_DB` equals `INSTANCE_NAME` with `-` replaced by `_` (Convex derives its database name that way; both default to `opensend`). Check the merged file with `docker compose --env-file .env.docker config` and look for `Connected to Postgres` in the `convex` log. Email (SES and the optional SMTP service) and calling settings are unchanged by the overlay.
+
+Sizing: the defaults suit a 4 vCPU / 16 GB host. Keep `PG_SHARED_BUFFERS` near 25% and `PG_EFFECTIVE_CACHE_SIZE` near 75% of `POSTGRES_MEMORY`. For a small staging host, try `POSTGRES_MEMORY=1g CONVEX_MEMORY=2g PG_SHARED_BUFFERS=256MB PG_EFFECTIVE_CACHE_SIZE=768MB`. Keep Postgres on the same host or low-latency network as Convex, leave 30% of the disk free for vacuum and WAL, and measure the database size after your first large import.
+
+**Existing SQLite install.** Adding the overlay starts an empty database. Stop writes, export (data and files), switch, then import into the fresh backend. The overlay refuses to start without `POSTGRES_PASSWORD`, which `pnpm setup` would only generate at the end, so create it first:
+
+```sh
+docker compose --env-file .env.docker stop app
+pnpm backend export --include-file-storage --path ./to-postgres.zip
+# add compose.prod.yaml to COMPOSE_FILE in .env.docker, then:
+grep -q '^POSTGRES_PASSWORD=.' .env.docker ||
+  echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env.docker
+docker compose --env-file .env.docker up -d --wait postgres convex
+pnpm backend import --replace-all ./to-postgres.zip
+pnpm setup
+```
+
+**File storage.** Files stay on the `convex-data` volume, which a database dump does not include. For off-host files, add `compose.prod-s3.yaml` with five private buckets (exports, snapshot imports, modules, files, search) and bucket-scoped credentials, on a fresh backend only (see [object storage](object-storage.md)). These are the backend's storage credentials, separate from each team's SES connection.
+
+**Host backups.** `scripts/prod-backup.sh` adds what the dumps miss: a `convex export --include-file-storage` zip (portable across storage and Postgres versions), a GPG-encrypted copy of `.env.docker` when `BACKUP_GPG_RECIPIENT` is set (use the key's full fingerprint: the imported key is used without a trust check), retention, and an optional `BACKUP_UPLOAD_COMMAND` for an off-site copy. If encryption or the upload fails, it still prunes old files and runs the remaining steps, then exits non-zero so cron reports it. Run it daily outside peak hours:
+
+```cron
+30 2 * * * cd /srv/opensend && BACKUP_GPG_RECIPIENT=<key fingerprint> BACKUP_UPLOAD_COMMAND='rclone copy "$BACKUP_DIR" remote:opensend-backups --max-age 2d' ./scripts/prod-backup.sh >> /var/log/opensend-backup.log 2>&1
+```
+
+**Restore from a dump** (destructive; rehearse it in a separate Compose project first):
+
+```sh
+docker compose --env-file .env.docker stop app convex backup
+docker compose --env-file .env.docker exec postgres sh -c \
+  'dropdb -U "$POSTGRES_USER" --if-exists "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+docker compose --env-file .env.docker run --rm --no-deps --entrypoint sh backup -c \
+  'pg_restore --no-owner --jobs 4 --dbname "$PGDATABASE" /backups/convex-<UTC>.dump'
+docker compose --env-file .env.docker up -d --wait
+```
+
+Restoring on a new server needs the same `INSTANCE_NAME`, `INSTANCE_SECRET`, `BETTER_AUTH_SECRET`, `SSO_ENCRYPTION_KEY` (and `SES_ENCRYPTION_KEY`, if set) from the saved env file. If only the export zip survives, or the Postgres major version changed, start a fresh `postgres` and `convex`, then `pnpm backend import --replace-all` the zip and run `pnpm setup`. Upgrade Postgres within 17.x by changing `POSTGRES_IMAGE`; a major upgrade needs a dump and restore into a new volume.
+
 ## Backups and recovery
 
 Keep an encrypted copy of `.env.docker`, especially the instance secret and SSO encryption key, with each backup. Restoring data without the same secrets can invalidate sessions or make OIDC secrets unreadable.
@@ -631,14 +684,14 @@ For data exports, `pnpm backend export --path backup.zip --include-file-storage`
 
 Back up first. Pin the new image digests and compatible Better Auth/Convex versions on a branch. Regenerate the component schema and Convex types, run the checks below, and rehearse on a restored isolated volume. Apply schema additions compatibly before tightening validators. Re-run setup only after the rehearsal passes. Keep the previous images and backup for rollback; older binaries may not understand an upgraded database.
 
-After deploying a version that adds row counts (the "Page 1 – 3 of 120 contacts" in list footers), count the rows written before it:
+After each deploy, the migrate image starts `migrations:postDeploy`, which runs every backfill in order (row counts such as the "Page 1 – 3 of 120 contacts" in list footers, email metrics, broadcast reports and stored inbound parsing). It retries the start four times with a growing delay, because a fresh deploy can briefly exhaust the backend's write limit. When you deploy without the migrate image, start it yourself and watch progress:
 
 ```sh
-pnpm backend run migrations:backfillCounts
+pnpm backend run migrations:postDeploy
 pnpm backend run --component migrations lib:getStatus --watch
 ```
 
-The backfill runs in the background in batches and is safe to run again: it resumes where it stopped and never counts a row twice. Until it finishes, list totals and segment sizes can read low.
+The backfills run in the background in batches and are safe to run again: they resume where they stopped, skip finished steps and never count a row twice. `migrations:backfillCounts` is an older name for the same runner. If a step is already running when it starts (for example the previous release's event-count backfill), it checks again every 5 minutes for up to 24 hours and starts the remaining steps once nothing is running. A series it started itself needs no rechecks, and a recheck never resumes a step you canceled or that failed meanwhile: run `migrations:postDeploy` again when you want it to continue. Until it finishes, list totals and segment sizes can read low.
 
 The substring-search fix needs no backfill: stored fields and indexes are unchanged. Reload open dashboard lists after deploying it so pagination starts with fresh cursors. Searches now scan bounded index pages and keep totals unknown until the range is exhausted; selective searches may take more requests. See [search pagination](search-pagination.md) for the engine limits, read budgets and regression coverage.
 

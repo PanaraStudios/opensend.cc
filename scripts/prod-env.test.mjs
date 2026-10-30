@@ -1,0 +1,132 @@
+import assert from "node:assert/strict"
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { test } from "node:test"
+import {
+  prepareBackupDir,
+  productionDefaults,
+  productionProblems,
+  productionServices,
+  usesProductionOverlay,
+} from "./prod-env.mjs"
+
+const good = {
+  COMPOSE_FILE: "compose.yaml:compose.prod.yaml:compose.caddy.yaml",
+  POSTGRES_PASSWORD: "a".repeat(48),
+  SITE_URL: "https://mail.example.com",
+  CONVEX_PUBLIC_URL: "https://realtime.example.com",
+  CONVEX_PUBLIC_SITE_URL: "https://api.example.com",
+}
+
+test("overlay detection and generated secrets", () => {
+  assert.equal(usesProductionOverlay({ COMPOSE_FILE: "compose.yaml" }), false)
+  assert.deepEqual(productionDefaults({}), {})
+  assert.match(productionDefaults(good).POSTGRES_PASSWORD, /^[0-9a-f]{48}$/)
+  // Setup starts the backup service; nothing extra without the overlay.
+  assert.deepEqual(productionServices(good), ["backup"])
+  assert.deepEqual(productionServices({ COMPOSE_FILE: "compose.yaml" }), [])
+})
+
+test("production env validation", () => {
+  assert.deepEqual(productionProblems(good), [])
+  assert.deepEqual(productionProblems({ SITE_URL: "http://x" }), [])
+  const bad = productionProblems({
+    ...good,
+    POSTGRES_PASSWORD: "p@ss/word",
+    SITE_URL: "http://localhost:3000",
+    LOG_AUTH_LINKS: "true",
+    INSTANCE_NAME: "my-team",
+  })
+  assert.equal(bad.length, 4)
+})
+
+test("compose.prod.yaml keeps Postgres private and secrets in env", () => {
+  const text = readFileSync(
+    new URL("../compose.prod.yaml", import.meta.url),
+    "utf8"
+  )
+  const service = (name) =>
+    text.match(
+      new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  \\S|^volumes:)`, "m")
+    )?.[1]
+  const pg = service("postgres")
+  assert.ok(pg, "postgres service")
+  assert.doesNotMatch(pg, /^\s+ports:/m, "postgres must not publish a port")
+  assert.match(pg, /image: \$\{POSTGRES_IMAGE:-postgres:\d+\.\d+/)
+  assert.match(pg, /restart: unless-stopped/)
+  assert.match(pg, /healthcheck:/)
+  assert.match(pg, /POSTGRES_PASSWORD: \$\{POSTGRES_PASSWORD:\?/)
+  assert.match(service("convex"), /condition: service_healthy/)
+  assert.match(service("convex"), /POSTGRES_URL: .*@postgres:5432$/m)
+  assert.doesNotMatch(text, /POSTGRES_PASSWORD:-/, "no default password")
+  for (const name of [
+    "postgres",
+    "convex",
+    "migrate",
+    "app",
+    "backup",
+    "smtp",
+    "call-gateway",
+  ])
+    assert.match(service(name), /logging: \*logging/, `${name} log rotation`)
+})
+
+test("compose.prod-s3.yaml never sets an optional S3 setting to an empty string", () => {
+  const text = readFileSync(
+    new URL("../compose.prod-s3.yaml", import.meta.url),
+    "utf8"
+  )
+  const settings = text.split("\n").filter((line) => /^ {6}\w+:/.test(line))
+  assert.ok(settings.length >= 8)
+  // Convex reads a set-but-empty S3_ENDPOINT_URL as the endpoint.
+  for (const line of settings) assert.doesNotMatch(line, /:-\}/, line)
+  assert.doesNotMatch(text, /^\s+S3_ENDPOINT_URL:/m)
+  assert.doesNotMatch(text, /^\s+AWS_S3_FORCE_PATH_STYLE:/m)
+})
+
+test("the SQLite-to-Postgres steps create POSTGRES_PASSWORD before starting Postgres", () => {
+  const doc = readFileSync(
+    new URL("../docs/self-hosting.md", import.meta.url),
+    "utf8"
+  )
+  const start = doc.indexOf("**Existing SQLite install.**")
+  assert.ok(start > 0)
+  const steps = doc.slice(start, doc.indexOf("```\n\n", start))
+  const password = steps.indexOf("POSTGRES_PASSWORD=$(openssl rand -hex 24)")
+  const up = steps.indexOf("up -d --wait postgres")
+  assert.ok(password > 0 && up > password, "password before the first up")
+  // Writes stop before the export, so it misses nothing.
+  assert.ok(steps.indexOf("stop app") < steps.indexOf("backend export"))
+})
+
+test("setup creates the backup directory as its own user before Docker can", (t) => {
+  const project = mkdtempSync(join(tmpdir(), "opensend-setup-"))
+  t.after(() => rmSync(project, { recursive: true, force: true }))
+  assert.equal(
+    prepareBackupDir({ COMPOSE_FILE: "compose.yaml" }, project),
+    undefined
+  )
+  assert.equal(existsSync(join(project, "backups")), false)
+  const dir = prepareBackupDir(good, project)
+  assert.equal(dir, join(project, "backups"))
+  assert.equal(statSync(dir).mode & 0o777, 0o700)
+  assert.equal(statSync(dir).uid, process.getuid())
+  // BACKUP_DIR, relative to the project or absolute, as Compose reads it.
+  assert.equal(
+    prepareBackupDir({ ...good, BACKUP_DIR: "./data/dumps" }, project),
+    join(project, "data/dumps")
+  )
+  const absolute = join(project, "elsewhere")
+  assert.equal(
+    prepareBackupDir({ ...good, BACKUP_DIR: absolute }, project),
+    absolute
+  )
+  assert.ok(existsSync(absolute))
+})

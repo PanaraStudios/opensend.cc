@@ -44,11 +44,10 @@ export const apiTables = {
   })
     .index("by_tokenHash", ["tokenHash"])
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_permission", ["organizationId", "permission"])
-    .searchIndex("search_keys", {
-      searchField: "search",
-      filterFields: ["organizationId", "permission"],
-    }),
+    .index("by_organizationId_and_permission", [
+      "organizationId",
+      "permission",
+    ]),
   /** High-churn usage, kept off the key; written at most once a minute. */
   apiKeyUsage: defineTable({
     apiKeyId: v.id("apiKeys"),
@@ -98,18 +97,7 @@ export const apiTables = {
       "source",
     ])
     .index("by_organizationId_and_emailId", ["organizationId", "emailId"])
-    .index("by_organizationId_and_apiKeyId", ["organizationId", "apiKeyId"])
-    .searchIndex("search_summary", {
-      searchField: "summary",
-      filterFields: [
-        "organizationId",
-        "statusClass",
-        "source",
-        "userAgent",
-        "emailId",
-        "apiKeyId",
-      ],
-    }),
+    .index("by_organizationId_and_apiKeyId", ["organizationId", "apiKeyId"]),
   apiLogBodies: defineTable({
     logId: v.id("apiLogs"),
     /** Authorization and cookies are redacted before they are stored. */

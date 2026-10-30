@@ -346,10 +346,6 @@ export const channelTables = {
     ])
     .index("by_conversationId_and_direction", ["conversationId", "direction"])
     .index("by_channel_and_externalId", ["channel", "externalId"])
-    .index("by_accountId_and_reactionTargetExternalId", [
-      "accountId",
-      "reactionTargetExternalId",
-    ])
     .index("by_accountId_and_reactionTargetExternalId_and_observedAt", [
       "accountId",
       "reactionTargetExternalId",

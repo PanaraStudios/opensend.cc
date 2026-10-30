@@ -11,6 +11,7 @@ packages
 !packages/sdk/src
 *.tsbuildinfo
 .pnpm-store
+backups
 .playwright-mcp
 .cursor
 .claude

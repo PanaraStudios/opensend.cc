@@ -8,6 +8,7 @@ import {
 } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
+import schema from "../schema"
 import { requireTeam } from "../access"
 import { patchRow } from "../counts"
 import { emitEvent } from "../events"
@@ -768,6 +769,7 @@ export const sampleFile = internalQuery({
     id: v.string(),
     caller: v.optional(callerValue),
   },
+  returns: schema.doc("storedFiles"),
   handler: async (
     ctx,
     { templateId, id, caller }

@@ -89,7 +89,11 @@ docker compose --env-file .env.docker -f compose.yaml -f compose.storage.yaml up
 ```
 
 Include the override on subsequent Compose operations, or set `COMPOSE_FILE` to
-`compose.yaml:compose.storage.yaml` in your private environment. Instance settings
+`compose.yaml:compose.storage.yaml` in your private environment. With the
+[production overlay](self-hosting.md#production-overlay), use the shipped
+`compose.prod-s3.yaml` instead. It sets the region, credentials and buckets
+but never `S3_ENDPOINT_URL`, so AWS S3 works as is; for R2 or MinIO add the
+endpoint in a further override, as the file's header shows. Instance settings
 shows “Convex storage”; the backend configuration determines whether bytes live
 on disk or in remote buckets.
 

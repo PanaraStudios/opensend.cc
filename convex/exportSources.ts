@@ -23,6 +23,9 @@ import { LOG_SOURCES, LOG_STATUS_CLASSES } from "../lib/dashboard/logs"
 import { matchesSearch, teamPage } from "./lists"
 import { counters } from "./counts"
 
+/** Channel identities one exported contact row lists. */
+const IDENTITIES_PER_ROW = 20
+
 type Page = { rows: string[][]; isDone: boolean; continueCursor: string }
 
 /** Where an export reads its rows. `page` returns one batch of CSV cells,
@@ -378,11 +381,11 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
         rows: await Promise.all(
           result.page.map(async (contact) => {
             const identities = []
-            for await (const identity of ctx.db
+            // Bounded per row: a page of contacts must stay within one query.
+            for (const identity of await ctx.db
               .query("channelContacts")
-              .withIndex("by_contactId", (q) =>
-                q.eq("contactId", contact._id)
-              )) {
+              .withIndex("by_contactId", (q) => q.eq("contactId", contact._id))
+              .take(IDENTITIES_PER_ROW)) {
               if (
                 identity.organizationId !== organizationId ||
                 identity.mergedIntoId

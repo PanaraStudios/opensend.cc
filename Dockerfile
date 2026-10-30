@@ -1,4 +1,4 @@
-FROM node:22.18.0-alpine@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS migrate-deps
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS migrate-deps
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -20,14 +20,15 @@ JS
 RUN pnpm --dir /esbuild install --prod --ignore-scripts \
     && cp /esbuild/node_modules/@esbuild/linux-*/bin/esbuild /out/esbuild
 
-FROM node:22.18.0-alpine@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS migrate
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS migrate
 ARG RELEASE_TAG
 ENV OPENSEND_RELEASE_VERSION=${RELEASE_TAG}
 WORKDIR /app
 ENV NODE_ENV=production ESBUILD_BINARY_PATH=/usr/local/bin/esbuild
 COPY --from=migrate-deps /out/esbuild /usr/local/bin/esbuild
 COPY --from=migrate-deps --chown=node:node /out/node_modules ./node_modules
-COPY --chown=node:node package.json tsconfig.json ./
+# convex.json pins the Node version Convex Cloud runs "use node" actions on.
+COPY --chown=node:node package.json tsconfig.json convex.json ./
 COPY --chown=node:node convex ./convex
 COPY --chown=node:node lib ./lib
 # Convex bundles shared contracts from the SDK and the call-gateway client.
@@ -38,7 +39,7 @@ COPY --chown=node:node docker/migrate/run.mjs ./docker/migrate/run.mjs
 USER node
 ENTRYPOINT ["node", "docker/migrate/run.mjs"]
 
-FROM node:22.18.0-alpine@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS build
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -47,9 +48,12 @@ COPY docker/migrate/package.json ./docker/migrate/package.json
 RUN pnpm install --frozen-lockfile
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build
+# COPY brings in services/*, whose dependencies the app never loads (each
+# service has its own image and typecheck). pnpm's pre-run check would
+# reinstall them from the registry on every build.
+RUN pnpm --config.verify-deps-before-run=false build
 
-FROM node:22.18.0-alpine@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS app
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS app
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build --chown=node:node /app/.next/standalone ./

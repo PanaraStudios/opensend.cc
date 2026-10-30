@@ -235,15 +235,18 @@ also forwards calling and telemetry settings. In cloud mode it uses the saved
 deploy key. Check that it exited with code `0` in `dc ps -a`. Search index builds
 can make deployment take longer on a large database.
 
-Migration automatically starts the resumable custom-event counter backfill in
-bounded batches. It needs one deployment, with no manual conversion or second
+Migration automatically starts the resumable `migrations:postDeploy` backfills
+in bounded batches, retrying the start up to four times. It needs one deployment, with no manual conversion or second
 deployment. Teams with existing definitions may briefly see “Custom event counts
 are being initialized” when adding a definition. Existing definitions, sends,
 updates and deletes remain available. Once counting completes, new definitions
 must fit the 10,000-type cap. Existing definitions above it are kept.
 
-The script upgrade also requests `migrations:backfillCounts`. The manual paths
-above request the same runner. It rebuilds historical counts and email metrics,
+The script upgrade also requests `migrations:backfillCounts`, an older name for
+the same runner, as do the manual paths above; a request while it is running
+changes nothing. If a backfill step from the previous release is still running,
+the runner checks again every 5 minutes for up to 24 hours and then starts the
+remaining steps. It rebuilds historical counts and email metrics,
 projects stored SES events, rebuilds broadcast reports, queues parsing for stored
 inbound mail and removes replaced counter fields. It records progress and runs
 in the background; older totals may read low until it finishes. Rerunning resumes

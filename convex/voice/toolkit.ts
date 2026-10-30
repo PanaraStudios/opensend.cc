@@ -1,4 +1,5 @@
 "use node"
+import { v } from "convex/values"
 import { internalAction } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Doc, Id } from "../_generated/dataModel"
@@ -7,6 +8,7 @@ import { executeTool } from "../botTools/execute"
 import { searchKnowledge } from "../knowledge/search"
 export const run = internalAction({
   args: envelope,
+  returns: v.any(), // Gateway envelope result: tool output is arbitrary JSON.
   handler: async (ctx, args): Promise<unknown> => {
     const started = Date.now()
     const prepared: {

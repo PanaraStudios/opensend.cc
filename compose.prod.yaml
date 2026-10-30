@@ -1,0 +1,156 @@
+# Production overlay: Convex on Postgres instead of the default SQLite file,
+# scheduled pg_dump backups, log rotation, memory limits and restart policies.
+#
+#   COMPOSE_FILE=compose.yaml:compose.prod.yaml:compose.caddy.yaml
+#   docker compose --env-file .env.docker up -d --wait
+#
+# Required in .env.docker: POSTGRES_PASSWORD (URL-safe, `openssl rand -hex 24`;
+# `pnpm setup` generates it when this file is in COMPOSE_FILE). Optional S3
+# file storage: add compose.prod-s3.yaml. Runbook: docs/self-hosting.md
+# ("Production overlay").
+#
+# Convex names its database after INSTANCE_NAME with "-" replaced by "_". The
+# default INSTANCE_NAME is "opensend"; if you change it, set POSTGRES_DB to the
+# underscored name BEFORE the first start.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-20m}
+    max-file: ${LOG_MAX_FILE:-5}
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b}
+    restart: unless-stopped
+    stop_grace_period: 60s
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-convex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker (openssl rand -hex 24)}
+      POSTGRES_DB: ${POSTGRES_DB:-opensend}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    # Sized for a 4 GB database container (about 25% of it as shared_buffers).
+    # Scale PG_* with POSTGRES_MEMORY; see docs/self-hosting.md.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-1GB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-3GB}
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_connections=100
+      - -c
+      - wal_compression=on
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - autovacuum_vacuum_scale_factor=0.05
+      - -c
+      - autovacuum_analyze_scale_factor=0.02
+      - -c
+      - log_min_duration_statement=2000
+      - -c
+      - log_checkpoints=on
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEMORY:-4g}
+    logging: *logging
+  convex:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # No database name: Convex derives it from INSTANCE_NAME.
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-convex}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker}@postgres:5432
+      # The Postgres container is on the private Compose network and does not
+      # serve TLS. Never point POSTGRES_URL at a remote host with this set.
+      DO_NOT_REQUIRE_SSL: "1"
+      DISABLE_METRICS_ENDPOINT: "true"
+      RUST_LOG: ${CONVEX_RUST_LOG:-info}
+      # Convex defaults to 16 of each. A 4+ vCPU host has headroom for more;
+      # raise gradually while watching CPU.
+      APPLICATION_MAX_CONCURRENT_MUTATIONS: ${APPLICATION_MAX_CONCURRENT_MUTATIONS:-32}
+      APPLICATION_MAX_CONCURRENT_QUERIES: ${APPLICATION_MAX_CONCURRENT_QUERIES:-32}
+      APPLICATION_MAX_CONCURRENT_NODE_ACTIONS: ${APPLICATION_MAX_CONCURRENT_NODE_ACTIONS:-16}
+      APPLICATION_MAX_CONCURRENT_V8_ACTIONS: ${APPLICATION_MAX_CONCURRENT_V8_ACTIONS:-32}
+    deploy:
+      resources:
+        limits:
+          memory: ${CONVEX_MEMORY:-6g}
+    healthcheck:
+      start_period: 30s
+    logging: *logging
+  migrate:
+    logging: *logging
+  app:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${APP_MEMORY:-1g}
+    logging: *logging
+  smtp:
+    logging: *logging
+  janus:
+    logging: *logging
+  freeswitch:
+    logging: *logging
+  voice-agent:
+    logging: *logging
+  drachtio:
+    logging: *logging
+  call-gateway:
+    logging: *logging
+  coturn:
+    logging: *logging
+  backup:
+    image: ${POSTGRES_IMAGE:-postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-convex}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker}
+      PGDATABASE: ${POSTGRES_DB:-opensend}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_START_DELAY_SECONDS: ${BACKUP_START_DELAY_SECONDS:-300}
+    volumes:
+      - ${BACKUP_DIR:-./backups}:/backups
+      - ./docker/backup/backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/backup.sh", "loop"]
+    healthcheck:
+      # Healthy while the newest dump is younger than two intervals, or while
+      # the first dump is not due yet, so `up --wait` does not block on it.
+      test: ["CMD-SHELL", "sh /usr/local/bin/backup.sh status"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 1m
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *logging
+volumes:
+  postgres-data:
