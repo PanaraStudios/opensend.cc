@@ -308,8 +308,8 @@ export const identities = query({
 
 /** Creates or merges contacts by email; one batch of an import or of
     "Add manually". Every contact joins `segmentIds`. A row that fails
-    validation is skipped and counted; with `skipExisting`, so is an address
-    already in the team. */
+    validation is counted as failed; with `skipExisting`, an address already
+    in the team is skipped and counted. */
 export const upsert = mutation({
   args: {
     organizationId: v.string(),

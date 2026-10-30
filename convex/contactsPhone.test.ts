@@ -2,7 +2,12 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { EXPORT_SOURCES } from "./exportSources"
-import { SEGMENT_DELETED } from "./contactImports"
+import {
+  SEGMENT_DELETED,
+  TOPIC_DELETED,
+  addImportError,
+  enqueueImport,
+} from "./contactImports"
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
@@ -328,4 +333,69 @@ test("imports stored before the failed count read invalid rows apart", async () 
   expect(
     await (await f.call(`/contacts/imports/${jobId}`)).json()
   ).toMatchObject({ counts: { total: 2, created: 1, skipped: 0, failed: 1 } })
+})
+
+test("an import keeps going when its topic is deleted and says so", async () => {
+  const f = await setup()
+  const [gone, kept] = await Promise.all(
+    ["Gone", "Kept"].map((name) =>
+      f.owner.client.mutation(api.topics.create, {
+        organizationId: f.organizationId,
+        name,
+        description: "",
+        defaultSubscription: "opt_out",
+        visibility: "public",
+      })
+    )
+  )
+  const { jobId } = await f.t.run((ctx) =>
+    enqueueImport(ctx, {
+      organizationId: f.organizationId,
+      contacts: Array.from({ length: 150 }, (_, n) => ({
+        email: `reader${n}@example.test`,
+      })),
+      segmentIds: [],
+      skipExisting: false,
+      topics: [gone, kept].map((topicId) => ({
+        topicId,
+        subscription: "subscribed" as const,
+      })),
+    })
+  )
+  // Two topics share one step's membership budget: 100 contacts a step.
+  await f.t.mutation(internal.contactImports.step, { id: jobId, offset: 0 })
+  await f.owner.client.mutation(api.topics.remove, { id: gone })
+  await f.t.mutation(internal.contactImports.step, { id: jobId, offset: 100 })
+  const job = await f.owner.client.query(api.contactImports.get, {
+    id: jobId,
+  })
+  expect(job).toMatchObject({
+    status: "completed",
+    result: { created: 150, skipped: 0, failed: 0 },
+  })
+  expect(job?.result.errors).toEqual([TOPIC_DELETED])
+  const choices = await f.t.run((ctx) =>
+    ctx.db
+      .query("topicSubscriptions")
+      .withIndex("by_topicId_and_subscription", (q) => q.eq("topicId", kept))
+      .collect()
+  )
+  expect(choices).toHaveLength(150)
+})
+
+test("import notes keep the five-message limit and leave row errors first", () => {
+  const errors: string[] = []
+  for (let n = 0; n < 7; n++) addImportError(errors, `row ${n}`)
+  expect(errors).toEqual(["row 0", "row 1", "row 2", "row 3", "row 4"])
+  addImportError(errors, SEGMENT_DELETED)
+  addImportError(errors, SEGMENT_DELETED)
+  addImportError(errors, TOPIC_DELETED)
+  addImportError(errors, "row 7")
+  expect(errors).toEqual([
+    "row 0",
+    "row 1",
+    "row 2",
+    SEGMENT_DELETED,
+    TOPIC_DELETED,
+  ])
 })
