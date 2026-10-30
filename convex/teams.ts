@@ -240,7 +240,7 @@ export const deleteAccount = mutation({
     // instance settings, whether or not AWS is connected.
     if (access.admin)
       throw new ConvexError(
-        "The installation administrator cannot delete their account. Transfer the role to another account first"
+        "The installation administrator cannot delete their account. Transfer the role to another verified account first with the installationAdmin:transfer command (see the self-hosting guide)"
       )
     const sid = await sessionId(ctx)
     const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {

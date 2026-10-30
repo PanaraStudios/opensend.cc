@@ -1237,7 +1237,7 @@ test("the installation administrator cannot delete their account without AWS eit
   )
   await expect(
     f.owner.client.mutation(api.teams.deleteAccount)
-  ).rejects.toThrow("installation administrator")
+  ).rejects.toThrow("installationAdmin:transfer")
   await f.outsider.client.mutation(api.teams.deleteAccount)
   expect(await f.outsider.client.query(api.teams.snapshot)).toBeNull()
 })
