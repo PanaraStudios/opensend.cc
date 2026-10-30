@@ -1230,6 +1230,18 @@ test("team deletion, last-member departure and administrator deletion cannot orp
   )
 })
 
+test("the installation administrator cannot delete their account without AWS either", async () => {
+  const f = await fixture()
+  await f.t.run((ctx) =>
+    ctx.db.patch("installation", f.installation, { accountId: undefined })
+  )
+  await expect(
+    f.owner.client.mutation(api.teams.deleteAccount)
+  ).rejects.toThrow("installation administrator")
+  await f.outsider.client.mutation(api.teams.deleteAccount)
+  expect(await f.outsider.client.query(api.teams.snapshot)).toBeNull()
+})
+
 test("setup generates its encryption key without an SES env variable and never exposes it", async () => {
   const f = await fixture()
   vi.stubEnv("BETTER_AUTH_SECRET", "test-server-secret-".repeat(4))

@@ -235,10 +235,12 @@ export const deleteAccount = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const { access, installation } = await requireSetupComplete(ctx)
-    if (installation.accountId && access.admin)
+    const { access } = await requireSetupComplete(ctx)
+    // Without a live installation administrator nobody can reach the
+    // instance settings, whether or not AWS is connected.
+    if (access.admin)
       throw new ConvexError(
-        "The installation administrator cannot delete their account while AWS is connected"
+        "The installation administrator cannot delete their account. Transfer the role to another account first"
       )
     const sid = await sessionId(ctx)
     const account = await ctx.runQuery(components.betterAuth.teams.snapshot, {
