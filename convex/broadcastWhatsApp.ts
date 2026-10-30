@@ -57,6 +57,7 @@ import { channelMessageStatusValue } from "./tables/channels"
 import { teamTemplate, approvedTemplateOptions } from "./templates"
 import { insertRow } from "./counts"
 import { templateMediaHeader, storedComponents } from "../lib/meta/templates"
+import { deliveryFailureReason } from "../lib/meta/errors"
 
 export async function resolveWhatsAppSend(
   ctx: QueryCtx,
@@ -401,6 +402,19 @@ export const review = action({
     }
   },
 })
+/** Recipients that failed before reasons were kept on the row read their
+    message for it. */
+async function legacyFailureReason(
+  ctx: QueryCtx,
+  organizationId: string,
+  recipient: Doc<"broadcastRecipients">
+) {
+  if (!recipient.messageId) return undefined
+  const message = await ctx.db.get("channelMessages", recipient.messageId)
+  return message?.organizationId === organizationId
+    ? deliveryFailureReason(message.errorCode, message.error)
+    : undefined
+}
 export const recipients = query({
   args: { ...scope, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(
@@ -455,13 +469,19 @@ export const recipients = query({
           }
           channelIdentity = await identity
         }
+        const messageStatus = await statuses(recipient)
         return {
           ...publicRecipient(recipient),
+          failureReason:
+            recipient.failureReason ??
+            (messageStatus === "failed"
+              ? await legacyFailureReason(ctx, organizationId, recipient)
+              : undefined),
           contact: contact
             ? { ...contact, channelIdentity: channelIdentity ?? null }
             : null,
           phone: contact?.phone,
-          messageStatus: await statuses(recipient),
+          messageStatus,
           emailStatus:
             email?.organizationId === organizationId ? email.status : undefined,
         }

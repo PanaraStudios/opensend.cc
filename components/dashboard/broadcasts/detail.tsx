@@ -526,7 +526,9 @@ function BroadcastRecipients({ item }: { item: Broadcast }) {
               />
               {recipient.failureReason ? (
                 <p className="mt-1 text-xs text-destructive">
-                  {emailFailureMessage(recipient.failureReason)}
+                  {email
+                    ? emailFailureMessage(recipient.failureReason)
+                    : recipient.failureReason}
                 </p>
               ) : null}
               {recipient.providerError ? (

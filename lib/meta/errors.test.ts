@@ -6,6 +6,7 @@ import {
   parseGraphError,
   parseGraphResponse,
   metaErrorReason,
+  deliveryFailureReason,
 } from "./errors"
 
 const classify = (code?: number, status = 400, isTransient = false) =>
@@ -182,4 +183,14 @@ test("Messenger permission, unavailable recipient and window errors are final ev
     classifyGraphError({ status: 500, code: 2, isTransient: true }),
     "retry"
   )
+})
+
+test("delivery failures read as reasons, keeping Meta's text for other codes", () => {
+  assert.match(
+    deliveryFailureReason(131026, "Message undeliverable")!,
+    /^Not on WhatsApp/
+  )
+  assert.match(deliveryFailureReason(130429, "Rate limit hit")!, /rate limit/)
+  assert.equal(deliveryFailureReason(131999, "Something odd"), "Something odd")
+  assert.equal(deliveryFailureReason(undefined, undefined), undefined)
 })

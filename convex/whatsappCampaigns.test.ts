@@ -501,6 +501,27 @@ test("sent-without-receipt settles after 24h; a broadcast that reached anyone is
   expect((await f.read(id))?.status).toBe("sent")
   vi.setSystemTime(settledClock)
   expect((await f.stats(id)).failed).toBe(1)
+  const failedRow = (await f.recipients(id)).find(
+    (row) => row.messageId === rows[1].messageId
+  )
+  expect(failedRow?.failureReason).toMatch(/^Not on WhatsApp/)
+  // Rows failed before reasons were kept read them from their message.
+  await f.t.run((ctx) =>
+    ctx.db.patch("broadcastRecipients", failedRow!._id, {
+      failureReason: undefined,
+    })
+  )
+  const outcomes = await f.owner.client.query(
+    api.broadcastWhatsApp.recipients,
+    {
+      organizationId: f.owner.team,
+      id,
+      paginationOpts: { cursor: null, numItems: 20 },
+    }
+  )
+  expect(
+    outcomes.page.find((row) => row._id === failedRow!._id)?.failureReason
+  ).toMatch(/^Not on WhatsApp/)
   // Rows settled before this rule read Failed; the migration corrects them.
   await f.t.run((ctx) => patchRow(ctx, "broadcasts", id, { status: "failed" }))
   await f.t.action((ctx) =>
