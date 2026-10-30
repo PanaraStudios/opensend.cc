@@ -370,7 +370,7 @@ async function status(
     message.direction === "outbound" &&
     errors.some((error) => error.code === MEDIA_UNUSABLE_CODE)
   )
-    await forgetPayloadFiles(ctx, account._id, content.payload)
+    await forgetPayloadFiles(ctx, account._id, content)
   if (errors.some((error) => error.code === 131050)) {
     const identity = await ctx.db.get(
       "channelContacts",

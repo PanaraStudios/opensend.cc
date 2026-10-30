@@ -17,7 +17,12 @@ export const deliver = internalAction({
     const claim = await ctx.runMutation(internal.channels.messages.claim, args)
     if (!claim) return null
     let outcome:
-      | { kind: "sent"; externalId: string; response?: string }
+      | {
+          kind: "sent"
+          externalId: string
+          response?: string
+          mediaIds?: string[]
+        }
       | {
           kind: "failed"
           error: string
@@ -26,7 +31,7 @@ export const deliver = internalAction({
           action: "retry" | "retry_after" | "final" | "token_invalid"
         }
     const payload: unknown = JSON.parse(claim.payload)
-    const cache: MediaCacheUse = { reused: [] }
+    const cache: MediaCacheUse = { mediaIds: [], reused: [] }
     const send = async () =>
       object(
         await graph({
@@ -69,6 +74,7 @@ export const deliver = internalAction({
           entries: cache.reused,
         })
         cache.fresh = true
+        cache.mediaIds = []
         result = await send()
       }
       const externalId =
@@ -77,7 +83,12 @@ export const deliver = internalAction({
       // A malformed success is ambiguous; do not resend.
       if (!externalId)
         throw new Error("Meta accepted the call without a message id")
-      outcome = { kind: "sent", externalId, response: JSON.stringify(result) }
+      outcome = {
+        kind: "sent",
+        externalId,
+        response: JSON.stringify(result),
+        ...(cache.mediaIds.length ? { mediaIds: cache.mediaIds } : {}),
+      }
     } catch (error) {
       if (isUnreachableError(error)) {
         outcome = {

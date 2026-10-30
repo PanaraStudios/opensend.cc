@@ -567,31 +567,62 @@ test("a reused media id Meta no longer knows uploads again once and resends; a f
   expect((await h.send()).status).toBe("failed")
   expect(h.graph.to(`/${PHONE_ID}/media`)).toHaveLength(3)
   expect(h.headerIds().slice(3)).toEqual(["media-2", "media-3"])
-  // Meta accepts a send and then fails it for its media in a status
-  // webhook: the id is dropped and the next send uploads again.
+  // Meta accepts sends and then fails them for their media in status
+  // webhooks: only the id a failed send used is dropped.
+  let accepted = 0
   h.graph.use({
     method: "POST",
     path: `/${PHONE_ID}/messages`,
-    respond: () => ({ messages: [{ id: "wamid.accepted" }] }),
+    respond: () => ({ messages: [{ id: `wamid.accepted-${++accepted}` }] }),
   })
-  expect((await h.send()).externalId).toBe("wamid.accepted")
+  const failedStatus = (wamid: string) =>
+    project(
+      f,
+      envelope({
+        metadata: { phone_number_id: PHONE_ID },
+        statuses: [
+          {
+            id: wamid,
+            status: "failed",
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            recipient_id: SENDER,
+            errors: [{ code: 131053, title: "Media upload error" }],
+          },
+        ],
+      })
+    )
+  const early = await h.send()
+  expect(early.externalId).toBe("wamid.accepted-1")
   expect(h.headerIds().at(-1)).toBe("media-3")
-  await project(
-    f,
-    envelope({
-      metadata: { phone_number_id: PHONE_ID },
-      statuses: [
-        {
-          id: "wamid.accepted",
-          status: "failed",
-          timestamp: String(Math.floor(Date.now() / 1000)),
-          recipient_id: SENDER,
-          errors: [{ code: 131053, title: "Media upload error" }],
-        },
-      ],
-    })
-  )
+  const sentIds = () =>
+    f.t.run(
+      async (ctx) =>
+        (await ctx.db
+          .query("channelMessageContents")
+          .withIndex("by_messageId", (q) => q.eq("messageId", early._id))
+          .unique())!.sentMediaIds
+    )
+  expect(await sentIds()).toEqual(["media-3"])
+  // A newer upload lands before the early send's failure arrives: the
+  // late webhook leaves it alone.
+  const [current] = await h.cache()
+  await f.t.mutation(internal.channels.mediaCache.remember, {
+    organizationId: f.team,
+    accountId: f.account,
+    fileId: h.fileId,
+    storageId: current.storageId,
+    mediaId: "media-newer",
+  })
+  await failedStatus("wamid.accepted-1")
+  expect((await h.cache()).map((row) => row.mediaId)).toEqual(["media-newer"])
+  // A send that used the newer id and fails drops it; the next send
+  // uploads again.
+  expect((await h.send()).externalId).toBe("wamid.accepted-2")
+  expect(h.headerIds().at(-1)).toBe("media-newer")
+  await failedStatus("wamid.accepted-2")
   expect(await h.cache()).toEqual([])
+  await h.send()
+  expect(h.headerIds().at(-1)).toBe("media-4")
 })
 
 test("disconnecting a number drops its reused media ids", async () => {

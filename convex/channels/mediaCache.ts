@@ -106,13 +106,17 @@ export const forget = internalMutation({
   },
 })
 
-/** Drops a number's ids for the stored files a message payload names,
-    after Meta failed the message for its media. */
+/** After Meta failed a message for its media: drops the number's cached
+    ids for the stored files its payload names, but only the ids that send
+    used. A newer upload, made while earlier sends were still failing,
+    stays. */
 export async function forgetPayloadFiles(
   ctx: MutationCtx,
   accountId: Id<"channelAccounts">,
-  payload: string
+  content: { payload: string; sentMediaIds?: string[] }
 ) {
+  const sent = new Set(content.sentMediaIds ?? [])
+  if (!sent.size) return
   const fileIds = new Set<Id<"storedFiles">>()
   const walk = (value: unknown): void => {
     if (Array.isArray(value)) return value.forEach(walk)
@@ -127,7 +131,7 @@ export async function forgetPayloadFiles(
     }
   }
   try {
-    walk(JSON.parse(payload))
+    walk(JSON.parse(content.payload))
   } catch {
     return
   }
@@ -138,7 +142,9 @@ export async function forgetPayloadFiles(
         q.eq("accountId", accountId).eq("fileId", fileId)
       )
       .take(10)
-    for (const row of rows) await ctx.db.delete("channelMediaCache", row._id)
+    for (const row of rows)
+      if (sent.has(row.mediaId))
+        await ctx.db.delete("channelMediaCache", row._id)
   }
 }
 

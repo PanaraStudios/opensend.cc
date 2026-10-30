@@ -394,6 +394,9 @@ export const channelTables = {
     rendered: v.optional(renderedTemplateValue),
     /** A message carries at most a few files. */
     media: v.optional(v.array(channelMediaValue)),
+    /** The Meta media ids the accepted send used for its stored files, so a
+        later media failure drops only those cached uploads. */
+    sentMediaIds: v.optional(v.array(v.string())),
   }).index("by_messageId", ["messageId"]),
   /** The message's timeline; status webhooks append to it. */
   channelMessageEvents: defineTable({

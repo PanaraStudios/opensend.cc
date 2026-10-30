@@ -85,6 +85,8 @@ export const upload = internalAction({
 export type MediaCacheUse = {
   /** Upload again instead of reusing: Meta no longer knew a reused id. */
   fresh?: boolean
+  /** Every Meta media id the send used for a stored file. */
+  mediaIds: string[]
   /** The earlier uploads this send reused. */
   reused: {
     accountId: Id<"channelAccounts">
@@ -114,6 +116,7 @@ export async function uploadStoredMedia(
     )
     if (cached) {
       cache?.reused.push({ ...key, mediaId: cached })
+      cache?.mediaIds.push(cached)
       return cached
     }
   }
@@ -123,5 +126,6 @@ export async function uploadStoredMedia(
     organizationId: input.caller.organizationId,
     mediaId,
   })
+  cache?.mediaIds.push(mediaId)
   return mediaId
 }
