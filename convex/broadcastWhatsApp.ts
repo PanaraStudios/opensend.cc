@@ -29,7 +29,7 @@ import {
   type QueryCtx,
 } from "./_generated/server"
 import { internal } from "./_generated/api"
-import type { Doc } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
 import {
@@ -49,7 +49,7 @@ import {
 } from "../lib/meta/variables"
 import {
   createChannelMessage,
-  reserveSends,
+  releaseSends,
   resolveChannelAccount,
 } from "./channels/messages"
 import { retainStepMedia, stepMedia, type StepMedia } from "./storage/media"
@@ -260,7 +260,7 @@ async function commitRecipient(
   row: Doc<"broadcasts">,
   plan: NonNullable<Awaited<ReturnType<typeof planRecipient>>>,
   target: MessagingTarget,
-  step?: { readyAt?: number; media?: StepMedia }
+  step?: { media: StepMedia; held: Id<"channelMessages">[] }
 ) {
   const { contact, config, reason } = plan
   const variables = resolveVariables(config.variables, contact)
@@ -288,7 +288,7 @@ async function commitRecipient(
                   ...("template" in target
                     ? { template: target.template }
                     : {}),
-                  readyAt: step.readyAt,
+                  held: step.held,
                   media: step.media,
                   identity: plan.identity,
                 },
@@ -324,10 +324,12 @@ export async function sendWhatsAppRecipient(
 }
 
 /** A broadcast step's recipients. The step resolved the account and
-    template once (`target`); this plans every recipient, reserves exactly
-    the sends it will queue on the number's limiter in one write, then
-    writes them. `more` says whether the transaction has room for another
-    recipient; the step redoes the rest of its page next time. */
+    template once (`target`). Each recipient is planned and written in turn
+    (so it reads what earlier ones wrote, such as a new identity); their
+    messages are held, then queued together under one limiter reservation
+    for exactly the messages written. `more` says whether the transaction
+    has room for another recipient; the step redoes the rest of its page
+    next time. */
 export async function sendMessagingRecipients(
   ctx: MutationCtx,
   row: Doc<"broadcasts">,
@@ -336,33 +338,17 @@ export async function sendMessagingRecipients(
   target: MessagingTarget,
   more: () => Promise<boolean>
 ) {
-  const plans = []
-  const seen = new Set<Doc<"contacts">["_id"]>()
+  const step = { media: stepMedia(), held: [] as Id<"channelMessages">[] }
+  let written = 0
   for (const contact of contacts) {
-    plans.push(
-      seen.has(contact._id)
-        ? null
-        : await planRecipient(ctx, row, contact, topic, target)
-    )
-    seen.add(contact._id)
-  }
-  const sending = plans.filter((plan) => plan && !plan.reason).length
-  const slots = await reserveSends(ctx, target.account, sending)
-  const media = stepMedia()
-  let slot = 0,
-    written = 0,
-    queued = 0
-  for (const plan of plans) {
-    if (plan) {
-      const readyAt = plan.reason ? undefined : slots?.[slot++]
-      if (await commitRecipient(ctx, row, plan, target, { readyAt, media }))
-        queued++
-    }
+    const plan = await planRecipient(ctx, row, contact, topic, target)
+    if (plan) await commitRecipient(ctx, row, plan, target, step)
     written++
-    if (written < plans.length && !(await more())) break
+    if (written < contacts.length && !(await more())) break
   }
-  await retainStepMedia(ctx, media)
-  return { written, queued, readyAt: slots?.at(-1) }
+  await retainStepMedia(ctx, step.media)
+  const readyAt = await releaseSends(ctx, target.account, step.held)
+  return { written, queued: step.held.length, readyAt }
 }
 
 const scope = { organizationId: v.string(), id: v.id("broadcasts") }

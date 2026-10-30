@@ -392,3 +392,67 @@ test("review reads at most REVIEW_PAGES pages, then estimates the rest", async (
   expect(extrapolate({ count: 7 }, 10, null)).toEqual({ count: 7 })
   expect(extrapolate({ count: 5 }, 10, 30)).toEqual({ count: 15 })
 }, 120_000)
+
+test("a step cut short reserves sends only for the recipients it wrote", async () => {
+  const rate = 10
+  const f = await setup({ audience: 20, throughputMps: rate })
+  const generation = await f.start()
+  await f.t.run(async (ctx) => {
+    for (const job of await ctx.db.system
+      .query("_scheduled_functions")
+      .collect())
+      if (job.state.kind === "pending") await ctx.scheduler.cancel(job._id)
+  })
+  // Little room: the transaction guard ends the step after a few recipients.
+  const used = await f.t.run(async (ctx) => {
+    await ctx.runMutation(
+      internal.broadcastSend.pumpStep,
+      { id: f.id, generation },
+      { transactionLimits: { databaseQueries: 700 } }
+    )
+    return (await ctx.meta.getTransactionMetrics()).databaseQueries.used
+  })
+  expect(used).toBeGreaterThan(0)
+  const written = (await f.recipients()).length
+  expect(written).toBeGreaterThan(0)
+  expect(written).toBeLessThan(rate)
+  expect((await f.read()).cursor).toBeUndefined()
+  // No time passes: the bucket only lost the sends that were written, so the
+  // rest of its tokens still go now.
+  const now = Date.now()
+  await f.t.mutation(internal.broadcastSend.pumpStep, { id: f.id, generation })
+  const recipients = await f.recipients()
+  expect(recipients).toHaveLength(rate)
+  expect(new Set(recipients.map((r) => r.contactId)).size).toBe(rate)
+  const slots = (await f.messages()).map((m) => m.rateReadyAt!)
+  expect(slots).toHaveLength(rate)
+  expect(slots.filter((at) => at === now)).toHaveLength(rate)
+  expect((await f.read()).cursor).toBeDefined()
+})
+
+test("contacts sharing a phone in one step share one WhatsApp identity", async () => {
+  const f = await setup({ audience: 0 })
+  await addContacts(f, f.segmentId, 0, 3, (i) => ({
+    phone: i < 2 ? "+15550001111" : "+15550002222",
+  }))
+  await f.start()
+  while (await f.step()) {
+    /* drain */
+  }
+  const identities = await f.t.run((ctx) =>
+    ctx.db
+      .query("channelContacts")
+      .withIndex(
+        "by_organizationId_and_channel_and_scopeId_and_externalId",
+        (q) =>
+          q
+            .eq("organizationId", f.owner.team)
+            .eq("channel", "whatsapp")
+            .eq("scopeId", "whatsapp")
+            .eq("externalId", "15550001111")
+      )
+      .collect()
+  )
+  expect(identities).toHaveLength(1)
+  expect(await f.recipients()).toHaveLength(3)
+})

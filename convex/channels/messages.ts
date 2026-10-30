@@ -433,9 +433,6 @@ export async function createChannelMessage(
       generation: 0,
       attempts: 0,
       expiresAt: now + 7 * 86400_000,
-      ...(prepared?.readyAt !== undefined
-        ? { rateReadyAt: prepared.readyAt }
-        : {}),
     },
     true
   )
@@ -523,26 +520,24 @@ export async function createChannelMessage(
     type: "queued",
     at: now,
   })
-  await enqueue(
-    ctx,
-    message._id,
-    0,
-    Math.max(0, (prepared?.readyAt ?? now) - now)
-  )
+  // A broadcast step queues its messages together once it knows how many
+  // it wrote (`releaseSends`).
+  if (prepared?.held) prepared.held.push(message._id)
+  else await enqueue(ctx, message._id, 0, 0)
   return message._id
 }
 
 /** What a broadcast step resolves once for all of its recipients: the
-    sending account (checked active), the WhatsApp template, the stored
-    header media, and per recipient the send slot the step reserved and the
-    WhatsApp identity it already read. */
+    sending account (checked active), the WhatsApp template and the stored
+    header media; per recipient, the WhatsApp identity it just read. */
 export type PreparedSend = {
   account: Doc<"channelAccounts">
   template?: Awaited<ReturnType<typeof resolveWhatsAppTemplate>>
-  /** When the number's limiter lets this message go (reserved by the step). */
-  readyAt?: number
   media?: StepMedia
   identity?: KnownIdentity
+  /** Messages written but not yet queued for delivery; the step releases
+      them with `releaseSends`. */
+  held?: Id<"channelMessages">[]
 }
 
 /** A stored template's send value for one recipient's variables, as
@@ -587,6 +582,25 @@ export async function reserveSends(
   return Array.from({ length: count }, (_, i) =>
     Math.max(now, last - Math.floor(((count - 1 - i) * 1000) / rate))
   )
+}
+
+/** Queues a step's held messages for delivery. One limiter reservation
+    covers exactly the messages the step wrote, and each carries its slot,
+    so claim skips the limiter. Returns when the last slot comes up. */
+export async function releaseSends(
+  ctx: MutationCtx,
+  account: Doc<"channelAccounts">,
+  ids: Id<"channelMessages">[]
+) {
+  const slots = await reserveSends(ctx, account, ids.length)
+  const now = Date.now()
+  for (const [i, id] of ids.entries()) {
+    const readyAt = slots?.[i]
+    if (readyAt !== undefined)
+      await ctx.db.patch("channelMessages", id, { rateReadyAt: readyAt })
+    await enqueue(ctx, id, 0, Math.max(0, (readyAt ?? now) - now))
+  }
+  return slots?.at(-1)
 }
 
 async function enqueue(
