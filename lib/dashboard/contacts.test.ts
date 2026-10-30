@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import {
+  importSummary,
   isReservedPropertyKey,
   isValidPropertyKey,
   normalizePropertyKey,
@@ -155,6 +156,24 @@ describe("channel usernames", () => {
         kind: "channel",
         channel: "messenger",
       }
+    )
+  })
+})
+
+describe("importSummary", () => {
+  const base = { created: 2, updated: 1, skipped: 0, failed: 0, errors: [] }
+  it("lists only what happened", () => {
+    assert.equal(importSummary(base), "2 created, 1 updated.")
+  })
+  it("reports invalid rows apart from skipped ones, with the first problem", () => {
+    assert.equal(
+      importSummary({
+        ...base,
+        skipped: 3,
+        failed: 1,
+        errors: ["x is not a valid email address"],
+      }),
+      "2 created, 1 updated, 3 skipped, 1 invalid. x is not a valid email address"
     )
   })
 })

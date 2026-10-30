@@ -340,6 +340,7 @@ export const upsert = mutation({
       created: 0,
       updated: 0,
       skipped: 0,
+      failed: 0,
       createdIds: [] as Id<"contacts">[],
       errors: [] as string[],
     }
@@ -363,7 +364,7 @@ export const upsert = mutation({
         if (result === "created") out.createdIds.push(id)
       } catch (error) {
         if (!(error instanceof ConvexError)) throw error
-        out.skipped += 1
+        out.failed += 1
         if (out.errors.length < 5) out.errors.push(String(error.data))
       }
     }

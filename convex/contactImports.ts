@@ -5,6 +5,7 @@ import {
   topicSubscriptionValue,
 } from "./tables/audience"
 import { ConvexError, v, type Infer } from "convex/values"
+import type { Doc } from "./_generated/dataModel"
 import { internalMutation, query, type MutationCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
@@ -20,6 +21,18 @@ import {
 import schema from "./schema"
 
 const args = { id: v.id("contactImports"), offset: v.number() }
+
+/** Counts with invalid rows apart from skipped ones. Results stored before
+    `failed` existed counted invalid rows in `skipped` and in `failedCount`. */
+export function importCounts(
+  row: Pick<Doc<"contactImports">, "result" | "failedCount">
+) {
+  if (row.result.failed !== undefined)
+    return { ...row.result, failed: row.result.failed }
+  const failed = row.failedCount ?? 0
+  return { ...row.result, skipped: row.result.skipped - failed, failed }
+}
+
 export const get = query({
   args: { id: v.id("contactImports") },
   returns: v.union(
@@ -34,7 +47,7 @@ export const get = query({
     void contacts
     void segmentIds
     void skipExisting
-    return view
+    return { ...view, result: importCounts(row) }
   },
 })
 export const step = internalMutation({
@@ -63,7 +76,7 @@ export const step = internalMutation({
       )
     )
     const end = Math.min(offset + size, job.contacts.length)
-    const result = job.result
+    const result = importCounts(job)
     let failedCount = job.failedCount ?? 0
     for (const contact of job.contacts.slice(offset, end)) {
       try {
@@ -80,7 +93,7 @@ export const step = internalMutation({
         if (outcome.result === "created") result.createdIds.push(outcome.id)
       } catch (error) {
         if (!(error instanceof ConvexError)) throw error
-        result.skipped++
+        result.failed++
         failedCount++
         if (result.errors.length < 5) result.errors.push(String(error.data))
       }
@@ -193,6 +206,7 @@ export async function enqueueImport(
     created: 0,
     updated: 0,
     skipped: 0,
+    failed: 0,
     createdIds: [],
     errors: [],
   }

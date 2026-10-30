@@ -153,7 +153,7 @@ test("CSV jobs admit plain members, isolate teams, validate rows and survive dup
   expect(job).toMatchObject({
     status: "completed",
     offset: 2,
-    result: { created: 1, skipped: 1 },
+    result: { created: 1, skipped: 0, failed: 1 },
   })
   expect(
     await f.t.run((ctx) => ctx.db.query("contacts").collect())

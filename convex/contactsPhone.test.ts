@@ -52,11 +52,11 @@ test("dashboard creates normalized phone-only contacts, finds their digits and r
   })
   expect(page.page.map((row) => row._id)).toEqual([id])
   expect(await f.create([{ phone: "+14155552671" }])).toMatchObject({
-    skipped: 1,
+    failed: 1,
     errors: ["That phone number already exists"],
   })
   expect(await f.create([{}])).toMatchObject({
-    skipped: 1,
+    failed: 1,
     errors: ["An email or phone number is required"],
   })
   await expect(
@@ -164,7 +164,7 @@ test("updates enforce normalized uniqueness and require a remaining identity", a
   const collision = await f.create([
     { email: "second@example.test", phone: "+14155552671" },
   ])
-  expect(collision).toMatchObject({ skipped: 1 })
+  expect(collision).toMatchObject({ skipped: 0, failed: 1 })
 })
 
 test("phone-only contacts support segments, topics and export with empty email cells", async () => {
@@ -227,7 +227,10 @@ test("dashboard CSV import creates, upserts and skips phone-only contacts", asyn
       id: result.jobId!,
     })
     expect(job).toMatchObject({ status: "completed", failedCount: 1 })
-    expect(job?.result.skipped).toBe(skipExisting ? 2 : 1)
+    expect(job?.result).toMatchObject({
+      skipped: skipExisting ? 1 : 0,
+      failed: 1,
+    })
   }
 })
 
@@ -256,4 +259,29 @@ test("REST CSV accepts a mapped phone column without an email column", async () 
     phone: "+14155552671",
     first_name: "Ada",
   })
+})
+
+test("imports stored before the failed count read invalid rows apart", async () => {
+  const f = await setup()
+  const { jobId } = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.organizationId,
+    contacts: [{ email: "ada@example.test" }, { email: "bad" }],
+    segmentIds: [],
+    csvImport: true,
+  })
+  await f.t.mutation(internal.contactImports.step, { id: jobId!, offset: 0 })
+  // The old shape counted the invalid row in `skipped` and `failedCount`.
+  await f.t.run(async (ctx) => {
+    const { failed, ...result } = (await ctx.db.get("contactImports", jobId!))!
+      .result
+    await ctx.db.patch("contactImports", jobId!, {
+      result: { ...result, skipped: result.skipped + failed! },
+    })
+  })
+  expect(
+    (await f.owner.client.query(api.contactImports.get, { id: jobId! }))?.result
+  ).toMatchObject({ created: 1, skipped: 0, failed: 1 })
+  expect(
+    await (await f.call(`/contacts/imports/${jobId}`)).json()
+  ).toMatchObject({ counts: { total: 2, created: 1, skipped: 0, failed: 1 } })
 })

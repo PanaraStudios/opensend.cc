@@ -214,7 +214,12 @@ describe("contacts", () => {
       { email: "bad@example.com", properties: { seats: "many" } },
       { email: "odd@example.com", properties: { unknown: "x" } },
     ])
-    expect(result).toMatchObject({ created: 1, updated: 2, skipped: 3 })
+    expect(result).toMatchObject({
+      created: 1,
+      updated: 2,
+      skipped: 0,
+      failed: 3,
+    })
     expect(result.errors).toEqual([
       "not-an-email is not a valid email address",
       "seats must be a number",
@@ -236,7 +241,12 @@ describe("contacts", () => {
       [],
       true
     )
-    expect(skipped).toMatchObject({ created: 1, updated: 0, skipped: 1 })
+    expect(skipped).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 1,
+      failed: 0,
+    })
     expect(
       (await contacts({ search: "ada" })).map((row) => row.firstName)
     ).toEqual(["Ada"])
