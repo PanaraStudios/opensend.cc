@@ -564,6 +564,8 @@ export const options = query({
     }
   },
 })
+/** How many audience contacts the preview looks through for a sample. */
+const SAMPLE_SIZE = 200
 export const sampleContact = query({
   args: {
     ...scope,
@@ -575,21 +577,29 @@ export const sampleContact = query({
     await requireTeam(ctx, organizationId)
     const row = await ctx.db.get("broadcasts", id)
     if (!row || row.organizationId !== organizationId) return null
+    const audience = {
+      ...row,
+      ...(segmentId !== undefined ? { segmentId } : {}),
+      ...(topicId !== undefined ? { topicId } : {}),
+    }
+    const whatsapp = rowChannel(row) === "whatsapp"
+    // The first contacts may have no phone, so look past them.
     const page = await recipientPage(
       ctx,
-      {
-        ...row,
-        ...(segmentId !== undefined ? { segmentId } : {}),
-        ...(topicId !== undefined ? { topicId } : {}),
-      },
+      audience,
       null,
       undefined,
-      10
+      SAMPLE_SIZE
     )
-    return (
-      page.page.find(
-        (contact) => rowChannel(row) !== "whatsapp" || contact.phone
-      ) ?? null
-    )
+    const sample = page.page.find((contact) => !whatsapp || contact.phone)
+    if (sample || !whatsapp || audience.segmentId || page.isDone)
+      return sample ?? null
+    // All contacts: any contact with a phone will do.
+    return await ctx.db
+      .query("contacts")
+      .withIndex("by_organizationId_and_phone", (q) =>
+        q.eq("organizationId", organizationId).gt("phone", "")
+      )
+      .first()
   },
 })

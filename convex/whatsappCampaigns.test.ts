@@ -561,6 +561,34 @@ test("a broadcast that reached nobody still settles as failed", async () => {
   expect((await f.read(id))?.status).toBe("failed")
 })
 
+test("the preview sample looks past contacts without a phone", async () => {
+  const f = await setup()
+  for (let batch = 0; batch < 3; batch++)
+    await f.contacts(
+      Array.from({ length: 80 }, (_, i) => ({
+        email: `p${batch * 80 + i}@example.com`,
+      })),
+      []
+    )
+  await f.contacts(
+    Array.from({ length: 60 }, (_, i) => ({ email: `s${i}@example.com` }))
+  )
+  const id = await f.create()
+  const sample = (segmentId?: null) =>
+    f.owner.client.query(api.broadcastWhatsApp.sampleContact, {
+      organizationId: f.owner.team,
+      id,
+      segmentId,
+    })
+  expect(await sample()).toBeNull()
+  expect(await sample(null)).toBeNull()
+  await f.contacts([{ phone: "+15550000001", firstName: "Ada" }])
+  const ada = { phone: "+15550000001", firstName: "Ada" }
+  expect(await sample()).toMatchObject(ada)
+  // All contacts: 300 without a phone come first.
+  expect(await sample(null)).toMatchObject(ada)
+})
+
 test("scheduled sends cancel safely, duplicate configuration and enforce team isolation", async () => {
   const f = await setup()
   await f.contacts([{ phone: "+15550000001" }])
