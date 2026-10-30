@@ -84,15 +84,15 @@ export function hasPages(pager: Pager) {
   return total === null ? pager.loaded >= pageSize : total > pageSize
 }
 
-/** Resend's pager label: "Page 1 – 3 of 120 contacts". While the size is
-    unknown it counts what loaded so far: "Page 2 – 2+ of 80+ contacts".
-    The noun stays plural, as Resend's does ("of 1 domains"). */
+/** The pager label: "Page 1 of 25 · 1,000 contacts". While the size is
+    unknown it counts what loaded so far: "Page 2 of 2+ · 80+ contacts". */
 export function pageLabel(pager: Pager, noun: string, plural = `${noun}s`) {
   const total = knownTotal(pager)
   const more = total === null ? "+" : ""
   const size = total ?? pager.loaded
   const pages = Math.max(1, Math.ceil(size / pager.pageSize))
-  return `Page ${formatNumber(pager.page + 1)} – ${formatNumber(pages)}${more} of ${formatNumber(size)}${more} ${plural}`
+  const name = size === 1 && total !== null ? noun : plural
+  return `Page ${formatNumber(pager.page + 1)} of ${formatNumber(pages)}${more} · ${formatNumber(size)}${more} ${name}`
 }
 
 /** Convex reports LoadingFirstPage for skipped queries. A skipped list is

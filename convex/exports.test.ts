@@ -101,11 +101,11 @@ test("members start and view, admins download, other teams cannot access exports
   expect(
     await m.client.query(api.exports.count, { organizationId: f.owner.team })
   ).toEqual({ total: 1 })
-  await expect(m.client.query(api.exports.downloadUrl, { id })).rejects.toThrow(
-    "permission"
-  )
+  await expect(
+    m.client.action(api.exports.downloadUrl, { id })
+  ).rejects.toThrow("permission")
   expect(
-    await f.owner.client.query(api.exports.downloadUrl, { id })
+    await f.owner.client.action(api.exports.downloadUrl, { id })
   ).toBeTruthy()
   await expect(
     f.outsider.client.mutation(api.exports.start, args)
@@ -123,7 +123,7 @@ test("members start and view, admins download, other teams cannot access exports
     f.outsider.client.query(api.exports.get, { id })
   ).rejects.toThrow("permission")
   await expect(
-    f.outsider.client.query(api.exports.downloadUrl, { id })
+    f.outsider.client.action(api.exports.downloadUrl, { id })
   ).rejects.toThrow("permission")
 })
 
@@ -334,7 +334,9 @@ test("failed exports stay Failed and cannot download", async () => {
   expect(await f.owner.client.query(api.exports.get, { id })).toMatchObject({
     status: "failed",
   })
-  expect(await f.owner.client.query(api.exports.downloadUrl, { id })).toBeNull()
+  expect(
+    await f.owner.client.action(api.exports.downloadUrl, { id })
+  ).toBeNull()
 })
 
 test("expiry is enforced before cleanup; files and old rows are removed with counts", async () => {
@@ -345,11 +347,17 @@ test("expiry is enforced before cleanup; files and old rows are removed with cou
   await f.t.run((ctx) =>
     patchRow(ctx, "exports", id, { expiresAt: Date.now() - 1 })
   )
-  expect(await f.owner.client.query(api.exports.downloadUrl, { id })).toBeNull()
+  expect(
+    await f.owner.client.action(api.exports.downloadUrl, { id })
+  ).toBeNull()
+  // Queries carry no clock: the row reads "ready" until the cron expires it.
+  expect(await f.owner.client.query(api.exports.get, { id })).toMatchObject({
+    status: "ready",
+  })
+  await f.t.mutation(internal.exports.expire, {})
   expect(await f.owner.client.query(api.exports.get, { id })).toMatchObject({
     status: "expired",
   })
-  await f.t.mutation(internal.exports.expire, {})
   expect(await f.t.run((ctx) => ctx.storage.get(old!.storageId!))).toBeNull()
   expect(
     await f.owner.client.query(api.exports.count, {
@@ -624,4 +632,31 @@ test("contact CSV retains phone and all scoped channel identities, excluding oth
       })
     ).page.map((contact) => contact._id)
   ).toEqual(expect.arrayContaining([id, channelOnlyId]))
+})
+
+test("the watchdog fails exports idle for 30 minutes and spares fresh ones", async () => {
+  const f = await setup()
+  // Scheduled runs never fire: fake timers are not advanced.
+  const stuck = await start(f)
+  const oldLegacy = await start(f)
+  vi.setSystemTime(Date.now() + 31 * 60_000)
+  const fresh = await start(f)
+  const newLegacy = await start(f)
+  await f.t.run(async (ctx) => {
+    for (const id of [oldLegacy, newLegacy])
+      await patchRow(ctx, "exports", id, { touchedAt: undefined })
+  })
+  await f.t.mutation(internal.exports.failStalled, {})
+  const get = (id: Id<"exports">) =>
+    f.owner.client.query(api.exports.get, { id })
+  expect(await get(stuck)).toMatchObject({
+    status: "failed",
+    error: expect.stringContaining("stopped before it finished"),
+  })
+  expect(await get(oldLegacy)).toMatchObject({ status: "failed" })
+  expect(await get(fresh)).toMatchObject({ status: "processing" })
+  expect(await get(newLegacy)).toMatchObject({ status: "processing" })
+  expect(
+    await f.owner.client.action(api.exports.downloadUrl, { id: stuck })
+  ).toBeNull()
 })

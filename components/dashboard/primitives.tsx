@@ -940,19 +940,17 @@ export function ListPagination({
     >
       <div className="flex items-center gap-1 text-caption text-muted-foreground tabular-nums">
         <span>{pageLabel(pager, noun, plural)}</span>
-        <span aria-hidden>–</span>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label="Items per page"
                 className="text-muted-foreground"
               />
             }
           >
-            {pageSize} items
+            {pageSize} per page
             <ChevronsUpDownIcon data-icon="inline-end" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top">
@@ -962,7 +960,7 @@ export function ListPagination({
             >
               {PAGE_SIZES.map((size) => (
                 <DropdownMenuRadioItem key={size} value={String(size)}>
-                  {size} items
+                  {size} per page
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
@@ -2135,6 +2133,8 @@ export function OptionSelect(props: {
             {...fieldLabel}
             data-slot="select-trigger"
             data-size={size}
+            // Mutes the placeholder like the plain Select trigger does.
+            {...(current ? {} : { "data-placeholder": "" })}
             className={cn(selectTriggerClassName, className)}
           >
             <span data-slot="select-value" className="flex flex-1 text-left">

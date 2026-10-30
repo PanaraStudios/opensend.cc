@@ -7,6 +7,7 @@ import {
   paginationResultValidator,
 } from "convex/server"
 import {
+  action,
   env,
   internalAction,
   internalMutation,
@@ -50,7 +51,8 @@ export const exportView = schema
     "fileName",
     "creatorEmail",
     "summary",
-    "notificationEmailId"
+    "notificationEmailId",
+    "touchedAt"
   )
   .extend({
     fileName: v.string(),
@@ -65,7 +67,8 @@ function view(row: Doc<"exports">) {
     _creationTime: row._creationTime,
     organizationId: row.organizationId,
     resource: row.resource,
-    status: row.expiresAt <= Date.now() ? ("expired" as const) : row.status,
+    // The dashboard derives "expired" from `expiresAt` against its own clock.
+    status: row.status,
     rows: row.rows,
     error: row.error,
     expiresAt: row.expiresAt,
@@ -113,6 +116,7 @@ export const start = mutation({
       status: "processing",
       rows: 0,
       expiresAt: now + EXPORT_TTL,
+      touchedAt: now,
       fileName: exportFileName(args.resource, now),
       creatorEmail: creator.email,
       summary: args.summary,
@@ -164,16 +168,23 @@ export const get = query({
 
 /** A signed URL for a completed export's file. Members see exports; only
     team admins download them, as on Resend. */
-export const downloadUrl = query({
+export const downloadUrl = action({
   args: { id: v.id("exports") },
   returns: v.union(v.null(), v.string()),
-  handler: async (ctx, { id }) => {
+  handler: async (ctx, { id }): Promise<string | null> =>
+    ctx.runQuery(internal.exports.downloadTarget, { id, now: Date.now() }),
+})
+/** Queries carry no clock: `downloadUrl` passes the time in. */
+export const downloadTarget = internalQuery({
+  args: { id: v.id("exports"), now: v.number() },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, { id, now }) => {
     const row = await ctx.db.get("exports", id)
     if (!row) return null
     await requireTeam(ctx, row.organizationId, "admin")
     if (
       row.status !== "ready" ||
-      row.expiresAt <= Date.now() ||
+      row.expiresAt <= now ||
       (!row.storageId && !row.fileId)
     )
       return null
@@ -373,6 +384,39 @@ export const emailCreator = internalMutation({
       category: "export",
     })
     if (email) await patchExport(ctx, id, { notificationEmailId: email })
+    return null
+  },
+})
+
+/** Fails "processing" exports that made no progress for this long: their
+    action crashed or timed out and nothing else will settle them. */
+export const STALLED_AFTER = 30 * 60_000
+const STALLED_ERROR =
+  "The export stopped before it finished. Start it again; narrow the filters if it keeps failing."
+
+export const failStalled = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const before = Date.now() - STALLED_AFTER
+    // Rows from before `touchedAt` sort first; judge those by creation time.
+    const stalled = await ctx.db
+      .query("exports")
+      .withIndex("by_status_and_touchedAt", (q) =>
+        q.eq("status", "processing").lte("touchedAt", before)
+      )
+      .take(100)
+    let failed = 0
+    for (const row of stalled)
+      if ((row.touchedAt ?? row._creationTime) <= before) {
+        await patchExport(ctx, row._id, {
+          status: "failed",
+          error: STALLED_ERROR,
+        })
+        failed++
+      }
+    if (failed === 100)
+      await ctx.scheduler.runAfter(0, internal.exports.failStalled, {})
     return null
   },
 })

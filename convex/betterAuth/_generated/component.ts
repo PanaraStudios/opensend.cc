@@ -4217,6 +4217,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           accountId: string;
+          approvedDomains: Array<string>;
           email: string;
           initiatorSessionId?: string;
           organizationId: string;
@@ -4273,6 +4274,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           sessionId: string;
         },
         null,
+        Name
+      >;
+      unlinkProviders: FunctionReference<
+        "mutation",
+        "internal",
+        { userId: string },
+        number,
         Name
       >;
     };

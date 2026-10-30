@@ -203,13 +203,13 @@ test("large export emails creator once through system sender; link keeps admin d
     1
   )
   await expect(
-    f.member.client.query(api.exports.downloadUrl, { id })
+    f.member.client.action(api.exports.downloadUrl, { id })
   ).rejects.toThrow("permission")
   await expect(
     f.outsider.client.query(api.exports.get, { id })
   ).rejects.toThrow("permission")
   expect(
-    await f.owner.client.query(api.exports.downloadUrl, { id })
+    await f.owner.client.action(api.exports.downloadUrl, { id })
   ).toBeTruthy()
   expect(
     await f.owner.client.query(api.exports.get, { id })
@@ -241,7 +241,7 @@ test("large export without installation sender stays downloadable and sends noth
   await f.t.mutation(internal.exports.emailCreator, { id })
   expect(await f.t.run((ctx) => ctx.db.query("emails").collect())).toEqual([])
   expect(
-    await f.owner.client.query(api.exports.downloadUrl, { id })
+    await f.owner.client.action(api.exports.downloadUrl, { id })
   ).toBeTruthy()
   expect(log).not.toHaveBeenCalled()
 })

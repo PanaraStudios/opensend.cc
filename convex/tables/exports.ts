@@ -26,6 +26,9 @@ export const exportTables = {
     notificationEmailId: v.optional(v.id("emails")),
     ...fileReference,
     expiresAt: v.number(),
+    /** When the export was started; the watchdog fails a "processing"
+        export idle for too long. Absent on older rows. */
+    touchedAt: v.optional(v.number()),
     /** The list filters the export was started with, as the source reads
         them. */
     filters: v.record(v.string(), v.string()),
@@ -37,5 +40,6 @@ export const exportTables = {
     summary: v.optional(v.array(exportFilterLineValue)),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_status_and_expiresAt", ["status", "expiresAt"]),
+    .index("by_status_and_expiresAt", ["status", "expiresAt"])
+    .index("by_status_and_touchedAt", ["status", "touchedAt"]),
 }

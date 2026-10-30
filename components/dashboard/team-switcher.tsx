@@ -50,6 +50,7 @@ import {
   useWorkspace,
 } from "@/components/auth/workspace"
 import { cn } from "@/lib/utils"
+import { actionError } from "@/lib/action-error"
 
 function CreateTeamDialog({
   open,
@@ -82,7 +83,7 @@ function CreateTeamDialog({
     try {
       await createTeam(name)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Please try again")
+      setError(actionError(e))
       return
     } finally {
       setPending(false)
@@ -163,7 +164,7 @@ export function TeamSwitcher() {
     } catch (e) {
       toast.add({
         type: "error",
-        title: e instanceof Error ? e.message : "Could not switch teams",
+        title: actionError(e),
       })
       return
     }

@@ -1,7 +1,7 @@
 import { v, ConvexError } from "convex/values"
 import { mutation, query } from "./_generated/server"
 import type { QueryCtx, MutationCtx } from "./_generated/server"
-import type { Id } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 
 export async function sessionUser(
   ctx: QueryCtx | MutationCtx,
@@ -55,6 +55,38 @@ export async function requireMember(
   return { ...actor, member }
 }
 
+/** An unverified first account only holds setup for this long, so a typo'd
+    or squatted first sign-up cannot lock the installation forever. */
+export const BOOTSTRAP_CLAIM_MS = 24 * 60 * 60 * 1000
+async function bootstrapReclaimable(
+  ctx: QueryCtx | MutationCtx,
+  setup: Doc<"bootstrap">,
+  now: number
+) {
+  const id = ctx.db.normalizeId("user", setup.userId)
+  const user = id ? await ctx.db.get("user", id) : null
+  // A deleted admin never reopens registration; only a stale unverified one.
+  return (
+    !!user &&
+    !user.emailVerified &&
+    now - setup._creationTime > BOOTSTRAP_CLAIM_MS
+  )
+}
+/** Deletes a stale, never-verified first account so its address can sign up
+    again. It never signed in, so it has no team or avatar; sessions,
+    provider accounts and two-factor rows are bounded per user. */
+async function releaseStaleUser(ctx: MutationCtx, userId: string) {
+  const id = ctx.db.normalizeId("user", userId)
+  const user = id ? await ctx.db.get("user", id) : null
+  if (!id || !user || user.emailVerified) return
+  for (const table of ["session", "account", "twoFactor"] as const)
+    for (const row of await ctx.db
+      .query(table)
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .take(100))
+      await ctx.db.delete(table, row._id)
+  await ctx.db.delete("user", id)
+}
 const INVITE_ONLY =
   "This instance is invite-only. Ask a team admin for an invitation."
 async function registrationAllowed(
@@ -66,7 +98,7 @@ async function registrationAllowed(
     .query("bootstrap")
     .withIndex("by_key", (q) => q.eq("key", "initial-account"))
     .unique()
-  if (!setup) return true
+  if (!setup || (await bootstrapReclaimable(ctx, setup, now))) return true
   const invitations = await ctx.db
     .query("invitation")
     .withIndex("email", (q) => q.eq("email", email.trim().toLowerCase()))
@@ -89,6 +121,13 @@ export const admitUser = mutation({
       .withIndex("by_key", (q) => q.eq("key", "initial-account"))
       .unique()
     if (!setup) {
+      await ctx.db.insert("bootstrap", { key: "initial-account", userId })
+      return null
+    }
+    if (await bootstrapReclaimable(ctx, setup, Date.now())) {
+      // A fresh row restarts the clock: the new claimant gets a full window.
+      await ctx.db.delete(setup._id)
+      await releaseStaleUser(ctx, setup.userId)
       await ctx.db.insert("bootstrap", { key: "initial-account", userId })
       return null
     }

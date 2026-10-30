@@ -347,3 +347,33 @@ test("calling deployment supplies gateway and browser settings without erasing e
   assert.equal(calls.at(-2).args[0], "deploy")
   assert.deepEqual(calls.at(-1).args, ["run", "migrations:postDeploy", "{}"])
 })
+
+test("SSO_APPROVED_DOMAINS is forwarded to Convex and documented", async () => {
+  const { CONVEX_ENV_KEYS } = await import("../../scripts/convex-env.mjs")
+  assert.ok(CONVEX_ENV_KEYS.includes("SSO_APPROVED_DOMAINS"))
+  const read = (path) =>
+    readFile(new URL(`../../${path}`, import.meta.url), "utf8")
+  assert.match(
+    await read("compose.yaml"),
+    /SSO_APPROVED_DOMAINS: \$\{SSO_APPROVED_DOMAINS:-\}/
+  )
+  for (const path of [".env.example", ".env.docker.example"])
+    assert.match(await read(path), /^# SSO_APPROVED_DOMAINS=/m, path)
+  // Setup never erases a setting, so revoking it needs the CLI.
+  for (const path of [
+    ".env.example",
+    ".env.docker.example",
+    "docs/self-hosting.md",
+  ])
+    assert.match(
+      await read(path),
+      /pnpm backend env remove SSO_APPROVED_DOMAINS/,
+      path
+    )
+  // The behaviour changes it brings are in the upgrade documentation.
+  for (const path of ["docs/releases/v2.0.0.md", "docs/upgrade-v1-to-v2.md"]) {
+    const text = await read(path)
+    assert.match(text, /SSO_APPROVED_DOMAINS/, path)
+    assert.match(text, /signing_secret/, path)
+  }
+})

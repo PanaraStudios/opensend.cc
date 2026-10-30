@@ -19,12 +19,15 @@ import {
 import { decryptSecret, encryptSecret } from "../secrets"
 import { createWebhookSecret } from "../../lib/dashboard/ids"
 import {
+  apiError,
   callerValue,
+  lacksPermission,
   notFound,
   requireCaller,
   invalid,
   missing,
   requireTeamRow,
+  type Caller,
 } from "./caller"
 import { idempotent } from "./idempotency"
 import { cursorPage, listArgs } from "./paging"
@@ -169,6 +172,12 @@ export const signingSecret = internalQuery({
   returns: v.string(),
   handler: async (ctx, { caller, id }) => {
     await requireCaller(ctx, caller)
+    if (!canWrite(caller))
+      throw apiError(
+        403,
+        "restricted_api_key",
+        "This API key needs the `webhooks:write` scope."
+      )
     return decryptSecret((await own(ctx, caller.organizationId, id)).secret)
   },
 })
@@ -311,6 +320,9 @@ function forwardPage(query: URLSearchParams) {
     throw invalid("The `before` parameter is not supported for this endpoint.")
   return listParams(query)
 }
+/** Only a caller that can manage webhooks may read a signing secret. */
+const canWrite = (caller: Caller) =>
+  !lacksPermission(caller, { resource: "webhooks", access: "write" })
 async function secret() {
   const signingSecret = createWebhookSecret()
   return {
@@ -358,10 +370,15 @@ export function registerWebhookRoutes(http: HttpRouter) {
         body: {
           object: "webhook",
           ...project(await ctx.runQuery(internal.api.webhooks.get, args)),
-          signing_secret: await ctx.runQuery(
-            internal.api.webhooks.signingSecret,
-            args
-          ),
+          // A read-only key sees the webhook but not its secret.
+          ...(canWrite(caller)
+            ? {
+                signing_secret: await ctx.runQuery(
+                  internal.api.webhooks.signingSecret,
+                  args
+                ),
+              }
+            : {}),
         },
       }
     },

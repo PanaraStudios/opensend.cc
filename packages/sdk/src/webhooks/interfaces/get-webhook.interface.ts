@@ -8,7 +8,8 @@ export interface GetWebhookResponseSuccess {
   status: 'enabled' | 'disabled';
   endpoint: string;
   events: WebhookEvent[] | null;
-  signing_secret: string;
+  /** Omitted for API keys without webhooks write access. */
+  signing_secret?: string;
 }
 
 export type GetWebhookResponse = Response<GetWebhookResponseSuccess>;

@@ -26,6 +26,9 @@ const app = defineApp({
     BETTER_AUTH_SECRET: v.string(),
     SSO_ENCRYPTION_KEY: v.string(),
     ALLOW_LOCAL_OIDC: v.optional(v.string()),
+    // Comma-separated email domains a team's SSO may create new users for.
+    // Unset: SSO only links to accounts that already exist.
+    SSO_APPROVED_DOMAINS: v.optional(v.string()),
     // Development and e2e only: log every account-email link while no sender is set.
     LOG_AUTH_LINKS: v.optional(v.string()),
     SES_ENCRYPTION_KEY: v.optional(v.string()),

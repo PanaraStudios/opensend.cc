@@ -90,7 +90,7 @@ Every method/path from the supplied snapshot appears exactly once. “No resourc
 | `GET` | `/broadcasts/{id}/clicked-links` | **served** | Ranks URLs by clicks descending; id/url/clicks/unique_clicks and bidirectional id cursors, with id tie-breaks. Unique counts are distinct recipient messages (one address per broadcast). Migration backfills retained events; settled reports expire after 30 days. |
 | `POST` | `/webhooks` | **served** | 201 object/id/signing_secret. Shared validation and subscriptions; HTTPS public hosts only, max 100/team. Idempotent response includes the same secret. |
 | `GET` | `/webhooks` | **served** | Resend endpoint/events/status/created_at projection; no secrets. P applies. |
-| `GET` | `/webhooks/{webhook_id}` | **served** | Returns the webhook with its `signing_secret`, as current Resend docs and SDK do; lists omit it. The dashboard reveals the same secret to any member. |
+| `GET` | `/webhooks/{webhook_id}` | **served** | Returns the webhook with its `signing_secret`, as current Resend docs and SDK do, but only to keys with `webhooks:write` or full access; a `webhooks:read` key gets the webhook without it. Lists omit it. The dashboard reveals the same secret to any member. |
 | `PATCH` | `/webhooks/{webhook_id}` | **served** | endpoint/events/status use shared dashboard updates and subscription indexes. |
 | `DELETE` | `/webhooks/{webhook_id}` | **served** | object/id/deleted; stops deliveries immediately and purges history in bounded batches. |
 | `POST` | `/webhooks/{webhook_id}/signing-secret/rotate` | **served** | object/id/signing_secret; new and immediately preceding secrets sign deliveries for 24 hours. Both dashboard and REST rotate through the same helper. |

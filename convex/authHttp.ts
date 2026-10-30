@@ -5,7 +5,12 @@ import { createAuth } from "./auth"
 import { loadProvider } from "./oidc"
 import { BodyTooLarge, limitedBody } from "./ses/web"
 
+/** Where a failed SSO callback lands: a known reason, or the generic one. */
+const callbackFailure = (code: string | undefined) =>
+  `${env.SITE_URL}/login?error=${encodeURIComponent(code ?? "oidc")}`
+
 const handler = httpAction(async (ctx, request) => {
+  let failure: { code?: string } | undefined
   try {
     if (request.method === "POST")
       request = new Request(request, {
@@ -31,6 +36,7 @@ const handler = httpAction(async (ctx, request) => {
         providerId = body.providerId
     }
     const loaded = providerId ? await loadProvider(ctx, providerId) : null
+    failure = loaded?.failure
     if (loaded && !callback) {
       const initiatingSession = await createAuth(ctx).api.getSession({
         headers: request.headers,
@@ -73,7 +79,7 @@ const handler = httpAction(async (ctx, request) => {
       })
       const response = await callbackAuth.handler(request)
       if (response.status >= 400)
-        return Response.redirect(`${env.SITE_URL}/login?error=oidc`, 302)
+        return Response.redirect(callbackFailure(loaded.failure.code), 302)
       return response
     }
     return await auth.handler(request)
@@ -84,7 +90,7 @@ const handler = httpAction(async (ctx, request) => {
         { status: 413 }
       )
     if (new URL(request.url).pathname.includes("/oauth2/callback/"))
-      return Response.redirect(`${env.SITE_URL}/login?error=oidc`, 302)
+      return Response.redirect(callbackFailure(failure?.code), 302)
     return Response.json(
       { message: "Authentication failed. Check the connection and try again." },
       { status: 400 }

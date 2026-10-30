@@ -42,7 +42,7 @@ async function download(
   id: string,
   fileName: string
 ) {
-  const url = await convex.query(api.exports.downloadUrl, {
+  const url = await convex.action(api.exports.downloadUrl, {
     id: id as Id<"exports">,
   })
   if (!url) throw new Error("This export is no longer available")

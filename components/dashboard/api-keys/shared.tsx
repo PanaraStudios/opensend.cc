@@ -65,7 +65,7 @@ export function ApiKeyPermissionLabel({ apiKey }: { apiKey: ApiKey }) {
   return (
     <Tooltip>
       <TooltipTrigger render={<span />} tabIndex={0}>
-        Custom · {scopes.length} scopes
+        Custom · {scopes.length} {scopes.length === 1 ? "scope" : "scopes"}
       </TooltipTrigger>
       <TooltipContent>
         {scopes.length

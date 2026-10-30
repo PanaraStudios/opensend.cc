@@ -6,6 +6,12 @@ import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth"
 import type { ActionCtx } from "./_generated/server"
 import { components, internal } from "./_generated/api"
 import { localHttpOrigin } from "../lib/net/public-host"
+import { ConvexError } from "convex/values"
+import {
+  parseDomains,
+  SSO_SIGNUP_REQUIRED_MESSAGE,
+} from "./betterAuth/ssoPolicy"
+import { SSO_SIGNUP_REQUIRED } from "../lib/auth-errors"
 
 export async function loadProvider(ctx: ActionCtx, organizationId: string) {
   const connection = await ctx.runQuery(components.betterAuth.sso.connection, {
@@ -67,6 +73,9 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
     authorizationUrl.password
   )
     throw new Error("Invalid OIDC authorization endpoint")
+  // Why the callback failed, for a readable /login error. Better Auth calls
+  // getUserInfo outside its own error handling.
+  const failure: { code?: string } = {}
   const provider: GenericOAuthConfig = {
     providerId: organizationId,
     issuer: connection.issuer,
@@ -135,16 +144,26 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
       )
         throw new Error("A verified email address is required")
       const accountId = `${connection.revision}:${payload.sub}`
-      await ctx.runQuery(components.betterAuth.sso.authorizeIdentity, {
-        organizationId,
-        revision: connection.revision,
-        accountId,
-        email: payload.email.toLowerCase(),
-        initiatorSessionId:
-          typeof state.opensendInitiatorSessionId === "string"
-            ? state.opensendInitiatorSessionId
-            : undefined,
-      })
+      try {
+        await ctx.runQuery(components.betterAuth.sso.authorizeIdentity, {
+          organizationId,
+          revision: connection.revision,
+          accountId,
+          email: payload.email.toLowerCase(),
+          initiatorSessionId:
+            typeof state.opensendInitiatorSessionId === "string"
+              ? state.opensendInitiatorSessionId
+              : undefined,
+          approvedDomains: parseDomains(env.SSO_APPROVED_DOMAINS),
+        })
+      } catch (error) {
+        if (
+          error instanceof ConvexError &&
+          error.data === SSO_SIGNUP_REQUIRED_MESSAGE
+        )
+          failure.code = SSO_SIGNUP_REQUIRED
+        throw error
+      }
       return {
         id: accountId,
         email: payload.email.toLowerCase(),
@@ -153,5 +172,5 @@ export async function loadProvider(ctx: ActionCtx, organizationId: string) {
       }
     },
   }
-  return { provider, connection }
+  return { provider, connection, failure }
 }

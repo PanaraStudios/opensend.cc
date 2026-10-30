@@ -1,6 +1,8 @@
 import { defineConfig } from "@playwright/test"
 export default defineConfig({
   testDir: "./tests/e2e",
+  // tests/e2e/*.test.mjs are node:test unit tests (pnpm test), not browser specs.
+  testMatch: "**/*.spec.ts",
   fullyParallel: false,
   workers: 1,
   timeout: 90_000,

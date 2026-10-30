@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test"
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import schema from "./betterAuth/schema"
 import { api } from "./betterAuth/_generated/api"
 const modules = import.meta.glob("./betterAuth/**/*.ts")
@@ -45,6 +45,80 @@ describe("registration policy", () => {
     await expect(
       t.mutation(api.policy.admitUser, { userId: "c", email: "c@example.test" })
     ).rejects.toThrow("invitation")
+  })
+  test("a stale unverified first account releases setup", async () => {
+    const t = setup()
+    const first = await user(t, "typo@example.test", false)
+    await t.mutation(api.policy.admitUser, {
+      userId: first.id,
+      email: "typo@example.test",
+    })
+    await t.run((ctx) =>
+      ctx.db.insert("account", {
+        accountId: first.id,
+        providerId: "credential",
+        userId: first.id,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+    )
+    await expect(
+      t.mutation(api.policy.admitUser, { userId: "b", email: "b@example.test" })
+    ).rejects.toThrow("invitation")
+    const later = Date.now() + 25 * 60 * 60 * 1000
+    expect(
+      await t.query(api.policy.checkRegistration, {
+        email: "b@example.test",
+        now: later,
+      })
+    ).toBe(true)
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      vi.setSystemTime(later)
+      const next = await user(t, "real@example.test", false)
+      await t.mutation(api.policy.admitUser, {
+        userId: next.id,
+        email: "real@example.test",
+      })
+      const setup = await t.run((ctx) => ctx.db.query("bootstrap").collect())
+      expect(setup.map((s) => s.userId)).toEqual([next.id])
+      // The stale account is gone, so its address can sign up again.
+      const left = await t.run(async (ctx) => ({
+        user: await ctx.db.get("user", first.id),
+        sessions: await ctx.db
+          .query("session")
+          .withIndex("userId", (q) => q.eq("userId", first.id))
+          .collect(),
+        accounts: await ctx.db
+          .query("account")
+          .withIndex("userId", (q) => q.eq("userId", first.id))
+          .collect(),
+      }))
+      expect(left).toEqual({ user: null, sessions: [], accounts: [] })
+      // The new claimant gets a full window of its own.
+      await expect(
+        t.mutation(api.policy.admitUser, {
+          userId: "c",
+          email: "c@example.test",
+        })
+      ).rejects.toThrow("invitation")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  test("a verified first account keeps setup", async () => {
+    const t = setup()
+    const first = await user(t, "admin@example.test")
+    await t.mutation(api.policy.admitUser, {
+      userId: first.id,
+      email: "admin@example.test",
+    })
+    expect(
+      await t.query(api.policy.checkRegistration, {
+        email: "b@example.test",
+        now: Date.now() + 48 * 60 * 60 * 1000,
+      })
+    ).toBe(false)
   })
   test("requires a pending unexpired invitation with matching email", async () => {
     const t = setup()
@@ -437,6 +511,7 @@ test("a team IdP cannot take over an existing account by claiming its email", as
     revision: "one",
     accountId: "one:claimed-subject",
     email: "victim@example.test",
+    approvedDomains: [],
   }
   await expect(t.query(api.sso.authorizeIdentity, identity)).rejects.toThrow(
     "existing account"
@@ -476,4 +551,157 @@ test("a team IdP cannot take over an existing account by claiming its email", as
       accountId: "two:claimed-subject",
     })
   ).rejects.toThrow("existing account")
+})
+
+test("a team IdP creates new accounts only on installation-approved domains", async () => {
+  const t = setup()
+  const owner = await user(t, "owner@example.test")
+  const organizationId = await t.mutation(api.teams.create, {
+    sessionId: owner.sessionId,
+    name: "IdP",
+  })
+  for (const email of ["new@example.test", "new@corp.test"])
+    await t.mutation(api.teams.invite, {
+      sessionId: owner.sessionId,
+      organizationId,
+      email,
+      role: "member",
+    })
+  await t.mutation(api.sso.save, {
+    sessionId: owner.sessionId,
+    organizationId,
+    issuer: "https://idp.example.test",
+    clientId: "id",
+    encryptedSecret: "ciphertext",
+    revision: "one",
+  })
+  const identity = {
+    organizationId,
+    revision: "one",
+    accountId: "one:new",
+    email: "new@example.test",
+  }
+  // Invited, but no installation approval: sign up with a password first.
+  await expect(
+    t.query(api.sso.authorizeIdentity, { ...identity, approvedDomains: [] })
+  ).rejects.toThrow("email and password first")
+  await expect(
+    t.query(api.sso.authorizeIdentity, {
+      ...identity,
+      approvedDomains: ["corp.test"],
+    })
+  ).rejects.toThrow("email and password first")
+  await t.query(api.sso.authorizeIdentity, {
+    ...identity,
+    email: "new@corp.test",
+    approvedDomains: ["corp.test"],
+  })
+})
+
+test("unlinkProviders drops SSO links and keeps the password", async () => {
+  const t = setup()
+  const victim = await user(t, "victim@example.test")
+  await t.run(async (ctx) => {
+    for (const providerId of ["credential", "team-idp"])
+      await ctx.db.insert("account", {
+        accountId: `${providerId}:victim`,
+        providerId,
+        userId: victim.id,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+  })
+  expect(await t.mutation(api.sso.unlinkProviders, { userId: victim.id })).toBe(
+    1
+  )
+  const left = await t.run((ctx) =>
+    ctx.db
+      .query("account")
+      .withIndex("userId", (q) => q.eq("userId", victim.id))
+      .collect()
+  )
+  expect(left.map((a) => a.providerId)).toEqual(["credential"])
+})
+
+describe("team invitations", () => {
+  test("a mixed-case account sees and accepts its invitation", async () => {
+    const t = setup()
+    const owner = await user(t, "owner@example.test")
+    const invitee = await user(t, "Mixed.Case@Example.test")
+    const organizationId = await t.mutation(api.teams.create, {
+      sessionId: owner.sessionId,
+      name: "Team",
+    })
+    const invitation = await t.mutation(api.teams.invite, {
+      sessionId: owner.sessionId,
+      organizationId,
+      email: "mixed.case@example.test",
+      role: "member",
+    })
+    const snapshot = await t.query(api.teams.snapshot, {
+      sessionId: invitee.sessionId,
+    })
+    expect(snapshot.receivedInvitations.map((i) => i.id)).toEqual([
+      invitation.id,
+    ])
+    await t.mutation(api.teams.respond, {
+      sessionId: invitee.sessionId,
+      invitationId: invitation.id,
+      accept: true,
+    })
+  })
+  test("inviting an existing member is refused", async () => {
+    const t = setup()
+    const owner = await user(t, "owner@example.test")
+    const organizationId = await t.mutation(api.teams.create, {
+      sessionId: owner.sessionId,
+      name: "Team",
+    })
+    await expect(
+      t.mutation(api.teams.invite, {
+        sessionId: owner.sessionId,
+        organizationId,
+        email: "Owner@example.test",
+        role: "admin",
+      })
+    ).rejects.toThrow("already on the team")
+  })
+  test("expired invitations do not count toward the cap", async () => {
+    const t = setup()
+    const owner = await user(t, "owner@example.test")
+    const organizationId = await t.mutation(api.teams.create, {
+      sessionId: owner.sessionId,
+      name: "Team",
+    })
+    await t.run(async (ctx) => {
+      for (let n = 0; n < 100; n++)
+        await ctx.db.insert("invitation", {
+          organizationId,
+          email: `old${n}@example.test`,
+          role: "member",
+          status: "pending",
+          createdAt: Date.now(),
+          expiresAt: n < 99 ? Date.now() - 1 : Date.now() + 10000,
+          inviterId: owner.id,
+        })
+    })
+    await t.mutation(api.teams.invite, {
+      sessionId: owner.sessionId,
+      organizationId,
+      email: "new@example.test",
+      role: "member",
+    })
+    const left = await t.run((ctx) =>
+      ctx.db
+        .query("invitation")
+        .withIndex("organizationId", (q) =>
+          q.eq("organizationId", organizationId)
+        )
+        .collect()
+    )
+    expect(left.map((i) => i.email).sort()).toEqual([
+      "new@example.test",
+      "old99@example.test",
+    ])
+  })
 })

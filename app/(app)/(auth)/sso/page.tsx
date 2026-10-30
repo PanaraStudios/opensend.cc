@@ -10,7 +10,9 @@ export default function Page() {
       <h1 className="text-2xl font-semibold">Sign in with SSO</h1>
       <p className="text-sm text-muted-foreground">
         For an existing account, connect SSO while signed in to Opensend first.
-        Later sign-ins can use SSO directly.
+        New users create an account with email and password first, unless their
+        email domain is approved for SSO sign-up. Later sign-ins can use SSO
+        directly.
       </p>
       <AsyncForm
         submitLabel="Continue"

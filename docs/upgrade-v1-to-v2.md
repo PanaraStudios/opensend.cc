@@ -34,7 +34,10 @@ The [telemetry guide](telemetry.md) lists every field, timing and control.
 Contacts can now have no email address. Shared template and broadcast lists can
 contain other channels. Permission errors use `403 restricted_api_key`.
 IVR reads return `[redacted]` instead of a signing secret; save it at creation
-or rotation. The event catalog is paged, and teams can define at most 10,000
+or rotation. `GET /webhooks/{webhook_id}` returns `signing_secret` only to keys
+with `webhooks:write` or Full access, and the SDK type marks it optional. SSO
+creates new accounts only for domains in `SSO_APPROVED_DOMAINS`, and a password
+reset or change removes a user's SSO links. The event catalog is paged, and teams can define at most 10,000
 custom event types. Review these changes in the release notes before reopening
 API traffic.
 
