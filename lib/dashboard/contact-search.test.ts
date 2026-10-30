@@ -51,25 +51,30 @@ describe("parseContactSearch", () => {
   it("reads a formatted number as one run of digits", () => {
     assert.deepEqual(parseContactSearch(" +1 (415) 555-2671 "), {
       kind: "phone",
-      digits: ["14155552671"],
+      digits: "14155552671",
+      national: "14155552671",
     })
     assert.deepEqual(parseContactSearch("555 2671"), {
       kind: "phone",
-      digits: ["5552671"],
+      digits: "5552671",
+      national: "5552671",
     })
   })
   it("also tries a number without its trunk or international zeros", () => {
     assert.deepEqual(parseContactSearch("07911 123456"), {
       kind: "phone",
-      digits: ["7911123456", "07911123456"],
+      digits: "07911123456",
+      national: "7911123456",
     })
     assert.deepEqual(parseContactSearch("0044 7911 123456"), {
       kind: "phone",
-      digits: ["447911123456", "00447911123456"],
+      digits: "00447911123456",
+      national: "447911123456",
     })
     assert.deepEqual(parseContactSearch("0000"), {
       kind: "phone",
-      digits: ["0000"],
+      digits: "0000",
+      national: "0000",
     })
   })
   it("splits anything else into at most 16 words", () => {
@@ -102,5 +107,72 @@ describe("matchesContactSearch", () => {
       assert.equal(matchesContactSearch(parseContactSearch(search), sam), true)
     for (const search of ["2672", "0415 555 2671x"])
       assert.equal(matchesContactSearch(parseContactSearch(search), sam), false)
+  })
+})
+
+/** Convex's full-text rule, which convex-test does not follow: the last
+    query term matches as a word prefix, every other term as a whole word,
+    and a document is a candidate when any term matches. */
+function convexCandidate(query: string, text: string) {
+  const terms = query.split(" ").filter(Boolean)
+  const words = searchWords(text)
+  return terms.some((term, i) =>
+    i === terms.length - 1
+      ? words.some((word) => word.startsWith(term))
+      : words.includes(term)
+  )
+}
+
+describe("searchQuery", () => {
+  it("puts the run every match starts a word with last", () => {
+    assert.equal(searchQuery(parseContactSearch("07911 12")), "0791112 791112")
+    assert.equal(searchQuery(parseContactSearch("+44 7911")), "447911")
+    assert.equal(searchQuery(parseContactSearch("Jan  Gmail")), "jan gmail")
+  })
+  it("lets Convex return every contact the box matches", () => {
+    const contacts = [
+      sam,
+      { phone: "+447911123456", firstName: "Olivia", lastName: "Brown" },
+      { phone: "+14155550123", firstName: "Zero", lastName: "Ending" },
+      { phone: "+919876543210", firstName: "Ravi", lastName: "Kumar" },
+      { email: "jane.doe@gmail.com", firstName: "Jane", lastName: "Doe" },
+    ]
+    const searches = [
+      "0791",
+      "07911 12",
+      "07911 12345",
+      "07911 123456",
+      "0044 7911 12",
+      "00447911123456",
+      "0123",
+      "01",
+      "(415) 555-2",
+      "5552",
+      "+91 98765",
+      "98765 43",
+      "2671",
+      "jan gmail",
+      "gmail jan",
+      "jane do",
+      "doe@gmail",
+    ]
+    for (const search of searches) {
+      const parsed = parseContactSearch(search)
+      const query = searchQuery(parsed)
+      for (const contact of contacts)
+        if (matchesContactSearch(parsed, contact))
+          assert.ok(
+            convexCandidate(query, searchText(contact)),
+            `${search} matches ${contact.firstName} but the index misses it`
+          )
+    }
+    // The cases that motivated the order: partly typed national numbers.
+    const olivia = contacts[1]
+    for (const search of ["0791", "07911 12", "0044 7911 12"])
+      assert.ok(matchesContactSearch(parseContactSearch(search), olivia))
+    assert.ok(
+      matchesContactSearch(parseContactSearch("0123"), contacts[2]),
+      "an ending that starts with 0"
+    )
   })
 })

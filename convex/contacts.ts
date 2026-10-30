@@ -40,6 +40,7 @@ import {
   topicSubscriptionValue,
 } from "./tables/audience"
 import {
+  type ContactSearch,
   matchesContactSearch,
   parseContactSearch,
   searchQuery,
@@ -83,8 +84,8 @@ export const CONTACT_SEARCH_BUDGET = {
 export const CONTACT_SEARCH_BACKFILL = "migrations:indexContactSearch"
 
 /** Newest first. A search goes through the full-text index once every
-    contact's search text is current; an export (`exhaustive`) and a search
-    before then filter each bounded index page by substring instead. */
+    contact's search text is current; before then it filters each bounded
+    index page by substring, as it used to. */
 export async function contactPage(
   ctx: QueryCtx,
   args: Infer<typeof contactFilters> & { paginationOpts: PaginationOptions },
@@ -94,7 +95,6 @@ export async function contactPage(
   const from = args.from ?? 0
   const to = args.to ?? Number.MAX_SAFE_INTEGER
   const search = args.search
-  const matches = matchesSearch(search)
   // A segment deleted while filtered on just lists what is left of it.
   const segment = segmentId && (await ctx.db.get("segments", segmentId))
   if (segment && segment.organizationId !== organizationId)
@@ -112,25 +112,39 @@ export async function contactPage(
         q.eq("contactId", contact._id).eq("segmentId", segmentId)
       )
       .first())
-  if (
-    search?.trim() &&
-    !options.exhaustive &&
-    (await contactSearchIndexed(ctx))
-  )
-    return contactSearchPage(
-      ctx,
-      { ...args, search },
-      async (contact) => inFilters(contact) && (await inSegment(contact))
-    )
-  const inRange = (contact: Doc<"contacts">) =>
-    inFilters(contact) &&
-    matches(
+  const substring = matchesSearch(search)
+  let matches = (contact: Doc<"contacts">) =>
+    substring(
       contact.email,
       contact.phone,
       contact.firstName,
       contact.lastName,
       `${contact.firstName} ${contact.lastName}`
     )
+  if (search?.trim() && (await contactSearchIndexed(ctx))) {
+    const none = { page: [], isDone: true, continueCursor: "" }
+    const exact = await exactContact(ctx, organizationId, search)
+    if (exact)
+      return {
+        ...none,
+        page: inFilters(exact) && (await inSegment(exact)) ? [exact] : [],
+      }
+    const parsed = parseContactSearch(search)
+    if (!searchQuery(parsed)) return none
+    // Full-text search stops after 1,024 hits by relevance, before a segment
+    // or date filter could drop any; those searches and exports (which must
+    // hold every match) scan instead, with the same test as the list.
+    if (
+      !options.exhaustive &&
+      !segmentId &&
+      args.from === undefined &&
+      args.to === undefined
+    )
+      return contactSearchPage(ctx, { ...args, search: parsed }, inFilters)
+    matches = (contact) => matchesContactSearch(parsed, contact)
+  }
+  const inRange = (contact: Doc<"contacts">) =>
+    inFilters(contact) && matches(contact)
 
   if (segmentId && !search?.trim()) {
     const members = await ctx.db
@@ -181,31 +195,20 @@ async function contactSearchIndexed(ctx: QueryCtx) {
   return status?.state === "success"
 }
 
-/** A typed email, or a phone number with its country code, is one index
-    point read. Anything else reads the full-text index: word prefixes over
-    the email's parts, the names and the phone's digits and endings. Results
-    come in relevance order, and Convex stops a full-text search after
-    1,024 results. */
+/** One page of full-text hits, in relevance order. Word prefixes over the
+    email's parts, the names and the phone's digits and endings; Convex
+    stops a full-text search after 1,024 results. */
 async function contactSearchPage(
   ctx: QueryCtx,
   args: {
     organizationId: string
-    search: string
+    search: ContactSearch
     unsubscribed?: boolean
     paginationOpts: PaginationOptions
   },
-  keep: (contact: Doc<"contacts">) => Promise<boolean>
+  keep: (contact: Doc<"contacts">) => boolean
 ) {
-  const exact = await exactContact(ctx, args.organizationId, args.search)
-  if (exact)
-    return {
-      page: (await keep(exact)) ? [exact] : [],
-      isDone: true,
-      continueCursor: "",
-    }
-  const search = parseContactSearch(args.search)
-  const text = searchQuery(search)
-  if (!text) return { page: [], isDone: true, continueCursor: "" }
+  const text = searchQuery(args.search)
   const result = await ctx.db
     .query("contacts")
     .withSearchIndex("search_search", (q) => {
@@ -217,15 +220,16 @@ async function contactSearchPage(
         : team.eq("unsubscribed", args.unsubscribed)
     })
     .paginate(args.paginationOpts)
-  const page = []
-  for (const contact of result.page)
-    if (matchesContactSearch(search, contact) && (await keep(contact)))
-      page.push(contact)
-  return { ...result, page }
+  return {
+    ...result,
+    page: result.page.filter(
+      (contact) => matchesContactSearch(args.search, contact) && keep(contact)
+    ),
+  }
 }
 
-/** The team's contact with exactly this email, or this phone number typed
-    with its country code; `null` for any other search. */
+/** A typed email, or a phone number with its country code, is one index
+    point read: the team's contact with exactly it, or `null`. */
 async function exactContact(
   ctx: QueryCtx,
   organizationId: string,

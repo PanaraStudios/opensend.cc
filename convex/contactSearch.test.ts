@@ -3,6 +3,7 @@ import { expect, test } from "vitest"
 import { runToCompletion } from "@convex-dev/migrations"
 import { api, components, internal } from "./_generated/api"
 import type { ActionCtx } from "./_generated/server"
+import { setMembership } from "./audience"
 import { insertRow } from "./counts"
 import { EXPORT_SOURCES } from "./exportSources"
 import { fixture } from "./testHelpers/ses.fixture"
@@ -100,6 +101,10 @@ test("search by name, email, full phone and phone ending through the index", asy
   expect(await f.names("555 2671")).toEqual(["Sam"])
   expect(await f.names("07911 123456")).toEqual(["Olivia"])
   expect(await f.names("00447911123456")).toEqual(["Olivia"])
+  // Partly typed: the zero-stripped run is the last term, the one Convex
+  // matches as a prefix (see contact-search.test.ts for the term order).
+  expect(await f.names("07911 12")).toEqual(["Olivia"])
+  expect(await f.names("0044 7911 12")).toEqual(["Olivia"])
   expect(await f.names("123456")).toEqual(["Olivia"])
   // A run of digits inside the number is the start of one of its endings.
   expect(await f.names("5552")).toEqual(["Sam"])
@@ -150,17 +155,80 @@ test("a search page reads matches, not the team's whole contact list", async () 
   expect(result.isDone).toBe(true)
 })
 
-test("an export with a search still holds every substring match", async () => {
+test("an export with a search holds what the list shows, scanned in full", async () => {
+  const f = await setup()
+  const exported = async (search: string) => {
+    const result = await f.t.run((ctx) =>
+      EXPORT_SOURCES.contacts.page(
+        ctx,
+        f.organizationId,
+        { search },
+        firstPage,
+        []
+      )
+    )
+    return result.rows.map((row) => String(row[4])).sort()
+  }
+  // Before the backfill both the list and the export match substrings.
+  expect(await exported("ane")).toEqual(["Jane", "Mary"])
+  await f.backfill()
+  for (const search of [
+    "ane",
+    "jane",
+    "(415) 555-2671",
+    "07911 12",
+    "Jane.Doe@example.test",
+    "+1 415 555 2671",
+    "@",
+  ])
+    expect(await exported(search)).toEqual(await f.names(search))
+  expect(await exported("(415) 555-2671")).toEqual(["Sam"])
+  expect(await exported("ane")).toEqual([])
+})
+
+test("a search with a segment or date filter scans with the list's test", async () => {
   const f = await setup()
   await f.backfill()
-  const rows = await f.t.run((ctx) =>
-    EXPORT_SOURCES.contacts.page(
-      ctx,
-      f.organizationId,
-      { search: "ane" },
-      firstPage,
-      []
-    )
+  const segmentId = await f.owner.client.mutation(api.segments.create, {
+    organizationId: f.organizationId,
+    name: "VIP",
+  })
+  // Sam and Jane join the segment; Mary, who also matches "jane", does not.
+  const members = await f.t.run(async (ctx) => {
+    const joined = []
+    for (const contact of await ctx.db.query("contacts").collect())
+      if (contact.firstName === "Sam" || contact.firstName === "Jane") {
+        await setMembership(ctx, contact, segmentId, true)
+        joined.push(contact.firstName)
+      }
+    return joined.sort()
+  })
+  expect(members).toEqual(["Jane", "Sam"])
+  const list = async (filters: {
+    search: string
+    segmentId?: typeof segmentId
+    from?: number
+    to?: number
+  }) => {
+    const result = await f.owner.client.query(api.contacts.list, {
+      organizationId: f.organizationId,
+      ...filters,
+      paginationOpts: firstPage,
+    })
+    return result.page.map((row) => row.firstName).sort()
+  }
+  // A formatted number is no substring of "+14155552671": only the new test
+  // finds Sam, through the scan of the segment's team.
+  expect(await list({ search: "(415) 555-2671", segmentId })).toEqual(["Sam"])
+  expect(await list({ search: "jane", segmentId })).toEqual(["Jane"])
+  expect(await list({ search: "ane", segmentId })).toEqual([])
+  expect(await list({ search: "07911 12", segmentId })).toEqual([])
+  expect(await list({ search: "jane", from: 0, to: Date.now() + 1 })).toEqual([
+    "Jane",
+    "Mary",
+  ])
+  expect(await list({ search: "ane", from: 0, to: Date.now() + 1 })).toEqual([])
+  expect(await list({ search: "07911 12", from: Date.now() + 60_000 })).toEqual(
+    []
   )
-  expect(rows.rows.map((row) => row[4]).sort()).toEqual(["Jane", "Mary"])
 })

@@ -46,32 +46,42 @@ export const searchText = (contact: ContactSearchFields) =>
   ].join(" ")
 
 /** What the box asks for. A phone number, however it is formatted, is one
-    run of digits; typed with a trunk "0" or an international "00" it is
-    also tried without them, as the stored number has neither. Anything
-    else is words, all of which must match. */
+    run of digits. Typed with a trunk "0" or an international "00", the run
+    without those zeros (`national`) is what the stored words start with;
+    the run as typed (`digits`) still matches a stored ending that starts
+    with 0 ("0123"). Anything else is words, all of which must match. */
 export type ContactSearch =
-  { kind: "phone"; digits: string[] } | { kind: "words"; words: string[] }
+  | { kind: "phone"; digits: string; national: string }
+  | { kind: "words"; words: string[] }
 
 export function parseContactSearch(search: string): ContactSearch {
   const value = search.trim()
   if (/^\+?[\d\s().-]+$/.test(value) && /\d/.test(value)) {
     const digits = value.replace(/\D/g, "")
     const national = value.startsWith("+") ? digits : digits.replace(/^0+/, "")
-    return {
-      kind: "phone",
-      digits: national && national !== digits ? [national, digits] : [digits],
-    }
+    return { kind: "phone", digits, national: national || digits }
   }
   return { kind: "words", words: searchWords(value).slice(0, MAX_TERMS) }
 }
 
-/** The text handed to the full-text index; empty when nothing searchable. */
-export const searchQuery = (search: ContactSearch) =>
-  (search.kind === "phone" ? search.digits : search.words).join(" ")
+/** The text handed to the full-text index; empty when nothing searchable.
+    Convex matches only the LAST term as a prefix and every other term as a
+    whole word, so the last term must be one that every true match starts a
+    word with: any of the words (each must match), or a phone's `national`
+    run. convex-test prefix-matches every term and cannot catch a wrong
+    order; contact-search.test.ts checks it against Convex's rule. */
+export function searchQuery(search: ContactSearch) {
+  if (search.kind === "words") return search.words.join(" ")
+  return search.national === search.digits
+    ? search.digits
+    : `${search.digits} ${search.national}`
+}
 
-/** Full-text search ranks rows that match any term. A phone search keeps
-    those with one of its digit runs, a word search those with every word,
-    each as the start of one of the contact's words. */
+/** Whether the contact is one the box asks for: a word search needs every
+    word as the start of one of the contact's words; a phone search needs a
+    word starting with its national run, or the run as typed as a whole
+    word. Exactly what the full-text index can return, so the list and an
+    export agree. */
 export function matchesContactSearch(
   search: ContactSearch,
   contact: ContactSearchFields
@@ -79,6 +89,6 @@ export function matchesContactSearch(
   const words = searchWords(searchText(contact))
   const has = (term: string) => words.some((word) => word.startsWith(term))
   return search.kind === "phone"
-    ? search.digits.some(has)
+    ? has(search.national) || words.includes(search.digits)
     : search.words.length > 0 && search.words.every(has)
 }
