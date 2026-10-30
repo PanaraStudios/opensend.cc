@@ -804,13 +804,15 @@ test("download links are signed, scoped to the export and expire", async () => {
     (await f.owner.client.action(api.exports.downloadUrl, { id: other }))!
   ).pathname
   expect((await f.t.fetch(fresh)).status).toBe(200)
-  // The link lapses after an hour.
-  vi.setSystemTime(Date.now() + 3601_000)
-  expect((await f.t.fetch(link)).status).toBe(404)
   await f.t.run((ctx) =>
     patchRow(ctx, "exports", other, { expiresAt: Date.now() - 1 })
   )
+  // The link itself is seconds old: only the export's expiry stops it.
   expect((await f.t.fetch(fresh)).status).toBe(404)
+  // The link lapses after an hour, though the export is still kept.
+  expect((await f.t.fetch(link)).status).toBe(200)
+  vi.setSystemTime(Date.now() + 3601_000)
+  expect((await f.t.fetch(link)).status).toBe(404)
 })
 
 test("expiry, failure and team deletion remove every part", async () => {
