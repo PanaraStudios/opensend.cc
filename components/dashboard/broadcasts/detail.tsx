@@ -108,6 +108,11 @@ const EVENT_TABS: {
   },
 ]
 
+/** Why a sending broadcast has no Stop button: cancelBroadcast only works
+    before fan-out starts. */
+const NO_STOP_NOTE =
+  "A send can't be stopped once it is going out; messages already sent can't be recalled."
+
 const DELIVERY_ROWS: [string, keyof BroadcastStats][] = [
   ["Recipients", "recipients"],
   ["Delivered", "delivered"],
@@ -203,6 +208,7 @@ function BroadcastReport({ item }: { item: Broadcast }) {
             >
               <ProgressValue />
             </Progress>
+            {item.fanoutStarted ? <p>{NO_STOP_NOTE}</p> : null}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -342,7 +348,10 @@ export function BroadcastDetail() {
   if (editable) return null
 
   const broadcast = item
-  const { canSend, canCancel } = broadcastActions(broadcast.status)
+  const { canSend, canCancel } = broadcastActions(
+    broadcast.status,
+    broadcast.fanoutStarted
+  )
   const topic = topics.find((row) => row.id === broadcast.topicId)
   const audience = audienceLabel(broadcast.segmentId, segments)
 
@@ -534,7 +543,7 @@ function WhatsAppBroadcastReport({
           <AlertDescription>
             {delivering
               ? "Every message has gone out. Metrics keep updating as delivery and read receipts arrive."
-              : "Metrics update as messages are delivered."}
+              : `Metrics update as messages are delivered.${item.fanoutStarted ? ` ${NO_STOP_NOTE}` : ""}`}
           </AlertDescription>
         </Alert>
       ) : null}

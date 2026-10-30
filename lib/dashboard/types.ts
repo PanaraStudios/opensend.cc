@@ -276,6 +276,9 @@ export type Broadcast = EmailDraft & {
   }
   whatsappStats?: WhatsAppBroadcastStats
   status: BroadcastStatus
+  /** Fan-out has started resolving the audience; the send can no longer be
+      canceled. */
+  fanoutStarted?: boolean
   /** A WhatsApp, Messenger or Instagram send whose recipients are all queued
       and that waits on delivery receipts (up to 24 hours after the last
       message) to settle. Lists read it as Sent. */

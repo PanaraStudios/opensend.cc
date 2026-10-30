@@ -71,6 +71,9 @@ describe("broadcastActions", () => {
       canSend: false,
       canCancel: true,
     })
+    // Once fan-out starts the server refuses to cancel, so Stop is hidden.
+    assert.equal(broadcastActions("queued", true).canCancel, false)
+    assert.equal(broadcastActions("scheduled", true).canCancel, true)
     assert.deepEqual(broadcastActions("sent"), {
       canSchedule: false,
       canSend: false,

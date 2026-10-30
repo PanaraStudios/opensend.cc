@@ -44,6 +44,7 @@ import {
   recipientMessageStatuses,
 } from "./broadcastReadModel"
 import { parseMailbox } from "../lib/dashboard/email-send"
+import { broadcastCancelable } from "../lib/dashboard/broadcast"
 import { MAX_SCHEDULE } from "./emails"
 import { TEMPLATE_BODY_LIMIT } from "./templates"
 
@@ -260,8 +261,10 @@ export async function cancelBroadcast(
   row: Doc<"broadcasts">
 ) {
   if (
-    row.status !== "scheduled" &&
-    !(row.status === "queued" && row.audienceBefore === undefined)
+    !broadcastCancelable({
+      status: row.status,
+      fanoutStarted: row.audienceBefore !== undefined,
+    })
   )
     throw new ConvexError("Only scheduled broadcasts can be canceled")
   if (row.scheduledJob) await ctx.scheduler.cancel(row.scheduledJob)

@@ -56,14 +56,30 @@ export function emailEditorMode(
   return item.html.trim() ? "html" : "visual"
 }
 
+/** A broadcast can be canceled while scheduled, or while queued until its
+    fan-out starts resolving the audience (`audienceBefore` is set). Once it
+    is going out it can't be stopped. The server's cancel uses this too. */
+export function broadcastCancelable(row: {
+  status: BroadcastStatus
+  fanoutStarted: boolean
+}): boolean {
+  return (
+    row.status === "scheduled" ||
+    (row.status === "queued" && !row.fanoutStarted)
+  )
+}
+
 /** Which header actions a broadcast offers in its current status. A canceled
     send behaves like a draft so it can be rescheduled or sent. */
-export function broadcastActions(status: BroadcastStatus) {
+export function broadcastActions(
+  status: BroadcastStatus,
+  fanoutStarted = false
+) {
   const draftLike = status === "draft" || status === "canceled"
   return {
     canSchedule: draftLike,
     canSend: draftLike || status === "scheduled",
-    canCancel: status === "scheduled" || status === "queued",
+    canCancel: broadcastCancelable({ status, fanoutStarted }),
   }
 }
 

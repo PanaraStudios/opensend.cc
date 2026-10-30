@@ -41,6 +41,7 @@ export function asBroadcast(
     segmentId: row.segmentId,
     topicId: row.topicId,
     status: row.status,
+    fanoutStarted: row.audienceBefore !== undefined,
     delivering:
       row.status === "queued" &&
       row.audienceDone &&
