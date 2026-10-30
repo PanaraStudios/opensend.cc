@@ -73,7 +73,9 @@ async function publish(
     (system !== undefined &&
       (always ||
         (await automationEnabled(ctx, organizationId, system.trigger))))
-  if (!webhook && !automation && system !== undefined)
+  // A run waiting for the event needs the dispatcher whether or not a
+  // webhook also takes it.
+  if (!automation && system !== undefined)
     automation = await runWaits(
       ctx,
       organizationId,

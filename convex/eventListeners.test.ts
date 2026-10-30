@@ -314,8 +314,9 @@ test("an enabled automation on the trigger starts a run as before", async () => 
   expect(run).toMatchObject({ contactId: f.contactId, eventId: result.id })
 })
 
-test("a run waiting for the contact's message is the only listener it needs, and resumes", async () => {
-  const f = await setup()
+/** A run of an automation on another trigger, waiting for the contact's
+    next WhatsApp message; the outbox and scheduler are left empty. */
+async function waitingRun(f: Awaited<ReturnType<typeof setup>>) {
   const automationId = await f.define("opensend:email.opened", [
     {
       key: "wait",
@@ -355,26 +356,78 @@ test("a run waiting for the contact's message is the only listener it needs, and
   await f.t.run(async (ctx) => {
     for (const row of await ctx.db.query("events").take(10))
       await ctx.db.delete("events", row._id)
+    for (const job of await ctx.db.system
+      .query("_scheduled_functions")
+      .take(100))
+      if (job.state.kind === "pending") await ctx.scheduler.cancel(job._id)
   })
+  vi.advanceTimersByTime(1000)
+  return run
+}
+
+/** Runs the dispatcher's wait phase and checks the run took the event. */
+async function expectResumed(
+  f: Awaited<ReturnType<typeof setup>>,
+  run: Doc<"automationRuns">,
+  event: Id<"events">
+) {
+  await f.t.mutation(internal.automationRuntime.dispatch, {
+    id: event,
+    phase: "wait",
+    cursor: null,
+  })
+  const resumed = await f.t.run((ctx) => ctx.db.get("automationRuns", run._id))
+  expect(resumed?.waitingName).toBeUndefined()
+  expect(resumed?.lastSignalEventId).toBe(event)
+}
+
+test("a run waiting for the contact's message is the only listener it needs, and resumes", async () => {
+  const f = await setup()
+  // The automation's own trigger (email.opened) is not this event's.
+  const run = await waitingRun(f)
   // Someone else's message: nothing waits for it.
   expect(
     await f.t.run(async (ctx) =>
       outbox(ctx, await emitMessageEvent(ctx, f.org, RECEIVED, f.stranger))
     )
   ).toMatchObject({ id: null, stored: 0 })
-  vi.advanceTimersByTime(1000)
-  const received = await f.t.run((ctx) =>
-    emitMessageEvent(ctx, f.org, RECEIVED, f.message)
+  const received = await f.t.run(async (ctx) =>
+    outbox(ctx, await emitMessageEvent(ctx, f.org, RECEIVED, f.message))
   )
-  expect(received).not.toBeNull()
-  await f.t.mutation(internal.automationRuntime.dispatch, {
-    id: received!,
-    phase: "wait",
-    cursor: null,
+  expect(received).toMatchObject({
+    stored: 1,
+    jobs: ["automationRuntime:consume"],
   })
-  const resumed = await f.t.run((ctx) => ctx.db.get("automationRuns", run._id))
-  expect(resumed?.waitingName).toBeUndefined()
-  expect(resumed?.lastSignalEventId).toBe(received)
+  await expectResumed(f, run, received.id!)
+})
+
+test("a waiting run still resumes when a webhook also takes the event", async () => {
+  const f = await setup()
+  const run = await waitingRun(f)
+  await listenToEvents(f.t, f.org, [RECEIVED])
+  const received = await f.t.run(async (ctx) =>
+    outbox(ctx, await emitMessageEvent(ctx, f.org, RECEIVED, f.message))
+  )
+  // Both consumers, as v2 scheduled them.
+  expect(received).toMatchObject({
+    stored: 1,
+    jobs: ["automationRuntime:consume", "webhooks:deliverEvent"],
+  })
+  await expectResumed(f, run, received.id!)
+  // A stranger's message goes to the webhook only.
+  await f.t.run(async (ctx) => {
+    for (const job of await ctx.db.system
+      .query("_scheduled_functions")
+      .take(100))
+      if (job.state.kind === "pending") await ctx.scheduler.cancel(job._id)
+    for (const row of await ctx.db.query("events").take(10))
+      await ctx.db.delete("events", row._id)
+  })
+  expect(
+    await f.t.run(async (ctx) =>
+      outbox(ctx, await emitMessageEvent(ctx, f.org, RECEIVED, f.stranger))
+    )
+  ).toMatchObject({ stored: 1, jobs: ["webhooks:deliverEvent"] })
 })
 
 test("custom events are always stored for the automation dispatcher", async () => {
