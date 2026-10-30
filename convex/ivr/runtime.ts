@@ -25,9 +25,11 @@ import { emitEvent } from "../events"
 import type { Doc, Id } from "../_generated/dataModel"
 import type { IvrDecision } from "../../services/call-gateway/src/ivr-contracts"
 
+// Strings, not v.id: a malformed id from the gateway is a 404, not a 503 the
+// gateway would retry.
 export const requestArgs = {
-  callId: v.id("calls"),
-  ivrId: v.id("ivrs"),
+  callId: v.string(),
+  ivrId: v.string(),
   origin: v.string(),
 }
 const nonceArgs = { nonce: v.string(), expiresAt: v.number() }
@@ -50,8 +52,9 @@ async function nonce(
     { id }
   )
 }
-async function liveCall(ctx: QueryCtx, id: Id<"calls">) {
-  const call = await ctx.db.get("calls", id)
+async function liveCall(ctx: QueryCtx, callId: string) {
+  const id = ctx.db.normalizeId("calls", callId)
+  const call = id ? await ctx.db.get("calls", id) : null
   if (
     !call ||
     call.mode !== "gateway" ||
@@ -61,11 +64,11 @@ async function liveCall(ctx: QueryCtx, id: Id<"calls">) {
     throw notFound("Active gateway call")
   return call
 }
-async function session(ctx: QueryCtx, callId: Id<"calls">, ivrId: Id<"ivrs">) {
+async function session(ctx: QueryCtx, callId: string, ivrId: string) {
   const call = await liveCall(ctx, callId)
   const s = await ctx.db
     .query("ivrSessions")
-    .withIndex("by_callId", (q) => q.eq("callId", callId))
+    .withIndex("by_callId", (q) => q.eq("callId", call._id))
     .unique()
   if (!s || s.organizationId !== call.organizationId || s.ivrId !== ivrId)
     throw notFound("IVR session")
@@ -456,8 +459,13 @@ export const audio = internalQuery({
       .unique()
     if (!s || s.organizationId !== call.organizationId) return null
     // A valid signature is scoped to the call and file; still re-check file ownership/state.
-    const file = await audioFile(ctx, call.organizationId, args.fileId)
-    return { storageId: file.storageId!, contentType: file.contentType }
+    // A deleted or replaced file is a 404 for the gateway, not a 503 to retry.
+    const file = await audioFile(ctx, call.organizationId, args.fileId).catch(
+      () => null
+    )
+    return file
+      ? { storageId: file.storageId!, contentType: file.contentType }
+      : null
   },
 })
 

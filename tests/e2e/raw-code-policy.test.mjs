@@ -1,7 +1,10 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { Window } from "happy-dom"
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import {
+  findFormsWithoutSubmit,
   findVisibleRawCodes,
   RAW_CODE_FILENAME_PATTERN,
 } from "./raw-code-policy.ts"
@@ -67,4 +70,37 @@ test("the browser detector skips filenames and @handles but still reports real v
     }
     await window.happyDOM.close()
   }
+})
+
+test("every form has a submit button", () => {
+  assert.deepEqual(
+    findFormsWithoutSubmit(`<form onSubmit={save}>
+      <Button>Save</Button>
+    </form>
+    <form onSubmit={save}>
+      <Button type="submit">Save</Button>
+    </form>
+    <form id="edit" onSubmit={save}></form>
+    <Button form="edit" type="submit">Save</Button>
+    <form id={formId} onSubmit={save}></form>
+    <Button form={formId} type="submit">Save</Button>
+    <form id="orphan" onSubmit={save}></form>
+    <form {...props} onSubmit={(event) => save(event)} />
+    <form id="plain" onSubmit={save}></form>
+    <Button form="plain">Save</Button>
+    <form onSubmit={(event) => save(event)} id="arrow"></form>
+    <Button type="submit" form="arrow">Save</Button>`),
+    [1, 11, 13]
+  )
+  const files = ["app", "components"].flatMap((dir) =>
+    readdirSync(dir, { recursive: true })
+      .filter((file) => /\.tsx$/.test(file))
+      .map((file) => join(dir, file))
+  )
+  const offenders = files.flatMap((file) =>
+    findFormsWithoutSubmit(readFileSync(file, "utf8")).map(
+      (line) => `${file}:${line}`
+    )
+  )
+  assert.deepEqual(offenders, [])
 })

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { encodeMuLaw, decodeMuLaw } from "../src/audio.js"
-import { mediaOffer, rtpPayload } from "../src/voice-media.js"
+import {
+  mediaOffer,
+  rtpPayload,
+  VoiceMediaEndpoint,
+} from "../src/voice-media.js"
 import {
   VoiceBackend,
   VoiceTools,
@@ -74,4 +78,35 @@ test("tool requests capture team/call authority, deduplicate ids, reject injecte
   tools.stop()
   assert.equal(signal.aborted, true)
   await assert.rejects(tools.run({ ...tool, id: "3" }), /ended/)
+})
+
+test("voice bot legs ring drachtio at the address it has after each reconnect", async () => {
+  const addresses = ["10.0.0.2", "10.0.0.9"]
+  const endpoint = new VoiceMediaEndpoint({
+    host: "drachtio",
+    port: 9022,
+    secret: "s",
+    advertiseHost: "gateway",
+    fsHost: "freeswitch",
+    resolve: async () => addresses.shift() ?? "10.0.0.99",
+  })
+  const srf = (endpoint as unknown as { srf: NodeJS.EventEmitter }).srf
+  const settle = () => new Promise((resolve) => setImmediate(resolve))
+  const reservation = {
+    attach: async () => undefined,
+    adapter: {} as never,
+    event: () => undefined,
+    barge: async () => undefined,
+    end: () => undefined,
+  }
+  srf.emit("connect", null)
+  await settle()
+  assert.match(endpoint.reserve(reservation).uri, /@10\.0\.0\.2:5060$/)
+  srf.emit("disconnect")
+  assert.equal(endpoint.healthy, false)
+  // drachtio was recreated with a new IP; the reconnect resolves it again.
+  srf.emit("connect", null)
+  await settle()
+  assert.equal(endpoint.healthy, true)
+  assert.match(endpoint.reserve(reservation).uri, /@10\.0\.0\.9:5060$/)
 })

@@ -7,6 +7,7 @@ import {
   internalQuery,
   query,
   action,
+  type MutationCtx,
   type QueryCtx,
 } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
@@ -28,6 +29,9 @@ import schema from "../schema"
 import { validateBot } from "../../lib/voice-bots"
 import { pickerArgs, pickerRows } from "../pickerOptions"
 import { voiceProvider } from "../tables/voice"
+import { own as ownedIvr } from "../ivr/definitions"
+/** ElevenLabs voice caches (up to 500 voices each) deleted per transaction. */
+const VOICE_CACHE_BATCH = 5
 export const actor = {
   organizationId: v.string(),
   caller: v.optional(callerValue),
@@ -229,6 +233,17 @@ export const save = internalMutation({
     } catch {
       throw invalid("Invalid voice bot configuration")
     }
+    // A handoff to another team's (or a deleted) IVR fails only mid-call.
+    // Only a changed handoff IVR is checked: the dashboard re-sends the
+    // stored one on every save, and a bot whose IVR was deleted before this
+    // check existed must stay editable.
+    if (
+      config.handoff?.ivrId &&
+      config.handoff.ivrId !== previous?.handoff?.ivrId
+    )
+      config.handoff.ivrId = (
+        await ownedIvr(ctx, args.organizationId, config.handoff.ivrId)
+      )._id
     for (const id of config.knowledgeBaseIds ?? [])
       await ownedToolkit(ctx, "knowledgeBases", args.organizationId, id)
     for (const id of config.customToolIds ?? [])
@@ -407,12 +422,7 @@ export const remove = internalMutation({
           "credential_in_use",
           "Remove bots or IVR prompt voices using this credential first"
         )
-      const caches = await ctx.db
-        .query("elevenLabsVoiceCaches")
-        .withIndex("by_credentialId", (q) => q.eq("credentialId", row._id))
-        .take(5)
-      for (const cache of caches)
-        await ctx.db.delete("elevenLabsVoiceCaches", cache._id)
+      await dropVoiceCaches(ctx, row._id)
       await ctx.db.delete("voiceProviders", row._id)
     } else {
       const row = await ownedBot(ctx, args.organizationId, args.id)
@@ -426,9 +436,46 @@ export const remove = internalMutation({
           "bot_in_use",
           "Remove number routing before deleting this bot"
         )
+      const ivr = await ctx.db
+        .query("ivrBotReferences")
+        .withIndex("by_botId", (q) => q.eq("botId", row._id))
+        .first()
+      if (ivr)
+        throw apiError(
+          409,
+          "bot_in_use",
+          "Remove IVR actions routing to this bot before deleting it"
+        )
       await ctx.db.delete("voiceBots", row._id)
     }
     return { id: args.id, deleted: true }
+  },
+})
+/** Deletes a removed credential's ElevenLabs voice caches a batch at a time;
+    a full batch schedules the next one so none are left behind. */
+async function dropVoiceCaches(
+  ctx: MutationCtx,
+  credentialId: Id<"voiceProviders">
+) {
+  const caches = await ctx.db
+    .query("elevenLabsVoiceCaches")
+    .withIndex("by_credentialId", (q) => q.eq("credentialId", credentialId))
+    .take(VOICE_CACHE_BATCH)
+  for (const cache of caches)
+    await ctx.db.delete("elevenLabsVoiceCaches", cache._id)
+  if (caches.length === VOICE_CACHE_BATCH)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.voice.resources.dropRemovedVoiceCaches,
+      { credentialId }
+    )
+}
+export const dropRemovedVoiceCaches = internalMutation({
+  args: { credentialId: v.id("voiceProviders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await dropVoiceCaches(ctx, args.credentialId)
+    return null
   },
 })
 export const transcript = internalQuery({

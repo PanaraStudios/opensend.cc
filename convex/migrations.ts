@@ -1,6 +1,7 @@
 import { reachedAnyone, recordBroadcastReport } from "./broadcastMetrics"
 import { recordMetric } from "./metricRows"
 import { projectEvent } from "./ses/projection"
+import { syncIvrBotReferences } from "./ivr/botReferences"
 import { Migrations } from "@convex-dev/migrations"
 import { getFunctionName } from "convex/server"
 import { v } from "convex/values"
@@ -117,6 +118,13 @@ export const partlyFailedBroadcasts = migrations.define({
       await patchRow(ctx, "broadcasts", row._id, { status: "sent" })
   },
 })
+/** IVRs saved before ivrBotReferences existed: record the bots they route
+    to, so deleting one of those bots is refused. */
+export const ivrBotReferences = migrations.define({
+  table: "ivrs",
+  batchSize: 10,
+  migrateOne: (ctx, ivr) => syncIvrBotReferences(ctx, ivr),
+})
 
 /** Every backfill, in order. New backfills go at the end. */
 const postDeployMigrations = [
@@ -160,6 +168,7 @@ const postDeployMigrations = [
   internal.migrations.countDomains,
   internal.migrations.dropWebhookStats,
   internal.migrations.partlyFailedBroadcasts,
+  internal.migrations.ivrBotReferences,
 ]
 
 /** How often, and how long, `postDeploy` waits for a step already running. */

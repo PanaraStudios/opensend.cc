@@ -94,6 +94,7 @@ test.each(["messenger", "instagram"] as const)(
       {
         id: accountId,
         name: channel === "messenger" ? "Acme Page" : "Acme Instagram",
+        live: true,
       },
     ])
     // An identity linked incorrectly to this contact still cannot cross team boundaries.
