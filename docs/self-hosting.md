@@ -691,7 +691,7 @@ pnpm backend run migrations:postDeploy
 pnpm backend run --component migrations lib:getStatus --watch
 ```
 
-The backfills run in the background in batches and are safe to run again: they resume where they stopped, skip finished steps and never count a row twice. `migrations:backfillCounts` is an older name for the same runner. Until it finishes, list totals and segment sizes can read low.
+The backfills run in the background in batches and are safe to run again: they resume where they stopped, skip finished steps and never count a row twice. `migrations:backfillCounts` is an older name for the same runner. If a step is already running when it starts (for example the previous release's event-count backfill), it checks again every 5 minutes for up to 24 hours and starts the remaining steps once nothing is running. Until it finishes, list totals and segment sizes can read low.
 
 The substring-search fix needs no backfill: stored fields and indexes are unchanged. Reload open dashboard lists after deploying it so pagination starts with fresh cursors. Searches now scan bounded index pages and keep totals unknown until the range is exhausted; selective searches may take more requests. See [search pagination](search-pagination.md) for the engine limits, read budgets and regression coverage.
 

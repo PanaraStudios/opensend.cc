@@ -244,7 +244,9 @@ must fit the 10,000-type cap. Existing definitions above it are kept.
 
 The script upgrade also requests `migrations:backfillCounts`, an older name for
 the same runner, as do the manual paths above; a request while it is running
-changes nothing. It rebuilds historical counts and email metrics,
+changes nothing. If a backfill step from the previous release is still running,
+the runner checks again every 5 minutes for up to 24 hours and then starts the
+remaining steps. It rebuilds historical counts and email metrics,
 projects stored SES events, rebuilds broadcast reports, queues parsing for stored
 inbound mail and removes replaced counter fields. It records progress and runs
 in the background; older totals may read low until it finishes. Rerunning resumes

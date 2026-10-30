@@ -6,6 +6,7 @@ import type { Id } from "./_generated/dataModel"
 import type { ActionCtx } from "./_generated/server"
 import { COUNTED_TABLES, counters, insertRow, patchRow } from "./counts"
 import { writeLog } from "./logs"
+import { migrations } from "./migrations"
 import { fixture } from "./testHelpers/ses.fixture"
 
 const page = { cursor: null, numItems: 50 }
@@ -488,6 +489,46 @@ test("the post-deploy runner covers every backfill and counts old rows", async (
   await f.t.mutation(internal.migrations.backfillCounts, {})
   await f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
   expect(await total()).toBe(1)
+})
+
+test("postDeploy waits for a step another runner left running, then runs the rest", async () => {
+  const { f, org, owner } = await setup()
+  await f.t.run(async (ctx) => {
+    // Enough contacts that their backfill takes several batches.
+    for (let i = 0; i < 250; i++)
+      await ctx.db.insert("contacts", {
+        organizationId: org,
+        email: `legacy${i}@example.com`,
+        firstName: "",
+        lastName: "",
+        unsubscribed: false,
+        properties: {},
+        search: `legacy${i}@example.com`,
+        updatedAt: Date.now(),
+      })
+    await ctx.db.insert("webhooks", {
+      organizationId: org,
+      endpoint: "https://example.com/hook",
+      events: ["contact.created"],
+      enabled: true,
+      secret: "x",
+    })
+  })
+  vi.useFakeTimers()
+  // Another runner (like an older release's single-step one) is mid-way
+  // through a step of the list and will not start the steps after it.
+  await f.t.run((ctx) =>
+    migrations.runOne(ctx, internal.migrations.countContacts)
+  )
+  await f.t.mutation(internal.migrations.postDeploy, {})
+  await f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect(
+    (await owner.query(api.contacts.count, { organizationId: org })).total
+  ).toBe(250)
+  // countWebhooks comes after countContacts in the list.
+  expect(
+    (await owner.query(api.webhooks.count, { organizationId: org })).total
+  ).toBe(1)
 })
 
 test("counted inserts return stored documents and retirement checks stay transaction scoped", async () => {

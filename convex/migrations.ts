@@ -2,8 +2,10 @@ import { recordBroadcastReport } from "./broadcastMetrics"
 import { recordMetric } from "./metricRows"
 import { projectEvent } from "./ses/projection"
 import { Migrations } from "@convex-dev/migrations"
+import { v } from "convex/values"
 import { components, internal } from "./_generated/api"
 import type { DataModel } from "./_generated/dataModel"
+import { internalMutation, type MutationCtx } from "./_generated/server"
 import { countRow, patchRow, type CountedTable } from "./counts"
 
 /* Online migrations. The migrate image starts `migrations:postDeploy` after
@@ -147,8 +149,48 @@ const postDeployMigrations = [
   internal.migrations.dropWebhookStats,
 ]
 
+/** How often, and how long, `postDeploy` waits for a step already running. */
+const POST_DEPLOY_RECHECK_MS = 5 * 60_000
+const POST_DEPLOY_RECHECKS = 288 // 24 hours
+
+/* The component skips a whole series while any of its steps runs. A step
+   started by another runner (such as the previous release's
+   `initializeEventCounts`) does not go on to the rest of this list, so wait
+   for it and start the series once nothing is running. A series that
+   `postDeploy` itself started carries on alone; the recheck then finds every
+   step done or skipped. */
+const postDeployRunner = {
+  args: { recheck: v.optional(v.number()) },
+  returns: v.null(),
+  handler: async (
+    ctx: MutationCtx,
+    { recheck = 0 }: { recheck?: number }
+  ): Promise<null> => {
+    const statuses = await migrations.getStatus(ctx, {
+      migrations: postDeployMigrations,
+    })
+    const running = statuses.find((status) => status.state === "inProgress")
+    if (!running) {
+      await migrations.runSerially(ctx, postDeployMigrations)
+      return null
+    }
+    if (recheck >= POST_DEPLOY_RECHECKS) {
+      console.warn(
+        `postDeploy: ${running.name} is still running; run migrations:postDeploy again once it finishes`
+      )
+      return null
+    }
+    await ctx.scheduler.runAfter(
+      POST_DEPLOY_RECHECK_MS,
+      internal.migrations.postDeploy,
+      { recheck: recheck + 1 }
+    )
+    return null
+  },
+}
+
 /** Run by the migrate image after each deploy. The component records each
-    step by name, so a rerun skips finished steps and leaves one in progress. */
-export const postDeploy = migrations.runner(postDeployMigrations)
+    step by name, so a rerun skips finished steps. */
+export const postDeploy = internalMutation(postDeployRunner)
 /** Older name for `postDeploy`, kept for scripts and docs that call it. */
-export const backfillCounts = migrations.runner(postDeployMigrations)
+export const backfillCounts = internalMutation(postDeployRunner)
