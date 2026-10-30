@@ -898,3 +898,37 @@ test("the account picker identifies an unnamed WABA by its connected number inst
     { wabaId: WABA_ID, name: "Support · +15555550100" },
   ])
 })
+
+test("sync keeps Meta's exact names, even ones our slug would merge", async () => {
+  const f = await setup()
+  const meta = (id: string, name: string) => ({
+    id,
+    name,
+    language: "gu",
+    category: "MARKETING" as const,
+    status: "APPROVED" as const,
+    parameterFormat: "positional" as const,
+    components: [{ type: "BODY", text: "Hello" }],
+  })
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    organizationId: f.team,
+    wabaId: WABA_ID,
+    syncedAt: Date.now(),
+    templates: [
+      meta("9001", "ng_admission_2026"),
+      meta("9002", "ng_admission_2026_"),
+    ],
+  })
+  const names = await f.t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("templates")
+        .withIndex("by_organizationId", (q) => q.eq("organizationId", f.team))
+        .collect()
+    )
+      .filter((row) => row.whatsapp?.metaTemplateId?.startsWith("900"))
+      .map((row) => row.name)
+      .sort()
+  )
+  expect(names).toEqual(["ng_admission_2026", "ng_admission_2026_"])
+})

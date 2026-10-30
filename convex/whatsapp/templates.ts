@@ -379,6 +379,7 @@ export const upsertSynced = internalMutation({
       if (!row) {
         const id = await insertWhatsAppTemplate(ctx, organizationId, {
           name: meta.name,
+          metaName: true,
           content: components,
           whatsapp: { wabaId, language: meta.language, ...fields, syncedAt },
           status: "published",

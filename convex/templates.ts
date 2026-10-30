@@ -285,7 +285,9 @@ export async function insertTemplate(
 
 /** A WhatsApp template: its row, and its draft holding the components.
     `uniqueName` numbers a taken name instead of refusing it. A template
-    synced from Meta arrives published, with its Meta fields. */
+    synced from Meta arrives published, with its Meta fields and Meta's
+    exact name (`metaName`): sends address it by that name, and Meta can
+    hold names our slug would merge, like `a_2026` and `a_2026_`. */
 export async function insertWhatsAppTemplate(
   ctx: MutationCtx,
   organizationId: string,
@@ -294,14 +296,17 @@ export async function insertWhatsAppTemplate(
     content?: unknown
     whatsapp: WhatsAppSettings & Partial<WhatsAppTemplate>
     uniqueName?: boolean
+    metaName?: boolean
     status?: Doc<"templates">["status"]
   }
 ) {
   checkInput({ name: input.name, content: input.content })
   const target = input.whatsapp
-  const name = input.uniqueName
-    ? await freeTemplateName(ctx, organizationId, input.name, target)
-    : templateNameFrom(input.name)
+  const name = input.metaName
+    ? input.name
+    : input.uniqueName
+      ? await freeTemplateName(ctx, organizationId, input.name, target)
+      : templateNameFrom(input.name)
   if (!input.uniqueName)
     await assertNameFree(ctx, organizationId, { ...target, name })
   const facts = componentFacts(input.content ?? emptyComponents())
