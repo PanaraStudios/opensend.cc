@@ -25,6 +25,7 @@ import {
 } from "./testHelpers/pages.fixture"
 import type { Id } from "./_generated/dataModel"
 import { unpackRetryItems } from "./meta/projection"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 let graph: ReturnType<typeof fakeGraph>
 beforeEach(() => {
@@ -53,8 +54,9 @@ async function project(
   await f.t.mutation(internal.meta.projection.project, { id: event!._id })
   return event!._id
 }
-async function setup(open = true) {
+async function setup(open = true, listen: readonly string[] = []) {
   const f = await pagesFixture()
+  if (listen.length) await listenToEvents(f.t, f.owner.team, listen)
   if (open)
     for (const channel of ["messenger", "instagram"] as const)
       await project(
@@ -417,7 +419,10 @@ test("health and sync refresh both linked accounts and mark revoked tokens", asy
   ).toMatchObject({ status: "error" })
 })
 test("inbound Page/IG messages create scoped identities, contacts and windows; profile enrichment is best effort", async () => {
-  const f = await setup()
+  const f = await setup(true, [
+    "messenger.message.received",
+    "instagram.message.received",
+  ])
   await f.t.finishAllScheduledFunctions(vi.runAllTimers)
   const identities = await f.t.run((ctx) =>
     ctx.db.query("channelContacts").collect()

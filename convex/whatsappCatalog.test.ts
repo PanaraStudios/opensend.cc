@@ -16,6 +16,7 @@ import {
   whatsappInboundExamples,
 } from "../lib/meta/whatsapp-fixtures"
 import { whatsappPayload } from "../lib/meta/payloads"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -131,6 +132,7 @@ for (const [name, body] of Object.entries(whatsappSendExamples)) {
 for (const [name, body] of Object.entries(whatsappInboundExamples)) {
   test(`receive ${name}: real-shaped webhook yields identical typed content in list/detail/customer event, including BSUID-only users`, async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.owner.team, ["whatsapp.message.received"])
     await project(f, inbound(body, `wamid.${name}`, true))
     const message = await f.t.run((ctx) =>
       ctx.db.query("channelMessages").first()
@@ -185,6 +187,7 @@ for (const [name, body] of Object.entries(whatsappInboundExamples)) {
 
 test("phone and BSUID observations share the same identity and thread; sending recipient keeps to absent and played cannot regress", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.played"])
   await project(f, inbound(whatsappInboundExamples.text, "wamid.bsuid", true))
   const response = await f.call("/whatsapp/messages", {
     recipient: "BSUID-123",
@@ -436,6 +439,7 @@ test("authentication templates reject BSUIDs locally, while phone routing takes 
 
 test("payment statuses remain separate from delivery and preserve their complete Meta payload", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.payment_updated"])
   await project(f, incoming())
   const response = await f.call("/whatsapp/messages", {
     to: SENDER,

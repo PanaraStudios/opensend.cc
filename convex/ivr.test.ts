@@ -1,11 +1,18 @@
 // @vitest-environment node
 import { afterEach, beforeEach, test, expect, vi } from "vitest"
-import { api, internal } from "./_generated/api"
+import { runToCompletion } from "@convex-dev/migrations"
+import { api, components, internal } from "./_generated/api"
 import { inboundFixture } from "./testHelpers/meta.fixture"
 import { signRequest } from "../services/call-gateway/src/auth"
 import * as net from "../lib/net/public-fetch"
 import { minuteUsage } from "./voice/usage"
 import { webhookHeaders } from "../lib/webhooks/signing"
+import {
+  voiceBotFormPayload,
+  type VoiceBotResource,
+} from "../lib/dashboard/voice-bot-form"
+import type { VoiceBotConfig } from "../lib/voice-bots"
+import { listenToEvents } from "./testHelpers/eventListener"
 const secret = "a".repeat(64),
   hangup = { kind: "hangup" }
 beforeEach(() => {
@@ -197,6 +204,263 @@ test("IVR REST CRUD, idempotency, dry-run validation and tenant isolation", asyn
   expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
   expect((await f.request(`/ivrs/${f.ivr.id}`)).status).toBe(404)
 })
+test("IVRs and voice bots that reference each other cannot be deleted, and bot handoffs must name a team IVR", async () => {
+  const f = await setup()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "References",
+      key: "fixture-key",
+    })
+  ).json()
+  const bot = (body: Record<string, unknown>) =>
+    f.request("/voice-bots", "POST", {
+      provider: "gemini",
+      credentialId: credential.id,
+      ...body,
+    })
+  for (const ivrId of ["not-an-id", f.callId]) {
+    const rejected = await bot({
+      name: "Bad handoff",
+      tools: ["transfer_to_ivr"],
+      handoff: { agents: false, ivrId },
+    })
+    expect(rejected.status).toBe(404)
+  }
+  const foreignIvr = await f.t.run((ctx) =>
+    ctx.db.insert("ivrs", {
+      organizationId: f.outsider.team,
+      name: "Elsewhere",
+      language: "en",
+      entryMenuId: "main",
+      menus: [
+        {
+          id: "main",
+          name: "Main",
+          prompt: { kind: "tts", text: "Hello" },
+          options: {},
+          noInputAction: { kind: "hangup" },
+          failureAction: { kind: "hangup" },
+          timeoutSeconds: 5,
+          retries: 1,
+          maxDigits: 1,
+        },
+      ],
+      webhookSecret: "unused",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  )
+  expect(
+    (
+      await bot({
+        name: "Foreign handoff",
+        tools: ["transfer_to_ivr"],
+        handoff: { agents: false, ivrId: foreignIvr },
+      })
+    ).status
+  ).toBe(404)
+  const handoff = await (
+    await bot({
+      name: "Handoff",
+      tools: ["transfer_to_ivr"],
+      handoff: { agents: false, ivrId: f.ivr.id },
+    })
+  ).json()
+  const routed = await (await bot({ name: "Routed" })).json()
+  // An IVR option routing to the bot blocks deleting it.
+  const menu = {
+    ...f.definition.menus[0],
+    options: { "1": { kind: "bot", botId: routed.id } },
+  }
+  expect(
+    (await f.request(`/ivrs/${f.ivr.id}`, "PATCH", { menus: [menu] })).status
+  ).toBe(200)
+  const blocked = await f.request(`/voice-bots/${routed.id}`, "DELETE")
+  expect(blocked.status).toBe(409)
+  expect(await blocked.json()).toMatchObject({ name: "bot_in_use" })
+  expect(
+    (
+      await f.request(`/ivrs/${f.ivr.id}`, "PATCH", {
+        menus: f.definition.menus,
+      })
+    ).status
+  ).toBe(200)
+  expect((await f.request(`/voice-bots/${routed.id}`, "DELETE")).status).toBe(
+    200
+  )
+  // A bot handing off to the IVR blocks deleting the IVR.
+  await f.t.run(async (ctx) => {
+    const settings = await ctx.db
+      .query("callingSettings")
+      .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+      .unique()
+    await ctx.db.patch("callingSettings", settings!._id, {
+      routing: { kind: "agents" },
+    })
+  })
+  expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(422)
+  expect((await f.request(`/voice-bots/${handoff.id}`, "DELETE")).status).toBe(
+    200
+  )
+  expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
+})
+
+test("IVRs saved before bot references existed are backfilled and then block deleting their bots", async () => {
+  const f = await setup()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "Backfill",
+      key: "fixture-key",
+    })
+  ).json()
+  const bot = await (
+    await f.request("/voice-bots", "POST", {
+      name: "Legacy route",
+      provider: "gemini",
+      credentialId: credential.id,
+    })
+  ).json()
+  // Written straight to the table, as before the reference rows existed.
+  await f.t.run(async (ctx) => {
+    const row = await ctx.db.get("ivrs", f.ivr.id)
+    await ctx.db.patch("ivrs", f.ivr.id, {
+      menus: [
+        {
+          ...row!.menus[0],
+          options: { "1": { kind: "bot", botId: bot.id } },
+        },
+      ],
+    })
+  })
+  await f.t.mutation(components.migrations.lib.clearAll, {})
+  await f.t.action(async (ctx) => {
+    await runToCompletion(
+      ctx,
+      components.migrations,
+      internal.migrations.ivrBotReferences,
+      { cursor: null }
+    )
+  })
+  expect(
+    await f.t.run((ctx) =>
+      ctx.db
+        .query("ivrBotReferences")
+        .withIndex("by_ivrId", (q) => q.eq("ivrId", f.ivr.id))
+        .take(10)
+    )
+  ).toEqual([expect.objectContaining({ botId: bot.id })])
+  expect((await f.request(`/voice-bots/${bot.id}`, "DELETE")).status).toBe(409)
+  // Deleting the IVR drops its references with it.
+  await f.t.run(async (ctx) => {
+    const settings = await ctx.db
+      .query("callingSettings")
+      .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+      .unique()
+    await ctx.db.patch("callingSettings", settings!._id, {
+      routing: { kind: "agents" },
+    })
+  })
+  expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
+  expect((await f.request(`/voice-bots/${bot.id}`, "DELETE")).status).toBe(200)
+})
+
+test("another team's bot cannot block deleting an IVR, and a bot whose handoff IVR is gone stays editable", async () => {
+  const f = await setup()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "Scope",
+      key: "fixture-key",
+    })
+  ).json()
+  const bot = await (
+    await f.request("/voice-bots", "POST", {
+      name: "Plain",
+      provider: "gemini",
+      credentialId: credential.id,
+    })
+  ).json()
+  await f.t.run(async (ctx) => {
+    const row = (await ctx.db.get("voiceBots", bot.id))!
+    const { _id, _creationTime, ...fields } = row
+    void _id
+    void _creationTime
+    // Another team's bot that names this IVR (saved before handoffs were checked).
+    await ctx.db.insert("voiceBots", {
+      ...fields,
+      organizationId: f.outsider.team,
+      handoff: { agents: false, ivrId: f.ivr.id },
+    })
+    await ctx.db.patch(
+      "callingSettings",
+      (await ctx.db
+        .query("callingSettings")
+        .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+        .unique())!._id,
+      { routing: { kind: "agents" } }
+    )
+  })
+  expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
+  // This team's bot pointing at the now-deleted IVR still saves other edits.
+  await f.t.run((ctx) =>
+    ctx.db.patch("voiceBots", bot.id, {
+      handoff: { agents: false, ivrId: f.ivr.id },
+    })
+  )
+  expect(
+    (await f.request(`/voice-bots/${bot.id}`, "PATCH", { name: "Renamed" }))
+      .status
+  ).toBe(200)
+  // The dashboard posts the whole form, stored handoff included.
+  const stored = (await f.owner.client.query(api.voice.resources.dashboardGet, {
+    organizationId: f.owner.team,
+    id: bot.id,
+  })) as VoiceBotResource
+  const dashboardSave = (changes: Partial<VoiceBotConfig>) =>
+    f.owner.client.action(api.voice.resources.dashboardWrite, {
+      organizationId: f.owner.team,
+      kind: "bot",
+      id: bot.id,
+      body: JSON.stringify(voiceBotFormPayload({ ...stored, ...changes })),
+    })
+  await dashboardSave({ name: "Renamed in the dashboard" })
+  expect(await f.t.run((ctx) => ctx.db.get("voiceBots", bot.id))).toMatchObject(
+    {
+      name: "Renamed in the dashboard",
+      handoff: { ivrId: f.ivr.id },
+    }
+  )
+  // Pointing the handoff at an IVR the team doesn't own is still rejected.
+  await expect(
+    dashboardSave({ handoff: { agents: false, ivrId: f.callId } })
+  ).rejects.toMatchObject({ data: { statusCode: 404 } })
+})
+
+test("malformed gateway ids are a 404, not a retryable 503", async () => {
+  const f = await setup()
+  expect(
+    (
+      await f.signed("/calling/gateway/ivr/start", {
+        callId: "not-a-call",
+        ivrId: f.ivr.id,
+      })
+    ).status
+  ).toBe(404)
+  expect(
+    (
+      await f.signed("/calling/gateway/ivr/next", {
+        callId: f.callId,
+        ivrId: "not-an-ivr",
+        menuId: "main",
+        digits: "1",
+        step: 0,
+      })
+    ).status
+  ).toBe(404)
+})
+
 test("a deleted IVR reads as null in the dashboard but stays a 404 in the API", async () => {
   const f = await setup()
   const read = () =>
@@ -232,8 +496,9 @@ test("a deleted IVR reads as null in the dashboard but stays a 404 in the API", 
 })
 
 test("signed start/next records submenu → voicemail, authenticates audio and rejects stale/replayed decisions", async () => {
-  const f = await setup(),
-    start = await f.start()
+  const f = await setup()
+  await listenToEvents(f.t, f.owner.team)
+  const start = await f.start()
   expect(start.status).toBe(200)
   const d = await start.json()
   expect(d.menu).toMatchObject({
@@ -476,6 +741,7 @@ test.each([
 
 test("remote termination completes an unfinished IVR once and forbids late decisions", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team)
   await f.start()
   await f.t.mutation(internal.calling.rows.finish, {
     id: f.callId,

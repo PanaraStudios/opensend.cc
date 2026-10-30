@@ -65,6 +65,7 @@ export const TEAM_TABLES = [
   "contactImports",
   "webhookAttempts",
   "emailShares",
+  "channelMediaCache",
   "channelMediaUploads",
   "channelMessages",
   "conversations",
@@ -93,6 +94,7 @@ export const TEAM_TABLES = [
   "callingSettings",
   "gatewayEvents",
   "callAgents",
+  "ivrBotReferences",
 ] as const
 
 export const CHILD_TABLES = [

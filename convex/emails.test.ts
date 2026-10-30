@@ -9,6 +9,7 @@ import type { Doc, Id } from "./_generated/dataModel"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertEmailEvent, patchEmail } from "./emailRows"
 import { patchRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { EXPORT_SOURCES } from "./exportSources"
 import * as sendContexts from "./ses/sendContext"
 
@@ -33,6 +34,7 @@ async function setup() {
   workpoolTest.register(f.t, "sendPool")
   workpoolTest.register(f.t, "webhookPool")
   await storeTestCredentials(f)
+  await listenToEvents(f.t, f.owner.team)
   await f.t.run(async (ctx) => {
     await ctx.db.patch("domains", f.domain, {
       status: "verified",

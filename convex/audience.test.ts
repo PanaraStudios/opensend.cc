@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest"
 import { api, components } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { insertRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
 import type { Id } from "./_generated/dataModel"
 
@@ -307,6 +308,7 @@ describe("contacts", () => {
 
   test("contact events carry Resend's webhook data", async () => {
     const { f, upsert, events } = await setup()
+    await listenToEvents(f.t, f.owner.team)
     const segment = await f.owner.client.mutation(api.segments.create, {
       organizationId: f.owner.team,
       name: "Customers",

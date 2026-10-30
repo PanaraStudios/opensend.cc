@@ -221,8 +221,7 @@ export const callingTables = {
     event: v.string(),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_eventId", ["eventId"])
-    .index("by_callId", ["callId"]),
+    .index("by_eventId", ["eventId"]),
   gatewayNonces: defineTable({
     nonce: v.string(),
     expiresAt: v.number(),

@@ -1,6 +1,7 @@
 import { normalizeWhatsAppMessage } from "../../packages/sdk/src/whatsapp/normalize"
 import type { WhatsAppIdentity } from "../../packages/sdk/src/whatsapp/catalog"
-import type { QueryCtx } from "../_generated/server"
+import type { MutationCtx, QueryCtx } from "../_generated/server"
+import { emitLazyEvent } from "../events"
 import { env } from "../_generated/server"
 import { findInstallation } from "../access"
 import { signedFileLinkForOrigin } from "../fileDownloads"
@@ -134,13 +135,24 @@ export function channelMessagePayload(
   }
 }
 
+/** Reads memoised across one page of messages, by id or key. */
+export type PageLookups = Map<string, Promise<unknown>>
+function lookup<T>(cache: PageLookups, key: string, read: () => Promise<T>) {
+  let hit = cache.get(key) as Promise<T> | undefined
+  if (!hit) cache.set(key, (hit = read()))
+  return hit
+}
+
 /** Bounded hydration shared by lists, details and customer events. Reactions
  * stay as message rows; latest observation per sender is attached to the target. */
 export async function hydratedChannelMessage(
   ctx: QueryCtx,
   message: Doc<"channelMessages">,
   now: number,
-  suppliedContent?: Doc<"channelMessageContents"> | null
+  suppliedContent?: Doc<"channelMessageContents"> | null,
+  /** Shared by the messages of one page: each identity, account,
+      connection, alias and the installation are read once. */
+  cache: PageLookups = new Map()
 ) {
   const content =
     suppliedContent !== undefined
@@ -150,24 +162,35 @@ export async function hydratedChannelMessage(
           .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
           .unique()
   const payload = content ? object(JSON.parse(content.payload)) : {}
-  const contact = await ctx.db.get("channelContacts", message.channelContactId)
+  const contact = await lookup(cache, message.channelContactId, () =>
+    ctx.db.get("channelContacts", message.channelContactId)
+  )
   const account =
     message.channel === "whatsapp"
-      ? await ctx.db.get("channelAccounts", message.accountId)
+      ? await lookup(cache, message.accountId, () =>
+          ctx.db.get("channelAccounts", message.accountId)
+        )
       : null
   const connection = account
-    ? await ctx.db.get("metaConnections", account.connectionId)
+    ? await lookup(cache, account.connectionId, () =>
+        ctx.db.get("metaConnections", account.connectionId)
+      )
     : null
   const alias = connection
-    ? await ctx.db
-        .query("whatsappUserAliases")
-        .withIndex("by_channelContactId_and_businessId", (q) =>
-          q
-            .eq("channelContactId", message.channelContactId)
-            .eq("businessId", connection.businessId)
-        )
-        .order("desc")
-        .first()
+    ? await lookup(
+        cache,
+        `alias:${message.channelContactId}:${connection.businessId}`,
+        () =>
+          ctx.db
+            .query("whatsappUserAliases")
+            .withIndex("by_channelContactId_and_businessId", (q) =>
+              q
+                .eq("channelContactId", message.channelContactId)
+                .eq("businessId", connection.businessId)
+            )
+            .order("desc")
+            .first()
+      )
     : null
   const profile =
     alias ?? (contact?.userScopeId === connection?.businessId ? contact : null)
@@ -186,7 +209,8 @@ export async function hydratedChannelMessage(
       : {}),
   }
   const origin =
-    (await findInstallation(ctx))?.callbackOrigin ?? env.CONVEX_SITE_URL
+    (await lookup(cache, "installation", () => findInstallation(ctx)))
+      ?.callbackOrigin ?? env.CONVEX_SITE_URL
   const attachments = await Promise.all(
     (content?.media ?? []).map(async (file) => ({
       id: file.mediaId ?? null,
@@ -317,4 +341,32 @@ export async function hydratedChannelMessage(
         }
       : {}),
   }
+}
+
+/** Emits a message event; the hydrated payload (content, identity,
+    account, connection, alias, reactions) is built only when something
+    listens (see `emitLazyEvent`). */
+export function emitMessageEvent(
+  ctx: MutationCtx,
+  organizationId: string,
+  type: string,
+  message: Doc<"channelMessages">,
+  extra: (
+    payload: Awaited<ReturnType<typeof hydratedChannelMessage>>
+  ) => Record<string, unknown> = (payload) => payload,
+  now = Date.now()
+) {
+  return emitLazyEvent(
+    ctx,
+    organizationId,
+    type,
+    // What the hydrated payload's contact is found by.
+    async () => ({
+      contact_id:
+        (await ctx.db.get("channelContacts", message.channelContactId))
+          ?.contactId ?? null,
+      conversation_id: message.conversationId,
+    }),
+    async () => extra(await hydratedChannelMessage(ctx, message, now))
+  )
 }

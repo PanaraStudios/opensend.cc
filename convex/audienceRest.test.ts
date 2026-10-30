@@ -7,6 +7,7 @@ import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { renderTemplate } from "./templates"
 import { insertRow } from "./counts"
 import { MEMBERSHIP_BATCH, SEGMENT_INPUT_LIMIT } from "./audience"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -227,6 +228,7 @@ describe("audience and template REST resources", () => {
   })
   test("contact properties, email lookup, atomic relations, topic defaults and contact webhooks", async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.owner.team)
     await f.ok("/contact-properties", "POST", {
       key: "score",
       type: "number",
@@ -627,6 +629,7 @@ describe("audience and template REST resources", () => {
   })
   test("foreign related ids cannot be attached and topic changes roll back together", async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.owner.team)
     const contact = await f.ok("/contacts", "POST", {
       email: "owner@example.com",
     })

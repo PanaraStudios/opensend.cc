@@ -14,7 +14,9 @@ import { CHANNEL_QUALITIES } from "../tables/channels"
 import { HIGH_THROUGHPUT_MPS } from "../../lib/meta/whatsapp-account"
 import { acceptChannelMessage } from "../channels/messages"
 import { enqueueMediaFetch } from "../channels/mediaState"
-import { hydratedChannelMessage } from "../channels/payload"
+import { forgetPayloadFiles } from "../channels/mediaCache"
+import { MEDIA_UNUSABLE_CODE } from "../../lib/meta/media"
+import { emitMessageEvent } from "../channels/payload"
 import { live, wabaByWabaId } from "./connect"
 import { templateWebhook } from "../whatsapp/templates"
 import { TEMPLATE_WEBHOOK_FIELDS } from "../../lib/meta/templates"
@@ -279,12 +281,11 @@ async function receive(
       accountId: account._id,
     })
   }
-  const payload = await hydratedChannelMessage(ctx, message, Date.now())
-  await emitEvent(
+  await emitMessageEvent(
     ctx,
     account.organizationId,
     `${account.channel}.message.received`,
-    payload
+    message
   )
 }
 
@@ -341,16 +342,12 @@ async function status(
     details: JSON.stringify(data),
   })
   // Customer events describe the advancing milestone.
-  const payload = await hydratedChannelMessage(
-    ctx,
-    { ...current, status: next },
-    Date.now()
-  )
-  await emitEvent(
+  await emitMessageEvent(
     ctx,
     account.organizationId,
     `${account.channel}.message.${next}`,
-    {
+    { ...current, status: next },
+    (payload) => ({
       ...payload,
       ...(errors.length ? { errors } : {}),
       ...(data.pricing ? { pricing: data.pricing } : {}),
@@ -359,8 +356,16 @@ async function status(
       ...(data.biz_opaque_callback_data
         ? { biz_opaque_callback_data: data.biz_opaque_callback_data }
         : {}),
-    }
+    })
   )
+  // An upload the number reused was gone: the next send uploads again.
+  if (
+    next === "failed" &&
+    content &&
+    message.direction === "outbound" &&
+    errors.some((error) => error.code === MEDIA_UNUSABLE_CODE)
+  )
+    await forgetPayloadFiles(ctx, account._id, content)
   if (errors.some((error) => error.code === 131050)) {
     const identity = await ctx.db.get(
       "channelContacts",
@@ -556,14 +561,12 @@ export const project = internalMutation({
           webhookEventId: event._id,
           details: JSON.stringify(item.data),
         })
-        await emitEvent(
+        await emitMessageEvent(
           ctx,
           account.organizationId,
           "whatsapp.message.payment_updated",
-          {
-            ...(await hydratedChannelMessage(ctx, message, Date.now())),
-            status_raw: item.data,
-          }
+          message,
+          (payload) => ({ ...payload, status_raw: item.data })
         )
       } else if (item.kind === "status" && message) {
         const current = await status(

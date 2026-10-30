@@ -4,6 +4,7 @@ import { fixture } from "./testHelpers/ses.fixture"
 import { signUnsubscribeToken } from "../lib/unsubscribe/token"
 import { setTopicChoices } from "./audience"
 import { insertRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 const SECRET = "contact-parity-secret-".repeat(4)
 beforeEach(() => {
@@ -17,6 +18,7 @@ afterEach(() => {
 
 async function setup() {
   const f = await fixture()
+  await listenToEvents(f.t, f.owner.team)
   const member = await f.actor("plain")
   await f.t.mutation(components.betterAuth.adapter.create, {
     input: {

@@ -22,6 +22,7 @@ import { signedFileLink } from "./fileDownloads"
 import { limitedBody, BodyTooLarge } from "./ses/web"
 import * as metaApp from "./meta/app"
 import { hydratedChannelMessage } from "./channels/payload"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -113,6 +114,10 @@ const statusPayload = (id: string, status: string, extra = {}) =>
 
 test("rebundled WhatsApp statuses emit each advancing milestone only once", async () => {
   const f = await inboundFixture()
+  await listenToEvents(f.t, f.owner.team, [
+    "whatsapp.message.delivered",
+    "whatsapp.message.read",
+  ])
   const message = await outbound(f, "wamid.rebundled")
   for (const [status, observation] of [
     ["delivered", 1],
@@ -140,6 +145,7 @@ test("rebundled WhatsApp statuses emit each advancing milestone only once", asyn
 
 test("large Meta batches project in bounded transactions and replay once", async () => {
   const f = await inboundFixture()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.received"])
   const body = envelope({
     metadata: { phone_number_id: PHONE_ID },
     messages: Array.from({ length: 60 }, (_, i) => ({
@@ -235,6 +241,7 @@ test("a chunk that fails leaves no progress, and its retry projects every item e
 
 test("events part-projected under the old inline progress finish once", async () => {
   const f = await inboundFixture()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.received"])
   expect((await post(f, batch(25, "legacy"))).status).toBe(200)
   const event = (await f.t.run((ctx) =>
     ctx.db.query("metaWebhookEvents").first()
@@ -346,6 +353,7 @@ test.each(["unavailable channel", "interrupted worker"] as const)(
 
 test("a send response links a BSUID's phone to the existing CRM contact across threads", async () => {
   const f = await inboundFixture()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.sent"])
   const known = await f.t.run((ctx) =>
     upsertContact(
       ctx,
@@ -525,6 +533,7 @@ test("durable storage failure asks Meta to retry", async () => {
 test("a text creates phone-only audience, identity, conversation, timeline and both outbox events exactly once", async () => {
   const f = await inboundFixture(),
     at = Math.floor(Date.now() / 1000)
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.received"])
   const payload = incoming("wamid.text", at)
   const id = await project(f, payload)
   await post(f, payload)
@@ -650,8 +659,9 @@ test("an early status retries independently, then applies once the send is recor
 })
 
 test("statuses never regress; failed is final and stores errors, pricing and conversation evidence", async () => {
-  const f = await inboundFixture(),
-    message = await outbound(f, "wamid.status")
+  const f = await inboundFixture()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.failed"])
+  const message = await outbound(f, "wamid.status")
   for (const status of ["read", "delivered", "sent"])
     await project(f, statusPayload("wamid.status", status))
   expect(
@@ -703,6 +713,7 @@ test("drops unmatched statuses after backoff and ignores unknown WABA, phone and
 
 test("official quality/name/account payloads route by WABA and display number; templates emit without metadata", async () => {
   const f = await inboundFixture()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.template.status_updated"])
   await project(
     f,
     envelope(

@@ -5,6 +5,7 @@ import { api, components, internal } from "./_generated/api"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertEmail } from "./emailRows"
 import { patchRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { signToken } from "../lib/tokens/signed"
 import { TRACKING_CONTEXT } from "../lib/tracking/html"
 import { trackingTarget } from "./ses/contracts"
@@ -109,6 +110,7 @@ test("send pipeline tracks through verified HTTPS fallback and leaves text untou
 
 test("each HTTP hit projects once, emits Resend payloads, and unique metrics stay unique", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["email.opened", "email.clicked"])
   await f.t.mutation(internal.emails.claim, { id: f.id, generation: 0 })
   for (const kind of ["o", "o", "c", "c"] as const) {
     const result = await f.t.fetch(

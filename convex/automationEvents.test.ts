@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { fixture } from "./testHelpers/ses.fixture"
-import { emitEvent } from "./events"
+import { emitEventAlways } from "./events"
 import { customEventName, customEventType } from "./automationEvents"
 
 beforeEach(() => {
@@ -579,7 +579,9 @@ test("outbox schedules webhooks and automations from the same system event", asy
       ["contact.updated", "webhooks:deliverEvent"],
       ["custom:email.sent", "automationRuntime:consume"],
     ]) {
-      const id = await emitEvent(ctx, f.owner.team, type, { marker: type })
+      const id = await emitEventAlways(ctx, f.owner.team, type, {
+        marker: type,
+      })
       const jobs = (
         await ctx.db.system.query("_scheduled_functions").collect()
       ).filter((job) =>

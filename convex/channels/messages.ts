@@ -21,14 +21,13 @@ import {
   broadcastMessageMetric,
   broadcastRecipientProblem,
 } from "../broadcastMetrics"
-import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
 import {
   upsertChannelThread,
   recordWhatsAppUser,
   recordWhatsAppPhone,
 } from "./identity"
-import { hydratedChannelMessage } from "./payload"
+import { emitMessageEvent } from "./payload"
 import { enqueueMediaFetch } from "./mediaState"
 import {
   whatsappMessageMedia,
@@ -607,15 +606,11 @@ export async function acceptChannelMessage(
     at,
   })
   await broadcastMessageMetric(ctx, current)
-  await emitEvent(
+  await emitMessageEvent(
     ctx,
     message.organizationId,
     `${message.channel}.message.sent`,
-    await hydratedChannelMessage(
-      ctx,
-      { ...current, status: "sent" },
-      Date.now()
-    )
+    { ...current, status: "sent" }
   )
   return current
 }
@@ -645,11 +640,11 @@ async function fail(
     }),
   })
   await broadcastMessageMetric(ctx, current)
-  await emitEvent(
+  await emitMessageEvent(
     ctx,
     message.organizationId,
     `${message.channel}.message.failed`,
-    await hydratedChannelMessage(ctx, current, Date.now())
+    current
   )
 }
 export const claim = internalMutation({
@@ -811,6 +806,8 @@ const outcomeValue = v.union(
     kind: v.literal("sent"),
     externalId: v.string(),
     response: v.optional(v.string()),
+    /** The Meta media ids sent for stored files. */
+    mediaIds: v.optional(v.array(v.string())),
   }),
   v.object({
     kind: v.literal("failed"),
@@ -845,7 +842,7 @@ async function recordOutcome(
     if (
       message.status === "queued" ||
       message.externalId === outcome.externalId
-    )
+    ) {
       await acceptChannelMessage(
         ctx,
         message,
@@ -853,6 +850,14 @@ async function recordOutcome(
         Date.now(),
         outcome.response
       )
+      if (outcome.mediaIds?.length) {
+        const body = await content(ctx, message._id)
+        if (body)
+          await ctx.db.patch("channelMessageContents", body._id, {
+            sentMediaIds: outcome.mediaIds,
+          })
+      }
+    }
     return
   }
   if (message.status !== "queued" || message.sentAt !== undefined) return

@@ -147,3 +147,30 @@ export function permissionAllows(
 export function isDtmf(value: string) {
   return /^[0-9*#]$/.test(value)
 }
+
+/** True for a phone number (wa_id), false for a business-scoped user ID such
+    as `US.13491208655302741918`. */
+export function isPhoneRecipient(recipient: string) {
+  return /^\+?\d{6,15}$/.test(recipient.trim())
+}
+
+/** The SIP login a softphone registered with, for comparing renewals. */
+export function sipLogin(credential: { extension: string; password: string }) {
+  return `${credential.extension}:${credential.password}`
+}
+
+/** A renewal that hands out a different SIP login (the gateway restarted and
+    forgot the old one) means registering again with that login, on the same
+    lease; never revoke it and ask for another. Not mid-call: the call's leg
+    keeps working until it ends, and the next renewal picks the change up. */
+export function renewalNeedsRegister(input: {
+  registered: string
+  credential: { extension: string; password: string }
+  inCall: boolean
+}) {
+  return (
+    !!input.registered &&
+    input.registered !== sipLogin(input.credential) &&
+    !input.inCall
+  )
+}

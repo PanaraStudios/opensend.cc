@@ -644,7 +644,7 @@ function ContactChannels({ contactId }: { contactId: string }) {
                     {accounts.map((account) => (
                       <div key={account.id} className="flex items-center gap-2">
                         <span>{account.name}</span>
-                        {identity.channel === "whatsapp" ? (
+                        {identity.channel === "whatsapp" && account.live ? (
                           <>
                             <CallButton
                               accountId={account.id}

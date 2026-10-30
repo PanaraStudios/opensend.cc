@@ -76,7 +76,6 @@ export const botToolkitTables = {
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_documentId", ["documentId"])
-    .index("by_knowledgeBaseId", ["knowledgeBaseId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 768,

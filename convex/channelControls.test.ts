@@ -18,6 +18,7 @@ import {
   IGSID,
 } from "./testHelpers/pages.fixture"
 import { patchRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import type { MessagingChannel } from "../lib/channels"
 
 beforeEach(() => {
@@ -94,6 +95,9 @@ describe("Meta conversation controls", () => {
     "%s sends exact read and typing bodies with the configured endpoint/token",
     async (channel) => {
       const f = await setup(channel)
+      await listenToEvents(f.t, f.owner.team, [
+        `${channel}.message.read_receipt_sent`,
+      ])
       const response = await f.call(`messages/${f.message._id}/read`, {
         typing: true,
       })

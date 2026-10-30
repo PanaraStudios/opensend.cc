@@ -96,6 +96,7 @@ import type * as channels_deliver from "../channels/deliver.js";
 import type * as channels_downloads from "../channels/downloads.js";
 import type * as channels_identity from "../channels/identity.js";
 import type * as channels_media from "../channels/media.js";
+import type * as channels_mediaCache from "../channels/mediaCache.js";
 import type * as channels_mediaState from "../channels/mediaState.js";
 import type * as channels_mediaUpload from "../channels/mediaUpload.js";
 import type * as channels_mediaUploads from "../channels/mediaUploads.js";
@@ -355,6 +356,7 @@ declare const fullApi: ApiFromModules<{
   "channels/downloads": typeof channels_downloads;
   "channels/identity": typeof channels_identity;
   "channels/media": typeof channels_media;
+  "channels/mediaCache": typeof channels_mediaCache;
   "channels/mediaState": typeof channels_mediaState;
   "channels/mediaUpload": typeof channels_mediaUpload;
   "channels/mediaUploads": typeof channels_mediaUploads;
