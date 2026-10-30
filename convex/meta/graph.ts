@@ -82,7 +82,7 @@ export async function graph<T = unknown>(input: {
       ? [input.token.split("|").slice(1).join("|")]
       : []),
     ...Object.entries(input.query ?? {}).flatMap(([name, value]) =>
-      /^(access_token|input_token|client_secret|code|appsecret_proof)$/i.test(
+      /^(access_token|input_token|fb_exchange_token|client_secret|code|appsecret_proof)$/i.test(
         name
       ) && typeof value === "string"
         ? [value]
@@ -90,7 +90,7 @@ export async function graph<T = unknown>(input: {
     ),
     ...(input.body && "form" in input.body
       ? Object.entries(input.body.form).flatMap(([name, value]) =>
-          /^(access_token|input_token|client_secret|code|verify_token|appsecret_proof)$/i.test(
+          /^(access_token|input_token|fb_exchange_token|client_secret|code|verify_token|appsecret_proof)$/i.test(
             name
           )
             ? [value]
