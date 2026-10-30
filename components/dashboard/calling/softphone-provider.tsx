@@ -507,12 +507,13 @@ function TeamSoftphone({
         ...args,
         id: active.current,
       })
-      await phone.current?.hangup()
       reset()
     } catch (reason) {
       dispatch("hangupFailed")
       fail(reason)
     } finally {
+      // Drop the SIP leg and the microphone even when the server hangup fails.
+      await phone.current?.hangup().catch(() => undefined)
       finishOperation()
     }
   }
