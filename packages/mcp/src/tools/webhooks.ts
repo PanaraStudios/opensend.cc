@@ -294,7 +294,7 @@ export function addWebhookTools(server: McpServer, opensend: Opensend) {
         content: [
           {
             type: "text",
-            text: `Endpoint: ${webhook.endpoint}\nStatus: ${webhook.status}\nEvents: ${webhook.events?.join(", ") ?? "none"}\nID: ${webhook.id}\nCreated at: ${webhook.created_at}\nSigning Secret: ${webhook.signing_secret}`,
+            text: `Endpoint: ${webhook.endpoint}\nStatus: ${webhook.status}\nEvents: ${webhook.events?.join(", ") ?? "none"}\nID: ${webhook.id}\nCreated at: ${webhook.created_at}${webhook.signing_secret ? `\nSigning Secret: ${webhook.signing_secret}` : ""}`,
           },
         ],
       }

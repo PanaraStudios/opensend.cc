@@ -5001,7 +5001,8 @@ paths:
       x-opensend-scope: webhooks:read
       description: >-
         Retrieve a webhook’s endpoint, events, status, and signing secret (requires webhooks:read or
-        Full access). The list omits the secret.
+        Full access). The signing secret is included only for keys with webhooks:write or Full
+        access. The list omits the secret.
     patch:
       operationId: webhooks/update
       tags:
@@ -23894,7 +23895,9 @@ components:
           example: '2023-10-06 23:47:56.678+00'
         signing_secret:
           type: string
-          description: The secret used to verify webhook payloads.
+          description: >-
+            The secret used to verify webhook payloads. Omitted for keys without webhooks:write
+            access.
           example: whsec_...
       required:
         - object
@@ -23903,7 +23906,6 @@ components:
         - events
         - status
         - created_at
-        - signing_secret
       additionalProperties: false
     UpdateWebhookRequest:
       type: object

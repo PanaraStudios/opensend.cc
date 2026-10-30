@@ -95,6 +95,34 @@ async function setup() {
 }
 
 describe("webhook REST parity", () => {
+  test("a webhooks:read key retrieves a webhook without its signing secret", async () => {
+    const f = await setup()
+    const created = await f.webhook()
+    const scoped = async (scopes: string[]) =>
+      (
+        await f.member.client.action(api.apiKeys.create, {
+          organizationId: f.owner.team,
+          input: { name: scopes.join(" "), permission: "custom", scopes },
+        })
+      ).token
+    const url = `/webhooks/${created.body.id}`
+    const read = await f.call(
+      url,
+      "GET",
+      undefined,
+      await scoped(["webhooks:read"])
+    )
+    expect(read.status).toBe(200)
+    expect(read.body).toMatchObject({ object: "webhook", id: created.body.id })
+    expect(read.body).not.toHaveProperty("signing_secret")
+    const write = await f.call(
+      url,
+      "GET",
+      undefined,
+      await scoped(["webhooks:write"])
+    )
+    expect(write.body.signing_secret).toBe(created.body.signing_secret)
+  })
   test("plain member CRUD, create idempotency, signing secret on create, retrieve and rotate, newest-first paging", async () => {
     const f = await setup()
     const input = {

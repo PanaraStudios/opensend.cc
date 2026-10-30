@@ -403,7 +403,7 @@ not follow redirects. Each team can register 100 webhooks.
 | --- | --- | --- |
 | `POST /webhooks` | 201 | `{endpoint, events}` → `{object:"webhook", id, signing_secret}` |
 | `GET /webhooks` | 200 | `{object:"list", has_more, data:[{id, endpoint, events, status, created_at}]}` |
-| `GET /webhooks/{webhook_id}` | 200 | `{object:"webhook", id, endpoint, events, status, created_at, signing_secret}` |
+| `GET /webhooks/{webhook_id}` | 200 | `{object:"webhook", id, endpoint, events, status, created_at, signing_secret}`; `signing_secret` only with `webhooks:write` or full access |
 | `PATCH /webhooks/{webhook_id}` | 200 | Optional `endpoint`, `events`, `status` (`enabled`/`disabled`) → `{object:"webhook", id}` |
 | `DELETE /webhooks/{webhook_id}` | 200 | `{object:"webhook", id, deleted:true}` |
 | `POST /webhooks/{webhook_id}/signing-secret/rotate` | 200 | `{object:"webhook", id, signing_secret}` |
