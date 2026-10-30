@@ -71,6 +71,8 @@ import {
 } from "@/lib/unsubscribe/use-unsubscribe"
 import { UnsubscribePageCard } from "@/components/unsubscribe/page-card"
 import type { Team, TeamMember } from "@/lib/dashboard/types"
+import { invitationExpired } from "@/lib/dashboard/invitations"
+import { useClock } from "@/lib/time/use-clock"
 
 const SMTP_PORT_ITEMS = [
   { value: "465", label: "465 · implicit TLS" },
@@ -428,6 +430,7 @@ function TeamInvitations({ team }: { team: Team }) {
   const invite = useMutation(api.teams.invite)
   const cancel = useMutation(api.teams.cancelInvitation)
   const [pending, setPending] = React.useState<string | null>(null)
+  const now = useClock()
   async function update(id: string, resend: boolean) {
     const invitation = invitations.find((item) => item.id === id)
     if (!invitation) return
@@ -479,7 +482,7 @@ function TeamInvitations({ team }: { team: Team }) {
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {invitation.status === "expired" ? "Expired" : "Pending"}
+                      {invitationExpired(invitation, now) ? "Expired" : "Pending"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">

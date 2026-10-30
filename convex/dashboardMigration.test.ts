@@ -205,7 +205,7 @@ describe("workspace cursor lists", () => {
   })
 })
 
-test("invitation pages preserve expired labels, skip canceled rows and require a team admin", async () => {
+test("invitation pages keep expired rows, skip canceled rows and require a team admin", async () => {
   const f = await setup()
   for (const [status, expiresAt] of [
     ["canceled", Date.now() + 3600000],
@@ -244,7 +244,7 @@ test("invitation pages preserve expired labels, skip canceled rows and require a
     ...args,
     paginationOpts: { numItems: 1, cursor: canceled.continueCursor },
   })
-  expect(expired.page[0]?.status).toBe("expired")
+  expect(expired.page[0]?.expiresAt).toBeLessThan(Date.now())
   const pending = await f.owner.client.query(api.teams.invitations, {
     ...args,
     paginationOpts: { numItems: 1, cursor: expired.continueCursor },

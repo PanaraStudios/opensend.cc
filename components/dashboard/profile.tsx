@@ -18,7 +18,11 @@ import {
 import { api } from "@/convex/_generated/api"
 import { authClient, authResult } from "@/lib/auth/client"
 import { actionError } from "@/lib/action-error"
-import { useTeamCommands, useWorkspace } from "@/components/auth/workspace"
+import {
+  useReceivedInvitations,
+  useTeamCommands,
+  useWorkspace,
+} from "@/components/auth/workspace"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -772,7 +776,7 @@ function MfaCard() {
 }
 
 function InvitesCard() {
-  const { receivedInvitations } = useWorkspace()
+  const receivedInvitations = useReceivedInvitations()
   const respond = useMutation(api.teams.respond)
   const [pending, setPending] = React.useState<string | null>(null)
   async function answer(invitationId: string, accept: boolean) {
