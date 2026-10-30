@@ -1,7 +1,7 @@
 import { v } from "convex/values"
 import { mutation, type MutationCtx, type QueryCtx } from "../_generated/server"
 import { components } from "../_generated/api"
-import { requireTeam, sessionId } from "../access"
+import { requireSetupComplete, requireTeam, sessionId } from "../access"
 import { deleteFile, retainFile } from "./files"
 import { fileUrl } from "./urls"
 
@@ -21,6 +21,9 @@ export const set = mutation({
   args: { organizationId: v.string(), fileId: v.id("storedFiles") },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // Like removing the avatar and every other team change, setting one
+    // waits for installation setup to finish.
+    await requireSetupComplete(ctx)
     await requireTeam(ctx, args.organizationId, "admin")
     const file = await retainFile(
       ctx,

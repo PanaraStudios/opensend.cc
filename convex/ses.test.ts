@@ -1333,6 +1333,22 @@ test("setup gates teams and invitations, with one first-team creation at the wiz
   await expect(
     f.owner.client.mutation(api.teams.deleteAccount)
   ).rejects.toThrow("Finish installation")
+  const avatar = await f.t.run((ctx) =>
+    ctx.db.insert("storedFiles", {
+      organizationId: f.owner.team,
+      provider: "convex",
+      size: 1,
+      contentType: "image/png",
+      feature: "asset",
+      state: "ready",
+    })
+  )
+  await expect(
+    f.owner.client.mutation(api.storage.assets.set, {
+      organizationId: f.owner.team,
+      fileId: avatar,
+    })
+  ).rejects.toThrow("Finish installation")
   // Fixture setup uses the internal auth component; public application calls stay gated.
   await f.t.mutation(components.betterAuth.teams.remove, {
     sessionId: f.owner.session._id,
