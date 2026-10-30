@@ -405,6 +405,19 @@ async function syncWaba(ctx: ActionCtx, wabaId: string) {
     }
     after = cursor
   }
+  // Past MAX_PAGES the listing is incomplete: what was read is kept and
+  // the sync recorded, but no template is marked deleted for being unseen.
+  console.warn(
+    `WhatsApp template sync for WABA ${wabaId} stopped after ${MAX_PAGES} pages (${count} templates); templates Meta no longer lists were not marked deleted.`
+  )
+  await ctx.runMutation(internal.whatsapp.templates.finishSync, {
+    organizationId,
+    wabaId,
+    syncedAt,
+    cursor: null,
+    seenMetaIds: [],
+    partial: true,
+  })
   return count
 }
 
@@ -425,7 +438,13 @@ export const remove = action({
 /** "Sync from Meta": imports every template of the team's WABAs. */
 export const sync = action({
   args: { organizationId: v.string() },
-  returns: v.object({ synced: v.number() }),
+  returns: v.object({
+    synced: v.number(),
+    /** WABAs whose sync failed while others synced. */
+    failed: v.optional(
+      v.array(v.object({ wabaId: v.string(), error: v.string() }))
+    ),
+  }),
   handler: async (ctx, { organizationId }) => {
     const wabaIds: string[] = await ctx.runQuery(
       internal.whatsapp.templates.teamWabaIds,
@@ -439,9 +458,20 @@ export const sync = action({
       organizationId,
       operation: "templateSync",
     })
+    // One failing WABA must not stop the others; it fails the whole sync
+    // only when every WABA failed.
     let synced = 0
-    for (const wabaId of wabaIds) synced += await syncWaba(ctx, wabaId)
-    return { synced }
+    let firstError: unknown
+    const failed: { wabaId: string; error: string }[] = []
+    for (const wabaId of wabaIds)
+      try {
+        synced += await syncWaba(ctx, wabaId)
+      } catch (error) {
+        firstError ??= error
+        failed.push({ wabaId, error: graphFailure(error) })
+      }
+    if (failed.length === wabaIds.length) throw firstError
+    return failed.length ? { synced, failed } : { synced }
   },
 })
 

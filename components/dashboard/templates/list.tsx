@@ -164,10 +164,19 @@ export function TemplatesView() {
   async function sync() {
     setSyncing(true)
     try {
-      const { synced } = await syncFromMeta()
+      const { synced, failed } = await syncFromMeta()
       toast.add({
-        type: "success",
+        type: failed?.length ? "warning" : "success",
         title: `Synced ${pluralize(synced, "WhatsApp template")}`,
+        ...(failed?.length
+          ? {
+              description: failed
+                .map(
+                  ({ wabaId, error }) => `WhatsApp account ${wabaId}: ${error}`
+                )
+                .join(" "),
+            }
+          : {}),
       })
     } catch (error) {
       toast.add({ type: "error", title: actionError(error) })

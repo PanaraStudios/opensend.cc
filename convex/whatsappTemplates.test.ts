@@ -465,6 +465,70 @@ describe("WhatsApp templates", () => {
     )
   })
 
+  test("one failing WABA does not stop the manual sync of the others", async () => {
+    const f = await setup()
+    await f.t.run(async (ctx) => {
+      const own = await ctx.db.query("whatsappBusinessAccounts").first()
+      await ctx.db.insert("whatsappBusinessAccounts", {
+        organizationId: f.team,
+        wabaId: "7777000077770000",
+        connectionId: own!.connectionId,
+      })
+    })
+    f.graph.use({
+      method: "GET",
+      path: "/7777000077770000/message_templates",
+      respond: () =>
+        Response.json(
+          { error: { message: "Temporary failure", code: 2 } },
+          { status: 503 }
+        ),
+    })
+    const result = await f.owner.action(api.whatsapp.templateActions.sync, {
+      organizationId: f.team,
+    })
+    expect(result.synced).toBe(2)
+    expect(result.failed).toEqual([
+      {
+        wabaId: "7777000077770000",
+        error: expect.stringMatching(/Temporary failure/),
+      },
+    ])
+    const waba = await f.t.run((ctx) =>
+      ctx.db
+        .query("whatsappBusinessAccounts")
+        .withIndex("by_wabaId", (q) => q.eq("wabaId", WABA_ID))
+        .unique()
+    )
+    expect(waba?.templatesSyncedAt).toEqual(expect.any(Number))
+  })
+
+  test("a listing cut off at the page limit records the sync without marking unseen templates deleted", async () => {
+    const f = await setup()
+    const id = await f.create()
+    await f.owner.action(api.whatsapp.templateActions.publish, { id })
+    later()
+    f.graph.use({
+      method: "GET",
+      path: `/${WABA_ID}/message_templates`,
+      respond: () => ({
+        data: [],
+        paging: { next: "https://graph.example/next", cursors: { after: "c" } },
+      }),
+    })
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const syncedAt = Date.now()
+    await f.owner.action(api.whatsapp.templateActions.sync, {
+      organizationId: f.team,
+    })
+    expect(f.graph.to(`/${WABA_ID}/message_templates`, "GET")).toHaveLength(60)
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/stopped after 60/))
+    expect((await f.row(id)).whatsapp?.metaStatus).not.toBe("DELETED")
+    expect(
+      await f.t.run((ctx) => ctx.db.query("whatsappBusinessAccounts").first())
+    ).toMatchObject({ templatesSyncedAt: syncedAt })
+  })
+
   test("an empty listing records the sync start and marks dropped templates deleted", async () => {
     const f = await setup()
     await f.owner.action(api.whatsapp.templateActions.sync, {

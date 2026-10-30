@@ -447,7 +447,8 @@ const byMetaId = async (
   ).find((row) => row.organizationId === organizationId) ?? null
 
 /** After a complete sync: templates of the WABA Meta no longer lists are
-    marked deleted, a page at a time, then the WABA records the sync. */
+    marked deleted, a page at a time, then the WABA records the sync. A
+    `partial` listing (cut off at the page limit) only records the sync. */
 export const finishSync = internalMutation({
   args: {
     organizationId: v.string(),
@@ -455,6 +456,7 @@ export const finishSync = internalMutation({
     syncedAt: v.number(),
     cursor: v.union(v.string(), v.null()),
     seenMetaIds: v.array(v.string()),
+    partial: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -468,6 +470,12 @@ export const finishSync = internalMutation({
       (waba.templatesSyncStartedAt ?? 0) > args.syncedAt
     )
       return null
+    if (args.partial) {
+      await ctx.db.patch("whatsappBusinessAccounts", waba._id, {
+        templatesSyncedAt: Math.max(waba.templatesSyncedAt ?? 0, args.syncedAt),
+      })
+      return null
+    }
     const seen = new Set(args.seenMetaIds)
     const page = await ctx.db
       .query("templates")
