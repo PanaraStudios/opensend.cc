@@ -1064,3 +1064,50 @@ test("sync keeps Meta's exact names, even ones our slug would merge", async () =
   )
   expect(names).toEqual(["ng_admission_2026", "ng_admission_2026_"])
 })
+
+test("sync corrects a slugged name on a row it matches by Meta id, and saving that exact name is no rename", async () => {
+  const f = await setup()
+  const meta = (name: string) => ({
+    id: "9101",
+    name,
+    language: "en_US",
+    category: "MARKETING" as const,
+    status: "APPROVED" as const,
+    parameterFormat: "positional" as const,
+    components: [{ type: "BODY", text: "Hello" }],
+  })
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    organizationId: f.team,
+    wabaId: WABA_ID,
+    syncedAt: Date.now(),
+    templates: [meta("promo__2026_")],
+  })
+  const row = await f.t.run(async (ctx) =>
+    (await ctx.db.query("templates").collect()).find(
+      (candidate) => candidate.whatsapp?.metaTemplateId === "9101"
+    )
+  )
+  // As an older install stored it: slugged.
+  await f.t.run((ctx) =>
+    ctx.db.patch("templates", row!._id, { name: "promo_2026" })
+  )
+  later()
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    organizationId: f.team,
+    wabaId: WABA_ID,
+    syncedAt: Date.now(),
+    templates: [meta("promo__2026_")],
+  })
+  const fixed = await f.row(row!._id)
+  expect(fixed.name).toBe("promo__2026_")
+  expect(fixed.alias).toBe(row!.alias)
+  expect(fixed.searchText).toContain("promo__2026_")
+  // The editor saves the name it shows; the slug must not turn it into a
+  // rename Meta refuses.
+  await f.owner.mutation(api.templates.update, {
+    id: row!._id,
+    name: "promo__2026_",
+    content: componentsFromForm({ ...EMPTY_TEMPLATE_FORM, body: "Hi there" }),
+  })
+  expect((await f.row(row!._id)).name).toBe("promo__2026_")
+})

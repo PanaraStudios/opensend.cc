@@ -152,7 +152,7 @@ function draftVariables(draft: Draft) {
     )
   return variables
 }
-const searchText = (name: string, alias: string) =>
+export const searchText = (name: string, alias: string) =>
   `${name} ${alias.replace(/[-_]+/g, " ")}`
 /** Empty text clears an optional envelope field. */
 const optionalText = (value: string | undefined) => value?.trim() || undefined
@@ -822,8 +822,12 @@ async function updateWhatsAppTemplate(
   const draft = await findDraft(ctx, template._id)
   if (!current || !draft) throw new ConvexError("Template not found")
   assertTemplateFields("whatsapp", input)
+  // The stored name may be Meta's exact one (`a__b`), which the slug would
+  // change: the same name again is no rename.
   const name =
-    input.name !== undefined ? templateNameFrom(input.name) : template.name
+    input.name !== undefined && input.name !== template.name
+      ? templateNameFrom(input.name)
+      : template.name
   const renamed = name !== template.name
   const settings = await whatsappSettings(
     ctx,

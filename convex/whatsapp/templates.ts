@@ -22,6 +22,7 @@ import {
   findPublished,
   insertWhatsAppTemplate,
   removeTemplate,
+  searchText,
 } from "../templates"
 import {
   resolvedTemplateValue,
@@ -389,6 +390,19 @@ export const upsertSynced = internalMutation({
         continue
       }
       if ((row.whatsapp?.syncedAt ?? 0) > syncedAt) continue
+      // Rows imported before sync kept Meta's exact names hold a slugged
+      // one (`a_2026` for `a_2026_`); sends and deletes address Meta by it.
+      // The alias stays, as API callers may use it.
+      if (
+        row.name !== meta.name &&
+        !(await namesakes(ctx, organizationId, meta.name, meta.language)).some(
+          (other) => other._id !== row._id && other.whatsapp?.wabaId === wabaId
+        )
+      )
+        await patchRow(ctx, "templates", row._id, {
+          name: meta.name,
+          searchText: searchText(meta.name, row.alias),
+        })
       const draft = await findDraft(ctx, row._id)
       const live = await findPublished(ctx, row._id)
       const pending =
