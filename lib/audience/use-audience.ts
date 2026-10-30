@@ -167,7 +167,8 @@ export function useAudienceCommands() {
   const contactIds = (ids: string[]) => ids as Id<"contacts">[]
   return {
     /** Creates or merges by email, in batches. With `skipExisting`, known
-        addresses are left alone and counted as skipped. */
+        addresses are left alone and counted as skipped; invalid rows are
+        counted as failed. */
     async upsertContacts(
       inputs: ContactInput[],
       segmentIds: string[],
@@ -178,6 +179,7 @@ export function useAudienceCommands() {
         created: 0,
         updated: 0,
         skipped: 0,
+        failed: 0,
         createdIds: [] as string[],
         errors: [] as string[],
       }
@@ -195,6 +197,7 @@ export function useAudienceCommands() {
         total.created += result.created
         total.updated += result.updated
         total.skipped += result.skipped
+        total.failed += result.failed ?? 0
         total.createdIds.push(...result.createdIds)
         total.errors.push(...result.errors)
       }
@@ -221,6 +224,7 @@ export function useAudienceCommands() {
           total.created += result.result.created
           total.updated += result.result.updated
           total.skipped += result.result.skipped
+          total.failed += result.result.failed ?? 0
           total.createdIds.push(...result.result.createdIds)
           total.errors.push(...result.result.errors)
         }

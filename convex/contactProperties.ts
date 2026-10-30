@@ -151,7 +151,10 @@ export const strip = internalMutation({
       if (!(property.key in contact.properties)) continue
       const { [property.key]: _removed, ...properties } = contact.properties
       void _removed
-      await patchRow(ctx, "contacts", contact._id, { properties })
+      await patchRow(ctx, "contacts", contact._id, {
+        properties,
+        updatedAt: Date.now(),
+      })
     }
     if (isDone) await deleteRow(ctx, "contactProperties", id)
     else
@@ -176,10 +179,17 @@ export async function createProperty(
       q.eq("organizationId", args.organizationId).eq("key", key)
     )
     .take(1)
-  const error = format === "api"
-    ? !/^[a-zA-Z0-9_]{1,50}$/.test(key) ? "Invalid property key"
-      : isReservedPropertyKey(key.toLowerCase()) || taken.length ? "That key already exists" : null
-    : propertyKeyError(key, taken.map((row) => row.key))
+  const error =
+    format === "api"
+      ? !/^[a-zA-Z0-9_]{1,50}$/.test(key)
+        ? "Invalid property key"
+        : isReservedPropertyKey(key.toLowerCase()) || taken.length
+          ? "That key already exists"
+          : null
+      : propertyKeyError(
+          key,
+          taken.map((row) => row.key)
+        )
   if (error) throw new ConvexError(error)
   if (
     ((await counters.contactProperties.total(ctx, args.organizationId)) ?? 0) >=
@@ -188,7 +198,10 @@ export async function createProperty(
     throw new ConvexError(
       `A team can have up to ${LIMITS.properties} properties`
     )
-  const fallbackValue = format === "api" ? args.fallbackValue : args.fallbackValue?.trim() || undefined
+  const fallbackValue =
+    format === "api"
+      ? args.fallbackValue
+      : args.fallbackValue?.trim() || undefined
   const name = args.name.trim() || key
   if (name.length > 200 || (fallbackValue?.length ?? 0) > 1000)
     throw new ConvexError("That name or fallback value is too long")

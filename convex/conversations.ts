@@ -873,11 +873,17 @@ export const reply = mutation({
             body ??
             (fileId
               ? await (async () => {
-                  const file = await ctx.db.get("storedFiles", fileId)
-                  if (!file || conversation.channel !== "whatsapp")
+                  if (conversation.channel !== "whatsapp")
                     throw new ConvexError(
                       "File replies are supported for WhatsApp and email"
                     )
+                  const file = await ctx.db.get("storedFiles", fileId)
+                  if (
+                    !file ||
+                    file.organizationId !== organizationId ||
+                    file.state !== "ready"
+                  )
+                    throw new ConvexError("Attachment is not ready")
                   const kind =
                     file.contentType === "image/webp"
                       ? "sticker"

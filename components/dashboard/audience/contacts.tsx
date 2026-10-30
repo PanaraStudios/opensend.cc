@@ -76,6 +76,7 @@ import {
   RESERVED_PROPERTY_KEYS,
   contactInputError,
   contactIdentity,
+  importSummary,
   type ContactInput,
 } from "@/lib/dashboard/contacts"
 import { channelHandle } from "@/lib/meta/account-display"
@@ -431,9 +432,9 @@ function ImportCsvDialog({
         true
       )
       toast.add({
-        type: "success",
+        type: result.errors.length ? "warning" : "success",
         title: "Import finished",
-        description: `${result.created} created, ${result.updated} updated.`,
+        description: importSummary(result),
       })
       reset()
       onOpenChange(false)

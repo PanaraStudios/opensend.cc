@@ -33,6 +33,9 @@ export const importResultValue = v.object({
   created: v.number(),
   updated: v.number(),
   skipped: v.number(),
+  /** Invalid rows. Results stored before this field counted them in
+      `skipped`; read them through `importCounts`. */
+  failed: v.optional(v.number()),
   createdIds: v.array(v.id("contacts")),
   errors: v.array(v.string()),
 })

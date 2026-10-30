@@ -1230,6 +1230,18 @@ test("team deletion, last-member departure and administrator deletion cannot orp
   )
 })
 
+test("the installation administrator cannot delete their account without AWS either", async () => {
+  const f = await fixture()
+  await f.t.run((ctx) =>
+    ctx.db.patch("installation", f.installation, { accountId: undefined })
+  )
+  await expect(
+    f.owner.client.mutation(api.teams.deleteAccount)
+  ).rejects.toThrow("installationAdmin:transfer")
+  await f.outsider.client.mutation(api.teams.deleteAccount)
+  expect(await f.outsider.client.query(api.teams.snapshot)).toBeNull()
+})
+
 test("setup generates its encryption key without an SES env variable and never exposes it", async () => {
   const f = await fixture()
   vi.stubEnv("BETTER_AUTH_SECRET", "test-server-secret-".repeat(4))
@@ -1320,6 +1332,22 @@ test("setup gates teams and invitations, with one first-team creation at the wiz
   ).rejects.toThrow("Finish installation")
   await expect(
     f.owner.client.mutation(api.teams.deleteAccount)
+  ).rejects.toThrow("Finish installation")
+  const avatar = await f.t.run((ctx) =>
+    ctx.db.insert("storedFiles", {
+      organizationId: f.owner.team,
+      provider: "convex",
+      size: 1,
+      contentType: "image/png",
+      feature: "asset",
+      state: "ready",
+    })
+  )
+  await expect(
+    f.owner.client.mutation(api.storage.assets.set, {
+      organizationId: f.owner.team,
+      fileId: avatar,
+    })
   ).rejects.toThrow("Finish installation")
   // Fixture setup uses the internal auth component; public application calls stay gated.
   await f.t.mutation(components.betterAuth.teams.remove, {

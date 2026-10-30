@@ -82,7 +82,8 @@ test("CSV creates and updates contacts silently; ordinary creation still emits",
 test("CSV import validates rows and rejects another team's member", async () => {
   const f = await setup()
   expect(await f.upsert(true, "invalid")).toMatchObject({
-    skipped: 1,
+    skipped: 0,
+    failed: 1,
     created: 0,
   })
   await expect(

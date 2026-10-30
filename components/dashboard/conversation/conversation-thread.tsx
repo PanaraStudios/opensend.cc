@@ -37,20 +37,31 @@ export function ConversationThread({
   const detail = useConversation(id)
   const { canWrite } = useTeamRole()
   const { markRead, setStatus } = useConversationCommands()
-  const unread = detail?.conversation.unread
+  // The server treats either flag as unread, and markRead clears both.
+  const unread =
+    !!detail?.conversation.unread || !!detail?.conversation.unreadCount
   const conversationId = detail?.conversation._id
-  // Opening a thread reads it; so does a reply arriving while it is open.
+  /* Opening a thread reads it; so does a reply arriving while it is open,
+     but only while the page is in front. A reply that lands in a background
+     tab stays unread until the agent comes back to it. */
   React.useEffect(() => {
-    if (conversationId && unread && canWrite)
-      void markRead({ id: conversationId }).catch(() => undefined)
-  }, [conversationId, unread, canWrite, markRead])
-  React.useEffect(() => {
-    const focus = () => {
-      if (conversationId && unread && canWrite)
+    const read = () => {
+      if (
+        conversationId &&
+        unread &&
+        canWrite &&
+        document.visibilityState === "visible" &&
+        document.hasFocus()
+      )
         void markRead({ id: conversationId }).catch(() => undefined)
     }
-    window.addEventListener("focus", focus)
-    return () => window.removeEventListener("focus", focus)
+    read()
+    window.addEventListener("focus", read)
+    document.addEventListener("visibilitychange", read)
+    return () => {
+      window.removeEventListener("focus", read)
+      document.removeEventListener("visibilitychange", read)
+    }
   }, [conversationId, unread, canWrite, markRead])
 
   if (detail === undefined) return <Skeleton className="m-4 h-40" />

@@ -2,6 +2,12 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { EXPORT_SOURCES } from "./exportSources"
+import {
+  SEGMENT_DELETED,
+  TOPIC_DELETED,
+  addImportError,
+  enqueueImport,
+} from "./contactImports"
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
@@ -52,11 +58,11 @@ test("dashboard creates normalized phone-only contacts, finds their digits and r
   })
   expect(page.page.map((row) => row._id)).toEqual([id])
   expect(await f.create([{ phone: "+14155552671" }])).toMatchObject({
-    skipped: 1,
+    failed: 1,
     errors: ["That phone number already exists"],
   })
   expect(await f.create([{}])).toMatchObject({
-    skipped: 1,
+    failed: 1,
     errors: ["An email or phone number is required"],
   })
   await expect(
@@ -164,7 +170,7 @@ test("updates enforce normalized uniqueness and require a remaining identity", a
   const collision = await f.create([
     { email: "second@example.test", phone: "+14155552671" },
   ])
-  expect(collision).toMatchObject({ skipped: 1 })
+  expect(collision).toMatchObject({ skipped: 0, failed: 1 })
 })
 
 test("phone-only contacts support segments, topics and export with empty email cells", async () => {
@@ -227,7 +233,10 @@ test("dashboard CSV import creates, upserts and skips phone-only contacts", asyn
       id: result.jobId!,
     })
     expect(job).toMatchObject({ status: "completed", failedCount: 1 })
-    expect(job?.result.skipped).toBe(skipExisting ? 2 : 1)
+    expect(job?.result).toMatchObject({
+      skipped: skipExisting ? 1 : 0,
+      failed: 1,
+    })
   }
 })
 
@@ -256,4 +265,137 @@ test("REST CSV accepts a mapped phone column without an email column", async () 
     phone: "+14155552671",
     first_name: "Ada",
   })
+})
+
+test("an import keeps going when its segment is deleted and says so", async () => {
+  const f = await setup()
+  const [segmentId, kept, other] = await Promise.all(
+    ["Leads", "Kept", "Other"].map((name) =>
+      f.owner.client.mutation(api.segments.create, {
+        organizationId: f.organizationId,
+        name,
+      })
+    )
+  )
+  const contacts = Array.from({ length: 100 }, (_, n) => ({
+    email: `lead${n}@example.test`,
+  }))
+  const { jobId } = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.organizationId,
+    contacts,
+    segmentIds: [segmentId, kept, other],
+    csvImport: true,
+  })
+  // Three segments share one step's membership budget: 66 contacts a step.
+  await f.t.mutation(internal.contactImports.step, { id: jobId!, offset: 0 })
+  await f.owner.client.mutation(api.segments.remove, { id: segmentId })
+  await f.t.mutation(internal.contactImports.step, { id: jobId!, offset: 66 })
+  const job = await f.owner.client.query(api.contactImports.get, {
+    id: jobId!,
+  })
+  expect(job).toMatchObject({
+    status: "completed",
+    result: { created: 100, skipped: 0, failed: 0 },
+  })
+  expect(job?.result.errors).toEqual([SEGMENT_DELETED])
+  const members = await f.t.run((ctx) =>
+    ctx.db
+      .query("segmentMembers")
+      .withIndex("by_segmentId", (q) => q.eq("segmentId", segmentId))
+      .collect()
+  )
+  expect(members).toEqual([])
+  expect(
+    await f.owner.client.query(api.segments.get, { id: kept })
+  ).toMatchObject({ memberCount: 100 })
+})
+
+test("imports stored before the failed count read invalid rows apart", async () => {
+  const f = await setup()
+  const { jobId } = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.organizationId,
+    contacts: [{ email: "ada@example.test" }, { email: "bad" }],
+    segmentIds: [],
+    csvImport: true,
+  })
+  await f.t.mutation(internal.contactImports.step, { id: jobId!, offset: 0 })
+  // The old shape counted the invalid row in `skipped` and `failedCount`.
+  await f.t.run(async (ctx) => {
+    const { failed, ...result } = (await ctx.db.get("contactImports", jobId!))!
+      .result
+    await ctx.db.patch("contactImports", jobId!, {
+      result: { ...result, skipped: result.skipped + failed! },
+    })
+  })
+  expect(
+    (await f.owner.client.query(api.contactImports.get, { id: jobId! }))?.result
+  ).toMatchObject({ created: 1, skipped: 0, failed: 1 })
+  expect(
+    await (await f.call(`/contacts/imports/${jobId}`)).json()
+  ).toMatchObject({ counts: { total: 2, created: 1, skipped: 0, failed: 1 } })
+})
+
+test("an import keeps going when its topic is deleted and says so", async () => {
+  const f = await setup()
+  const [gone, kept] = await Promise.all(
+    ["Gone", "Kept"].map((name) =>
+      f.owner.client.mutation(api.topics.create, {
+        organizationId: f.organizationId,
+        name,
+        description: "",
+        defaultSubscription: "opt_out",
+        visibility: "public",
+      })
+    )
+  )
+  const { jobId } = await f.t.run((ctx) =>
+    enqueueImport(ctx, {
+      organizationId: f.organizationId,
+      contacts: Array.from({ length: 150 }, (_, n) => ({
+        email: `reader${n}@example.test`,
+      })),
+      segmentIds: [],
+      skipExisting: false,
+      topics: [gone, kept].map((topicId) => ({
+        topicId,
+        subscription: "subscribed" as const,
+      })),
+    })
+  )
+  // Two topics share one step's membership budget: 100 contacts a step.
+  await f.t.mutation(internal.contactImports.step, { id: jobId, offset: 0 })
+  await f.owner.client.mutation(api.topics.remove, { id: gone })
+  await f.t.mutation(internal.contactImports.step, { id: jobId, offset: 100 })
+  const job = await f.owner.client.query(api.contactImports.get, {
+    id: jobId,
+  })
+  expect(job).toMatchObject({
+    status: "completed",
+    result: { created: 150, skipped: 0, failed: 0 },
+  })
+  expect(job?.result.errors).toEqual([TOPIC_DELETED])
+  const choices = await f.t.run((ctx) =>
+    ctx.db
+      .query("topicSubscriptions")
+      .withIndex("by_topicId_and_subscription", (q) => q.eq("topicId", kept))
+      .collect()
+  )
+  expect(choices).toHaveLength(150)
+})
+
+test("import notes keep the five-message limit and leave row errors first", () => {
+  const errors: string[] = []
+  for (let n = 0; n < 7; n++) addImportError(errors, `row ${n}`)
+  expect(errors).toEqual(["row 0", "row 1", "row 2", "row 3", "row 4"])
+  addImportError(errors, SEGMENT_DELETED)
+  addImportError(errors, SEGMENT_DELETED)
+  addImportError(errors, TOPIC_DELETED)
+  addImportError(errors, "row 7")
+  expect(errors).toEqual([
+    "row 0",
+    "row 1",
+    "row 2",
+    SEGMENT_DELETED,
+    TOPIC_DELETED,
+  ])
 })

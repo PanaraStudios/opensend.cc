@@ -7,6 +7,7 @@ import { insertRow } from "./counts"
 import { EXPORT_SOURCES } from "./exportSources"
 import { MAX_BYTES, MAX_ROWS } from "./exports"
 import { listProperties } from "./audience"
+import { SEGMENT_DELETED } from "./contactImports"
 import type { Id } from "./_generated/dataModel"
 
 beforeEach(() => {
@@ -153,7 +154,7 @@ test("CSV jobs admit plain members, isolate teams, validate rows and survive dup
   expect(job).toMatchObject({
     status: "completed",
     offset: 2,
-    result: { created: 1, skipped: 1 },
+    result: { created: 1, skipped: 0, failed: 1 },
   })
   expect(
     await f.t.run((ctx) => ctx.db.query("contacts").collect())
@@ -206,7 +207,7 @@ test("combined contact and segment cost reduces each job transaction", async () 
   })
 })
 
-test("failed imports are readable and retired teams cannot be recreated", async () => {
+test("imports outlive a deleted segment, failed imports are readable and retired teams cannot be recreated", async () => {
   const f = await fixture()
   const segment = await f.owner.client.mutation(api.segments.create, {
     organizationId: f.owner.team,
@@ -221,6 +222,7 @@ test("failed imports are readable and retired teams cannot be recreated", async 
     })
   const first = await start()
   const second = await start()
+  const third = await start()
   await f.owner.client.mutation(api.segments.remove, { id: segment })
   await f.t.mutation(internal.contactImports.run, {
     id: first.jobId!,
@@ -228,6 +230,17 @@ test("failed imports are readable and retired teams cannot be recreated", async 
   })
   expect(
     await f.owner.client.query(api.contactImports.get, { id: first.jobId! })
+  ).toMatchObject({
+    status: "completed",
+    result: { created: 1, errors: [SEGMENT_DELETED] },
+  })
+  // What run records when a step throws unexpectedly.
+  await f.t.mutation(internal.contactImports.failed, {
+    id: third.jobId!,
+    offset: 0,
+  })
+  expect(
+    await f.owner.client.query(api.contactImports.get, { id: third.jobId! })
   ).toMatchObject({
     status: "failed",
     error: expect.stringContaining("Import could not"),
@@ -239,9 +252,13 @@ test("failed imports are readable and retired teams cannot be recreated", async 
     id: second.jobId!,
     offset: 0,
   })
+  // A retired team's queued import is dropped without touching contacts.
+  expect(
+    await f.t.run((ctx) => ctx.db.get("contactImports", second.jobId!))
+  ).toBeNull()
   expect(
     await f.t.run((ctx) => ctx.db.query("contacts").collect())
-  ).toHaveLength(0)
+  ).toHaveLength(1)
 })
 
 test("active property lookup and duplicate detection work beyond 200 tombstones", async () => {

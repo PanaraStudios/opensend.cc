@@ -10,7 +10,7 @@ import {
 import { internal } from "../_generated/api"
 import schema from "../schema"
 import type { Doc, Id } from "../_generated/dataModel"
-import { enqueueImport } from "../contactImports"
+import { enqueueImport, importCounts } from "../contactImports"
 import { createProperty } from "../contactProperties"
 import { listProperties, SEGMENT_INPUT_LIMIT } from "../audience"
 import { parseCsv, parseUnsubscribed } from "../../lib/dashboard/csv"
@@ -286,7 +286,7 @@ export const list = internalQuery({
   },
 })
 function view(row: Omit<Doc<"contactImports">, "contacts">) {
-  const failed = row.failedCount ?? 0
+  const counts = importCounts(row)
   return {
     object: "contact_import",
     id: row._id,
@@ -296,10 +296,10 @@ function view(row: Omit<Doc<"contactImports">, "contacts">) {
       row.completedAt === undefined ? null : apiTime(row.completedAt),
     counts: {
       total: row.offset,
-      created: row.result.created,
-      updated: row.result.updated,
-      skipped: row.result.skipped - failed,
-      failed,
+      created: counts.created,
+      updated: counts.updated,
+      skipped: counts.skipped,
+      failed: counts.failed,
     },
   }
 }

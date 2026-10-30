@@ -214,7 +214,12 @@ describe("contacts", () => {
       { email: "bad@example.com", properties: { seats: "many" } },
       { email: "odd@example.com", properties: { unknown: "x" } },
     ])
-    expect(result).toMatchObject({ created: 1, updated: 2, skipped: 3 })
+    expect(result).toMatchObject({
+      created: 1,
+      updated: 2,
+      skipped: 0,
+      failed: 3,
+    })
     expect(result.errors).toEqual([
       "not-an-email is not a valid email address",
       "seats must be a number",
@@ -236,7 +241,12 @@ describe("contacts", () => {
       [],
       true
     )
-    expect(skipped).toMatchObject({ created: 1, updated: 0, skipped: 1 })
+    expect(skipped).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 1,
+      failed: 0,
+    })
     expect(
       (await contacts({ search: "ada" })).map((row) => row.firstName)
     ).toEqual(["Ada"])
@@ -502,6 +512,11 @@ describe("properties", () => {
         properties: { plan: "pro" },
       }))
     )
+    const before = 1
+    await f.t.run(async (ctx) => {
+      for (const row of await ctx.db.query("contacts").collect())
+        await ctx.db.patch("contacts", row._id, { updatedAt: before })
+    })
     await owner.mutation(api.contactProperties.remove, { id: plan })
     // Hidden at once, and its key stays taken until the values are gone.
     expect(
@@ -521,6 +536,9 @@ describe("properties", () => {
       {},
       {},
     ])
+    // Stripping a value changes the contact, so "updated since" readers see it.
+    for (const row of await contacts())
+      expect(row.updatedAt).toBeGreaterThan(before)
     await owner.mutation(api.contactProperties.create, {
       organizationId: org,
       key: "plan",

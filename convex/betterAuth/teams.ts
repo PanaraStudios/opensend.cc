@@ -46,7 +46,8 @@ function invitationForRow(i: Doc<"invitation">) {
     email: i.email,
     role: i.role === "owner" ? ("admin" as const) : ("member" as const),
     expiresAt: i.expiresAt,
-    status: i.expiresAt <= Date.now() ? "expired" : i.status,
+    // Queries carry no clock; the dashboard derives "expired" from `expiresAt`.
+    status: i.status,
   }
 }
 export const snapshotValue = v.object({
@@ -186,7 +187,8 @@ export const snapshot = query({
       .query("invitation")
       .withIndex("email", (q) => q.eq("email", user.email.toLowerCase()))
       .take(100)) {
-      if (i.status !== "pending" || i.expiresAt <= Date.now()) continue
+      // Expired invitations are filtered by the client against its own clock.
+      if (i.status !== "pending") continue
       const org = await ctx.db.get(
         "organization",
         i.organizationId as Id<"organization">
@@ -273,6 +275,9 @@ export const switchTeam = mutation({
       )
       .unique()
     if (!member) throw new ConvexError("You do not belong to this team")
+    /* No SSO check here: switching to an SSO-enforced team is how a member
+       reaches its "Continue with SSO" prompt. Every team read and write
+       still goes through requireMember, which enforces SSO. */
     await ctx.db.patch("session", session._id, {
       activeOrganizationId: args.organizationId,
     })

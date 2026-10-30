@@ -308,8 +308,8 @@ export const identities = query({
 
 /** Creates or merges contacts by email; one batch of an import or of
     "Add manually". Every contact joins `segmentIds`. A row that fails
-    validation is skipped and counted; with `skipExisting`, so is an address
-    already in the team. */
+    validation is counted as failed; with `skipExisting`, an address already
+    in the team is skipped and counted. */
 export const upsert = mutation({
   args: {
     organizationId: v.string(),
@@ -340,6 +340,7 @@ export const upsert = mutation({
       created: 0,
       updated: 0,
       skipped: 0,
+      failed: 0,
       createdIds: [] as Id<"contacts">[],
       errors: [] as string[],
     }
@@ -355,7 +356,7 @@ export const upsert = mutation({
             properties,
             segmentIds,
             skipExisting: args.skipExisting,
-            emit: !args.csvImport,
+            emit: true,
             budget,
           }
         )
@@ -363,7 +364,7 @@ export const upsert = mutation({
         if (result === "created") out.createdIds.push(id)
       } catch (error) {
         if (!(error instanceof ConvexError)) throw error
-        out.skipped += 1
+        out.failed += 1
         if (out.errors.length < 5) out.errors.push(String(error.data))
       }
     }

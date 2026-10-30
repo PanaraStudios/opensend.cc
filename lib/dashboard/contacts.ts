@@ -199,3 +199,19 @@ export const DEFAULT_CONTACT_PROPERTIES = [
   { key: "last_name", name: "Last name", type: "string" },
   { key: "unsubscribed", name: "Unsubscribed", type: "boolean" },
 ] as const
+
+/** The toast line for a finished CSV import. Invalid rows are reported apart
+    from skipped ones, with the first problem so the file can be fixed. */
+export function importSummary(result: {
+  created: number
+  updated: number
+  skipped: number
+  failed: number
+  errors: string[]
+}) {
+  const parts = [`${result.created} created`, `${result.updated} updated`]
+  if (result.skipped) parts.push(`${result.skipped} skipped`)
+  if (result.failed) parts.push(`${result.failed} invalid`)
+  const summary = `${parts.join(", ")}.`
+  return result.errors.length ? `${summary} ${result.errors[0]}` : summary
+}

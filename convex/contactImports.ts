@@ -5,21 +5,58 @@ import {
   topicSubscriptionValue,
 } from "./tables/audience"
 import { ConvexError, v, type Infer } from "convex/values"
+import type { Doc } from "./_generated/dataModel"
 import { internalMutation, query, type MutationCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
+import { teamRow as findTeamRow } from "./lists"
 import { retirement } from "./teamLifecycle"
 import {
   BATCH,
   MEMBERSHIP_BATCH,
   listProperties,
-  teamRow,
   upsertContact,
   setTopicChoices,
 } from "./audience"
 import schema from "./schema"
 
 const args = { id: v.id("contactImports"), offset: v.number() }
+
+/** Counts with invalid rows apart from skipped ones. Results stored before
+    `failed` existed counted invalid rows in `skipped` and in `failedCount`. */
+export function importCounts(
+  row: Pick<Doc<"contactImports">, "result" | "failedCount">
+) {
+  if (row.result.failed !== undefined)
+    return { ...row.result, failed: row.result.failed }
+  const failed = row.failedCount ?? 0
+  return { ...row.result, skipped: row.result.skipped - failed, failed }
+}
+export const SEGMENT_DELETED =
+  "A segment was deleted during the import, so later contacts were not added to it."
+export const TOPIC_DELETED =
+  "A topic was deleted during the import, so later contacts were not subscribed to it."
+const NOTES = [SEGMENT_DELETED, TOPIC_DELETED]
+const ERROR_LIMIT = 5
+
+/** Keeps at most ERROR_LIMIT messages: row errors first (the toast shows the
+    first one), then each import-wide note once, which displaces the last row
+    error when the list is full. */
+export function addImportError(errors: string[], message: string) {
+  const notes = errors.filter((e) => NOTES.includes(e))
+  const rows = errors.filter((e) => !NOTES.includes(e))
+  if (NOTES.includes(message)) {
+    if (notes.includes(message)) return
+    notes.push(message)
+  } else rows.push(message)
+  errors.splice(
+    0,
+    errors.length,
+    ...rows.slice(0, ERROR_LIMIT - notes.length),
+    ...notes
+  )
+}
+
 export const get = query({
   args: { id: v.id("contactImports") },
   returns: v.union(
@@ -34,7 +71,7 @@ export const get = query({
     void contacts
     void segmentIds
     void skipExisting
-    return view
+    return { ...view, result: importCounts(row) }
   },
 })
 export const step = internalMutation({
@@ -48,8 +85,20 @@ export const step = internalMutation({
       await deleteRow(ctx, "contactImports", id)
       return null
     }
+    const result = importCounts(job)
+    // A segment or topic deleted mid-import is dropped; the import goes on.
+    const segmentIds = []
     for (const segmentId of job.segmentIds)
-      await teamRow(ctx, "segments", job.organizationId, segmentId)
+      if (await findTeamRow(ctx, "segments", job.organizationId, segmentId))
+        segmentIds.push(segmentId)
+    if (segmentIds.length < job.segmentIds.length)
+      addImportError(result.errors, SEGMENT_DELETED)
+    const topics = []
+    for (const choice of job.topics ?? [])
+      if (await findTeamRow(ctx, "topics", job.organizationId, choice.topicId))
+        topics.push(choice)
+    if (topics.length < (job.topics?.length ?? 0))
+      addImportError(result.errors, TOPIC_DELETED)
     const properties = await listProperties(ctx, job.organizationId)
     // Each contact's memberships past its own share join in scheduled steps.
     const size = Math.min(
@@ -57,13 +106,11 @@ export const step = internalMutation({
       Math.max(
         1,
         Math.floor(
-          MEMBERSHIP_BATCH /
-            Math.max(1, job.segmentIds.length + (job.topics?.length ?? 0))
+          MEMBERSHIP_BATCH / Math.max(1, segmentIds.length + topics.length)
         )
       )
     )
     const end = Math.min(offset + size, job.contacts.length)
-    const result = job.result
     let failedCount = job.failedCount ?? 0
     for (const contact of job.contacts.slice(offset, end)) {
       try {
@@ -71,23 +118,25 @@ export const step = internalMutation({
         const outcome = await ctx.runMutation(internal.contactImports.one, {
           organizationId: job.organizationId,
           contact,
-          segmentIds: job.segmentIds,
+          segmentIds,
           skipExisting: job.skipExisting,
-          topics: job.topics,
+          topics,
           properties: properties.map(({ key, type }) => ({ key, type })),
         })
         result[outcome.result]++
         if (outcome.result === "created") result.createdIds.push(outcome.id)
       } catch (error) {
         if (!(error instanceof ConvexError)) throw error
-        result.skipped++
+        result.failed++
         failedCount++
-        if (result.errors.length < 5) result.errors.push(String(error.data))
+        addImportError(result.errors, String(error.data))
       }
     }
     const done = end === job.contacts.length
     await patchRow(ctx, "contactImports", id, {
       offset: end,
+      segmentIds,
+      ...(job.topics ? { topics } : {}),
       result,
       failedCount,
       ...(done ? { completedAt: Date.now() } : {}),
@@ -193,6 +242,7 @@ export async function enqueueImport(
     created: 0,
     updated: 0,
     skipped: 0,
+    failed: 0,
     createdIds: [],
     errors: [],
   }

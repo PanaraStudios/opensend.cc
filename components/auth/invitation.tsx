@@ -7,6 +7,8 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { buttonVariants } from "@/components/ui/button"
 import { AsyncForm } from "./ui"
+import { liveInvitations } from "@/lib/dashboard/invitations"
+import { useClock } from "@/lib/time/use-clock"
 export function Invitation() {
   const params = useSearchParams()
   const router = useRouter()
@@ -15,6 +17,7 @@ export function Invitation() {
   const data = useQuery(api.teams.snapshot, isAuthenticated ? {} : "skip")
   const respond = useMutation(api.teams.respond)
   const [responding, setResponding] = useState(false)
+  const now = useClock()
   const next = encodeURIComponent(`/invitation?id=${encodeURIComponent(id)}`)
   async function respondToInvitation(accept: boolean) {
     setResponding(true)
@@ -52,7 +55,9 @@ export function Invitation() {
         </div>
       </div>
     )
-  const invitation = data.receivedInvitations.find((i) => i.id === id)
+  const invitation = liveInvitations(data.receivedInvitations, now).find(
+    (i) => i.id === id
+  )
   if (!invitation)
     return (
       <div className="flex flex-col gap-6">

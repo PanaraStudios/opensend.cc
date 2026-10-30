@@ -28,6 +28,8 @@ import { InstallationWizard } from "@/components/onboarding/wizard"
 import { isInstancePage } from "@/lib/dashboard/nav"
 import { workspaceInstallation } from "@/lib/dashboard/workspace-bootstrap"
 import type { MemberRole, Team } from "@/lib/dashboard/types"
+import { liveInvitations } from "@/lib/dashboard/invitations"
+import { useClock } from "@/lib/time/use-clock"
 
 export type Workspace = NonNullable<
   FunctionReturnType<typeof api.teams.snapshot>
@@ -93,6 +95,11 @@ export function requireTeamId(activeTeamId: string | null | undefined): string {
   return activeTeamId
 }
 
+/** Pending invitations to the signed-in account that have not expired. */
+export function useReceivedInvitations() {
+  const { receivedInvitations } = useWorkspace()
+  return liveInvitations(receivedInvitations, useClock())
+}
 export function useTeams(): Team[] {
   return useWorkspace().teams.map((team) => ({ ...team, removable: true }))
 }
@@ -277,6 +284,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 }
 export function TeamAccess({ onboarding = false }: { onboarding?: boolean }) {
   const data = useWorkspace()
+  const receivedInvitations = useReceivedInvitations()
   const respond = useMutation(api.teams.respond)
   const active = data.teams.find((t) => t.id === data.activeTeamId)
   return (
@@ -308,7 +316,7 @@ export function TeamAccess({ onboarding = false }: { onboarding?: boolean }) {
         />
       )}
       {!active?.ssoRequired && <CreateTeamForm />}
-      {data.receivedInvitations.map((i) => (
+      {receivedInvitations.map((i) => (
         <div key={i.id} className="flex flex-col gap-3 rounded-lg border p-4">
           <p>Invitation to {i.name}</p>
           <AsyncForm
