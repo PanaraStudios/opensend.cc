@@ -9,6 +9,7 @@ import {
   callEventLabel,
   callTimer,
   isDtmf,
+  isPhoneRecipient,
   offerIsFresh,
   permissionAllows,
   presenceIsCurrent,
@@ -169,4 +170,12 @@ test("queue choices are scoped to the team and reject unsafe or malformed operat
   assert.deepEqual(agentQueues(config, "team-c"), [])
   assert.deepEqual(agentQueues("broken", "team-a"), [])
   assert.deepEqual(agentQueues(config, "team-a;api status"), [])
+})
+test("phone numbers are called as wa_ids and anything else as a BSUID", () => {
+  assert.equal(isPhoneRecipient("15551234567"), true)
+  assert.equal(isPhoneRecipient("+919876543210"), true)
+  assert.equal(isPhoneRecipient(" 15551234567 "), true)
+  assert.equal(isPhoneRecipient("US.13491208655302741918"), false)
+  assert.equal(isPhoneRecipient("12345"), false)
+  assert.equal(isPhoneRecipient(""), false)
 })

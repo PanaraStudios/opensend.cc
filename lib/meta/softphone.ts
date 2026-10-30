@@ -147,3 +147,9 @@ export function permissionAllows(
 export function isDtmf(value: string) {
   return /^[0-9*#]$/.test(value)
 }
+
+/** True for a phone number (wa_id), false for a business-scoped user ID such
+    as `US.13491208655302741918`. */
+export function isPhoneRecipient(recipient: string) {
+  return /^\+?\d{6,15}$/.test(recipient.trim())
+}

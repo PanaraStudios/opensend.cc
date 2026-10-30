@@ -15,12 +15,26 @@ import {
 import { requestPermission as requestCallingPermission } from "./outbound"
 import { checkPermission } from "./settings"
 import { agentQueues } from "../../services/call-gateway/src/queues"
-import { permissionAllows } from "../../lib/meta/softphone"
+import {
+  isPhoneRecipient,
+  permissionAllows,
+} from "../../lib/meta/softphone"
 const browserArgs = { organizationId: v.string(), browserId: v.string() }
 const recipientArgs = {
   organizationId: v.string(),
   accountId: v.id("channelAccounts"),
+  /** A WhatsApp business-scoped user ID, or the contact's phone number. */
   recipient: v.string(),
+}
+/** Phone numbers go to Meta as `to`/wa_id; anything else is a BSUID. */
+function recipientTarget(recipient: string) {
+  return isPhoneRecipient(recipient)
+    ? { to: recipient, bsuid: false as const }
+    : { recipient, bsuid: true as const }
+}
+function recipientInput(recipient: string) {
+  const { bsuid: _bsuid, ...target } = recipientTarget(recipient)
+  return target
 }
 export const session = action({
   args: browserArgs,
@@ -168,7 +182,7 @@ export const permission = action({
       organizationId: args.organizationId,
       from: args.accountId,
       identity: args.recipient,
-      bsuid: true,
+      bsuid: recipientTarget(args.recipient).bsuid,
     })
     return {
       canCall: permissionAllows(data, "start_call"),
@@ -189,7 +203,7 @@ export const outbound = action({
       organizationId: args.organizationId,
       from: args.accountId,
       identity: args.recipient,
-      bsuid: true,
+      bsuid: recipientTarget(args.recipient).bsuid,
     })
     if (!permissionAllows(data, "start_call"))
       throw new ConvexError(
@@ -201,7 +215,7 @@ export const outbound = action({
       agentLeaseId: agent.leaseId,
       input: {
         from: args.accountId,
-        recipient: args.recipient,
+        ...recipientInput(args.recipient),
         route: "gateway",
       },
     })
@@ -216,7 +230,7 @@ export const requestPermission = action({
     const result = await requestCallingPermission(
       ctx,
       { organizationId: args.organizationId },
-      { from: args.accountId, recipient: args.recipient }
+      { from: args.accountId, ...recipientInput(args.recipient) }
     )
     return result.id
   },
