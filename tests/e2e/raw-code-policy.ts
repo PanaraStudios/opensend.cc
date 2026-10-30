@@ -51,7 +51,8 @@ export function findVisibleRawCodes(fileNamePattern: RegExp): string[] {
 /** Lines of `<form>` elements with no `type="submit"` control inside.
     Base UI's Button renders `type="button"` unless told otherwise, so a
     form whose Save is a bare `<Button>` silently never submits. A form with
-    an `id` passes when a submit control elsewhere names it with `form=`, and
+    an `id` passes when a `type="submit"` control elsewhere names it with
+    `form=`, and
     a self-closing `<form {...props} />` wrapper passes its children through. */
 export function findFormsWithoutSubmit(source: string): number[] {
   const lines: number[] = []
@@ -68,13 +69,22 @@ export function findFormsWithoutSubmit(source: string): number[] {
       }
     }
     if (source.slice(start, end).includes('type="submit"')) continue
-    const id = /^<form\b[^>]*?\sid=(\{[^}]+\}|"[^"]+")/.exec(
-      source.slice(start, end)
-    )?.[1]
-    if (id && source.includes(`form=${id}`)) continue
+    const id = /\sid=(\{[^}]+\}|"[^"]+")/.exec(openingTag(source, start))?.[1]
+    if (id && submitsFromOutside(source, id)) continue
     lines.push(source.slice(0, start).split("\n").length)
   }
   return lines
+}
+
+/** Whether a control naming form `id` with `form=` is itself a submit. */
+function submitsFromOutside(source: string, id: string) {
+  for (const match of source.matchAll(/form=/g)) {
+    if (!source.startsWith(id, match.index + "form=".length)) continue
+    const tag = source.lastIndexOf("<", match.index)
+    if (tag >= 0 && openingTag(source, tag).includes('type="submit"'))
+      return true
+  }
+  return false
 }
 
 /** The JSX opening tag starting at `start`: up to the `>` outside braces. */

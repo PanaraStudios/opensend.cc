@@ -85,8 +85,12 @@ test("every form has a submit button", () => {
     <form id={formId} onSubmit={save}></form>
     <Button form={formId} type="submit">Save</Button>
     <form id="orphan" onSubmit={save}></form>
-    <form {...props} onSubmit={(event) => save(event)} />`),
-    [1, 11]
+    <form {...props} onSubmit={(event) => save(event)} />
+    <form id="plain" onSubmit={save}></form>
+    <Button form="plain">Save</Button>
+    <form onSubmit={(event) => save(event)} id="arrow"></form>
+    <Button type="submit" form="arrow">Save</Button>`),
+    [1, 11, 13]
   )
   const files = ["app", "components"].flatMap((dir) =>
     readdirSync(dir, { recursive: true })
