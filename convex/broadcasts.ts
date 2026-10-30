@@ -44,6 +44,7 @@ import {
   recipientMessageStatuses,
 } from "./broadcastReadModel"
 import { parseMailbox } from "../lib/dashboard/email-send"
+import { broadcastCancelable } from "../lib/dashboard/broadcast"
 import { MAX_SCHEDULE } from "./emails"
 import { TEMPLATE_BODY_LIMIT } from "./templates"
 
@@ -260,8 +261,10 @@ export async function cancelBroadcast(
   row: Doc<"broadcasts">
 ) {
   if (
-    row.status !== "scheduled" &&
-    !(row.status === "queued" && row.audienceBefore === undefined)
+    !broadcastCancelable({
+      status: row.status,
+      fanoutStarted: row.audienceBefore !== undefined,
+    })
   )
     throw new ConvexError("Only scheduled broadcasts can be canceled")
   if (row.scheduledJob) await ctx.scheduler.cancel(row.scheduledJob)
@@ -386,16 +389,44 @@ export function broadcastPage(
     args.search
   )
 }
+/** A WhatsApp, Messenger or Instagram send that only waits on delivery
+    receipts: every recipient is queued and no message is left in the paced
+    send queue. The row stays queued until it settles (broadcastMetrics.ts),
+    up to 24 hours after the last message. The list and the detail page both
+    read this, so they agree on Sending and Delivering. */
+export async function broadcastDelivering(
+  ctx: QueryCtx,
+  row: Doc<"broadcasts">
+): Promise<boolean> {
+  if (row.status !== "queued" || !row.audienceDone) return false
+  if (rowChannel(row) === "email") return false
+  const [queued] = await counters.broadcastMessages.prefixTotals(ctx, row._id, [
+    ["queued"],
+  ])
+  return queued === 0
+}
+const listedBroadcast = schema
+  .doc("broadcasts")
+  .extend({ delivering: v.boolean() })
 export const list = query({
   args: {
     organizationId: v.string(),
     paginationOpts: paginationOptsValidator,
     ...filters,
   },
-  returns: paginationResultValidator(schema.doc("broadcasts")),
+  returns: paginationResultValidator(listedBroadcast),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    return broadcastPage(ctx, args)
+    const result = await broadcastPage(ctx, args)
+    return {
+      ...result,
+      page: await Promise.all(
+        result.page.map(async (row) => ({
+          ...row,
+          delivering: await broadcastDelivering(ctx, row),
+        }))
+      ),
+    }
   },
 })
 export const count = query({
@@ -421,6 +452,7 @@ export const get = query({
     v.object({
       row: schema.doc("broadcasts"),
       body: v.union(schema.doc("broadcastDrafts"), v.null()),
+      delivering: v.boolean(),
     })
   ),
   handler: async (ctx, args) => {
@@ -432,7 +464,11 @@ export const get = query({
       args.id
     )
     if (!row) return null
-    return { row, body: await draft(ctx, row._id) }
+    return {
+      row,
+      body: await draft(ctx, row._id),
+      delivering: await broadcastDelivering(ctx, row),
+    }
   },
 })
 /** The audience, a page at a time. The review counts who will get the

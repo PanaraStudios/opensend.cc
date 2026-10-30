@@ -225,7 +225,10 @@ export function BroadcastsView() {
                     <ChannelCell channel={item.channel} />
                   </TableCell>
                   <TableCell>
-                    <BroadcastStatusBadge status={item.status} />
+                    <BroadcastStatusBadge
+                      status={item.status}
+                      delivering={item.delivering}
+                    />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {formatDateTime(item.updatedAt)}

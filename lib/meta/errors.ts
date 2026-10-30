@@ -175,3 +175,24 @@ export function parseGraphResponse(
   if (failed) throw new MetaError(parseGraphError(status, body, secrets))
   return parsed
 }
+
+/** Why a message was not delivered, as the team reads it, for the codes
+    Meta returns most; anything else keeps Meta's own message. */
+const DELIVERY_FAILURES: Record<number, string> = {
+  131026:
+    "Not on WhatsApp, or can't receive messages from businesses (old app or not accepted the terms)",
+  130429:
+    "WhatsApp rate limit: too many messages from this number in a short time",
+  131056: "Too many messages to this person in a short time",
+  131048: "Number restricted: too many people blocked or reported its messages",
+  131049: "Meta held back this marketing message to keep engagement healthy",
+  131050: "Stopped receiving marketing messages",
+  131047: "More than 24 hours since their last message",
+}
+
+export function deliveryFailureReason(
+  code: number | undefined,
+  error: string | undefined
+): string | undefined {
+  return (code !== undefined && DELIVERY_FAILURES[code]) || error
+}

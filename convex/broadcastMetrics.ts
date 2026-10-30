@@ -20,6 +20,30 @@ import { requireTeam } from "./access"
 import { counters, insertRow, patchRow } from "./counts"
 import { emptyBroadcastStats } from "../lib/dashboard/broadcast"
 
+/** Whether a broadcast got through to anyone: an email the provider accepted,
+    or a channel message that went out (sent, delivered, read or played). A
+    broadcast that reached someone is sent; its failures show in the report. */
+export async function reachedAnyone(ctx: QueryCtx, row: Doc<"broadcasts">) {
+  if (rowChannel(row) === "email")
+    return Boolean(
+      row.retainedStats?.delivered ||
+      (await ctx.db
+        .query("broadcastRecipients")
+        .withIndex("by_broadcastId_and_sent", (q) =>
+          q.eq("broadcastId", row._id).eq("sent", true)
+        )
+        .first())
+    )
+  if (row.retainedWhatsAppStats) return row.retainedWhatsAppStats.sent > 0
+  const counts = await counters.broadcastMessages.prefixTotals(ctx, row._id, [
+    ["sent"],
+    ["delivered"],
+    ["read"],
+    ["played"],
+  ])
+  return counts.some((count) => count > 0)
+}
+
 export async function finishBroadcast(ctx: MutationCtx, id: Id<"broadcasts">) {
   const row = await ctx.db.get("broadcasts", id)
   if (!row || row.status !== "queued" || !row.audienceDone) return
@@ -32,7 +56,7 @@ export async function finishBroadcast(ctx: MutationCtx, id: Id<"broadcasts">) {
   if (pending) return
   const failed = failedSettled + failedPending
   await patchRow(ctx, "broadcasts", id, {
-    status: failed ? "failed" : "sent",
+    status: failed && !(await reachedAnyone(ctx, row)) ? "failed" : "sent",
     sentAt: Date.now(),
     settledAt: Date.now(),
     updatedAt: Date.now(),

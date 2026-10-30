@@ -57,8 +57,14 @@ import {
   type BroadcastEventTab,
 } from "@/lib/dashboard/broadcast"
 import { parseMailbox, senderDomainOf } from "@/lib/dashboard/email-send"
-import { percent, sentenceCase } from "@/lib/dashboard/format"
-import { useQuery, usePaginatedQuery } from "convex/react"
+import {
+  formatDateTime,
+  percent,
+  pluralize,
+  sentenceCase,
+} from "@/lib/dashboard/format"
+import { useAction, useQuery, usePaginatedQuery } from "convex/react"
+import { requireTeamId, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -99,6 +105,11 @@ const EVENT_TABS: {
     empty: "No one has complained yet.",
   },
 ]
+
+/** Why a sending broadcast has no Stop button: cancelBroadcast only works
+    before fan-out starts. */
+const NO_STOP_NOTE =
+  "A send can't be stopped once it is going out; messages already sent can't be recalled."
 
 const DELIVERY_ROWS: [string, keyof BroadcastStats][] = [
   ["Recipients", "recipients"],
@@ -195,6 +206,7 @@ function BroadcastReport({ item }: { item: Broadcast }) {
             >
               <ProgressValue />
             </Progress>
+            {item.fanoutStarted ? <p>{NO_STOP_NOTE}</p> : null}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -308,6 +320,10 @@ export function BroadcastDetail() {
   const { leaving, deleteAndLeave } = useDeleteRecord("/broadcasts")
   const [pending, setPending] = React.useState(false)
   const [renameOpen, setRenameOpen] = React.useState(false)
+  const review = useAction(api.broadcastWhatsApp.review)
+  const { activeTeamId } = useWorkspace()
+  const [reviewing, setReviewing] = React.useState(false)
+  const [sendSummary, setSendSummary] = React.useState<string | null>(null)
   /* Drafts are authored in the full-screen editor, which lives outside the
      dashboard chrome, so this page only ever shows the report. */
   const editable = Boolean(item) && isBroadcastDraftLike(item!.status)
@@ -330,7 +346,10 @@ export function BroadcastDetail() {
   if (editable) return null
 
   const broadcast = item
-  const { canSend, canCancel } = broadcastActions(broadcast.status)
+  const { canSend, canCancel } = broadcastActions(
+    broadcast.status,
+    broadcast.fanoutStarted
+  )
   const topic = topics.find((row) => row.id === broadcast.topicId)
   const audience = audienceLabel(broadcast.segmentId, segments)
 
@@ -338,12 +357,36 @@ export function BroadcastDetail() {
     void saveAsTemplate(broadcastAsTemplateInput(broadcast))
   }
 
-  function sendNow() {
-    void sendBroadcast(broadcast.id)
-      .then(() => toast.add({ type: "success", title: "Broadcast sent" }))
+  /* Sending can't be recalled, so a channel send shows who it reaches first
+     and an email send asks once. */
+  function reviewSend() {
+    const instead =
+      broadcast.status === "scheduled" && broadcast.scheduledAt
+        ? ` now instead of ${formatDateTime(broadcast.scheduledAt)}`
+        : ""
+    if ((broadcast.channel ?? "email") === "email") {
+      setSendSummary(
+        `This emails ${broadcast.segmentId ? `everyone in ${audience}` : "all contacts"}${instead}.`
+      )
+      return
+    }
+    setReviewing(true)
+    void review({
+      organizationId: requireTeamId(activeTeamId),
+      id: broadcast.id as Id<"broadcasts">,
+    })
+      .then((estimate) =>
+        setSendSummary(
+          `${pluralize(estimate.recipients, "recipient")} will receive this broadcast${instead}; ${estimate.skipped.toLocaleString()} will be skipped.`
+        )
+      )
       .catch(reportError)
+      .finally(() => setReviewing(false))
   }
 
+  // Every message is out and the row waits on delivery receipts to settle
+  // (convex/broadcastMetrics.ts).
+  const delivering = Boolean(broadcast.delivering)
   function cancelSend() {
     void cancelBroadcast(broadcast.id)
       .then(() => toast.add({ type: "success", title: "Broadcast canceled" }))
@@ -357,7 +400,21 @@ export function BroadcastDetail() {
         backLabel="Broadcasts"
         title={broadcast.name || "Untitled"}
         icon={MegaphoneIcon}
-        badge={<BroadcastStatusBadge status={broadcast.status} />}
+        badge={
+          <span className="flex items-center gap-2">
+            <BroadcastStatusBadge
+              status={broadcast.status}
+              delivering={delivering}
+            />
+            {/* A sent broadcast can still have recipients it never reached. */}
+            {(broadcast.status === "sent" || delivering) &&
+            broadcast.whatsappStats?.failed ? (
+              <span className="text-xs text-destructive">
+                {broadcast.whatsappStats.failed.toLocaleString()} failed
+              </span>
+            ) : null}
+          </span>
+        }
         description={`${audience}${topic ? `. Topic: ${topic.name}` : ""}`}
         actions={
           <>
@@ -366,7 +423,11 @@ export function BroadcastDetail() {
                 Cancel
               </Button>
             ) : null}
-            {canSend ? <Button onClick={sendNow}>Send now</Button> : null}
+            {canSend ? (
+              <Button disabled={reviewing} onClick={reviewSend}>
+                Send now
+              </Button>
+            ) : null}
             <MoreMenu>
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => setRenameOpen(true)}>
@@ -410,7 +471,7 @@ export function BroadcastDetail() {
       />
 
       {(broadcast.channel ?? "email") !== "email" ? (
-        <WhatsAppBroadcastReport item={broadcast} />
+        <WhatsAppBroadcastReport item={broadcast} delivering={delivering} />
       ) : (
         <BroadcastReport item={broadcast} />
       )}
@@ -426,6 +487,20 @@ export function BroadcastDetail() {
             )
             .catch(reportError)
         }}
+      />
+      <ConfirmDialog
+        open={sendSummary !== null}
+        onOpenChange={(next) => {
+          if (!next) setSendSummary(null)
+        }}
+        title={`Send ${broadcast.name || "Untitled"}?`}
+        description={`${sendSummary ?? ""} Messages can't be recalled once sent.`}
+        confirmLabel="Send now"
+        onConfirm={() =>
+          sendBroadcast(broadcast.id).then(() =>
+            toast.add({ type: "success", title: "Broadcast sent" })
+          )
+        }
       />
       <ConfirmDialog
         open={pending}
@@ -445,7 +520,13 @@ export function BroadcastDetail() {
   )
 }
 
-function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
+function WhatsAppBroadcastReport({
+  item,
+  delivering,
+}: {
+  item: Broadcast
+  delivering: boolean
+}) {
   const stats = item.whatsappStats
   if (!stats) return <Skeleton className="h-40 w-full" />
 
@@ -457,7 +538,9 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
       {item.status === "queued" ? (
         <Alert>
           <AlertDescription>
-            Metrics update as messages are delivered.
+            {delivering
+              ? "Every message has gone out. Metrics keep updating as delivery and read receipts arrive."
+              : `Metrics update as messages are delivered.${item.fanoutStarted ? ` ${NO_STOP_NOTE}` : ""}`}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -516,7 +599,9 @@ function BroadcastRecipients({ item }: { item: Broadcast }) {
               />
               {recipient.failureReason ? (
                 <p className="mt-1 text-xs text-destructive">
-                  {emailFailureMessage(recipient.failureReason)}
+                  {email
+                    ? emailFailureMessage(recipient.failureReason)
+                    : recipient.failureReason}
                 </p>
               ) : null}
               {recipient.providerError ? (

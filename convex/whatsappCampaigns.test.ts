@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import workpoolTest from "@convex-dev/workpool/test"
-import { api, internal } from "./_generated/api"
+import { runToCompletion } from "@convex-dev/migrations"
+import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import {
   inboundFixture,
@@ -474,7 +475,7 @@ test("status webhooks settle recipients, rank receipts, retain counts after mess
   expect((await f.stats(id)).delivered).toBe(2)
 })
 
-test("sent-without-receipt settles after 24h and final delivery failures settle the broadcast", async () => {
+test("sent-without-receipt settles after 24h; a broadcast that reached anyone is sent despite failures", async () => {
   const f = await setup()
   await f.contacts([{ phone: "+15550000001" }, { phone: "+15550000002" }])
   const id = await f.create()
@@ -497,9 +498,123 @@ test("sent-without-receipt settles after 24h and final delivery failures settle 
   const settledClock = Date.now()
   vi.setSystemTime(Date.now() + 24 * 3600_000)
   await f.t.mutation(internal.broadcastMetrics.settleMessage, { id: sent._id })
-  expect((await f.read(id))?.status).toBe("failed")
+  expect((await f.read(id))?.status).toBe("sent")
   vi.setSystemTime(settledClock)
   expect((await f.stats(id)).failed).toBe(1)
+  const failedRow = (await f.recipients(id)).find(
+    (row) => row.messageId === rows[1].messageId
+  )
+  expect(failedRow?.failureReason).toMatch(/^Not on WhatsApp/)
+  // Rows failed before reasons were kept read them from their message.
+  await f.t.run((ctx) =>
+    ctx.db.patch("broadcastRecipients", failedRow!._id, {
+      failureReason: undefined,
+    })
+  )
+  const outcomes = await f.owner.client.query(
+    api.broadcastWhatsApp.recipients,
+    {
+      organizationId: f.owner.team,
+      id,
+      paginationOpts: { cursor: null, numItems: 20 },
+    }
+  )
+  expect(
+    outcomes.page.find((row) => row._id === failedRow!._id)?.failureReason
+  ).toMatch(/^Not on WhatsApp/)
+  // Rows settled before this rule read Failed; the migration corrects them.
+  await f.t.run((ctx) => patchRow(ctx, "broadcasts", id, { status: "failed" }))
+  await f.t.action((ctx) =>
+    runToCompletion(
+      ctx,
+      components.migrations,
+      internal.migrations.partlyFailedBroadcasts
+    )
+  )
+  expect((await f.read(id))?.status).toBe("sent")
+})
+
+test("list and detail read Sending until the send queue is empty, then Delivering", async () => {
+  const f = await setup()
+  await f.contacts([{ phone: "+15550000001" }, { phone: "+15550000002" }])
+  const id = await f.create()
+  await f.fanout(id)
+  const rows = await f.recipients(id)
+  const shown = async () => {
+    const list = await f.owner.client.query(api.broadcasts.list, {
+      organizationId: f.owner.team,
+      paginationOpts: { cursor: null, numItems: 20 },
+    })
+    const detail = await f.owner.client.query(api.broadcasts.get, {
+      organizationId: f.owner.team,
+      id,
+    })
+    const listed = list.page.find((row) => row._id === id)!
+    expect(listed.delivering).toBe(detail!.delivering)
+    return { status: listed.status, delivering: listed.delivering }
+  }
+  // Every recipient is queued, but both messages still wait to be sent.
+  expect((await f.read(id))?.audienceDone).toBe(true)
+  expect(await shown()).toEqual({ status: "queued", delivering: false })
+  await deliver(f, rows[0].messageId!)
+  expect(await shown()).toEqual({ status: "queued", delivering: false })
+  await deliver(f, rows[1].messageId!)
+  expect(await shown()).toEqual({ status: "queued", delivering: true })
+})
+
+test("a broadcast that reached nobody still settles as failed", async () => {
+  const f = await setup()
+  await f.contacts([{ phone: "+15550000001" }])
+  const id = await f.create()
+  await f.fanout(id)
+  const [row] = await f.recipients(id)
+  await f.t.mutation(internal.channels.messages.record, {
+    id: row.messageId!,
+    generation: 0,
+    outcome: {
+      kind: "failed",
+      error: "Not deliverable",
+      code: 131026,
+      action: "final",
+    },
+  })
+  expect((await f.read(id))?.status).toBe("failed")
+  await f.t.action((ctx) =>
+    runToCompletion(
+      ctx,
+      components.migrations,
+      internal.migrations.partlyFailedBroadcasts
+    )
+  )
+  expect((await f.read(id))?.status).toBe("failed")
+})
+
+test("the preview sample looks past contacts without a phone", async () => {
+  const f = await setup()
+  for (let batch = 0; batch < 3; batch++)
+    await f.contacts(
+      Array.from({ length: 80 }, (_, i) => ({
+        email: `p${batch * 80 + i}@example.com`,
+      })),
+      []
+    )
+  await f.contacts(
+    Array.from({ length: 60 }, (_, i) => ({ email: `s${i}@example.com` }))
+  )
+  const id = await f.create()
+  const sample = (segmentId?: null) =>
+    f.owner.client.query(api.broadcastWhatsApp.sampleContact, {
+      organizationId: f.owner.team,
+      id,
+      segmentId,
+    })
+  expect(await sample()).toBeNull()
+  expect(await sample(null)).toBeNull()
+  await f.contacts([{ phone: "+15550000001", firstName: "Ada" }])
+  const ada = { phone: "+15550000001", firstName: "Ada" }
+  expect(await sample()).toMatchObject(ada)
+  // All contacts: 300 without a phone come first.
+  expect(await sample(null)).toMatchObject(ada)
 })
 
 test("scheduled sends cancel safely, duplicate configuration and enforce team isolation", async () => {

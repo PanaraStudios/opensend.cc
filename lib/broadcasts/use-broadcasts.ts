@@ -23,8 +23,9 @@ export type BroadcastPatch = Partial<
     >
 >
 export function asBroadcast(
-  row: Doc<"broadcasts">,
-  body?: { html: string; content?: unknown } | null
+  row: Doc<"broadcasts"> & { delivering?: boolean },
+  body?: { html: string; content?: unknown } | null,
+  delivering = row.delivering ?? false
 ): Broadcast {
   return {
     id: row._id,
@@ -41,6 +42,8 @@ export function asBroadcast(
     segmentId: row.segmentId,
     topicId: row.topicId,
     status: row.status,
+    fanoutStarted: row.audienceBefore !== undefined,
+    delivering,
     createdAt: row._creationTime,
     updatedAt: row.updatedAt,
     scheduledAt: row.scheduledAt ?? null,
@@ -105,7 +108,7 @@ export function useBroadcast(id: string) {
         : result === null
           ? null
           : {
-              ...asBroadcast(result.row, result.body),
+              ...asBroadcast(result.row, result.body, result.delivering),
               stats:
                 metrics?.channel === "email"
                   ? metrics.stats
@@ -151,7 +154,7 @@ export function useBroadcastCommands() {
         id,
       })
       if (!result) throw new Error("Broadcast not found")
-      return asBroadcast(result.row, result.body)
+      return asBroadcast(result.row, result.body, result.delivering)
     },
   }
 }

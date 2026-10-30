@@ -361,9 +361,9 @@ deleting a schedule cancels its delivery, matching
 [Resend's deletion rule](https://resend.com/docs/api-reference/broadcasts/delete-broadcast).
 Cancel works until audience resolution begins; messages already submitted to SES
 cannot be recalled. The existing UI calls in-flight work `queued` (shown as
-Sending). Completion is `sent` once all eligible recipient copies settle, or
-`failed` if fan-out or a recipient's send fails. Delivery/bounce outcomes continue
-updating the report after sending finishes.
+Sending). Completion is `sent` once all eligible recipient copies settle and at
+least one went out, or `failed` if fan-out fails or no recipient was reached.
+Delivery/bounce outcomes continue updating the report after sending finishes.
 
 Recipients are resolved in bounded pages when the send starts, with a creation
 cutoff so newly added contacts do not extend an in-progress broadcast. Segment

@@ -57,6 +57,7 @@ import { channelMessageStatusValue } from "./tables/channels"
 import { teamTemplate, approvedTemplateOptions } from "./templates"
 import { insertRow } from "./counts"
 import { templateMediaHeader, storedComponents } from "../lib/meta/templates"
+import { deliveryFailureReason } from "../lib/meta/errors"
 
 export async function resolveWhatsAppSend(
   ctx: QueryCtx,
@@ -401,6 +402,19 @@ export const review = action({
     }
   },
 })
+/** Recipients that failed before reasons were kept on the row read their
+    message for it. */
+async function legacyFailureReason(
+  ctx: QueryCtx,
+  organizationId: string,
+  recipient: Doc<"broadcastRecipients">
+) {
+  if (!recipient.messageId) return undefined
+  const message = await ctx.db.get("channelMessages", recipient.messageId)
+  return message?.organizationId === organizationId
+    ? deliveryFailureReason(message.errorCode, message.error)
+    : undefined
+}
 export const recipients = query({
   args: { ...scope, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(
@@ -455,13 +469,19 @@ export const recipients = query({
           }
           channelIdentity = await identity
         }
+        const messageStatus = await statuses(recipient)
         return {
           ...publicRecipient(recipient),
+          failureReason:
+            recipient.failureReason ??
+            (messageStatus === "failed"
+              ? await legacyFailureReason(ctx, organizationId, recipient)
+              : undefined),
           contact: contact
             ? { ...contact, channelIdentity: channelIdentity ?? null }
             : null,
           phone: contact?.phone,
-          messageStatus: await statuses(recipient),
+          messageStatus,
           emailStatus:
             email?.organizationId === organizationId ? email.status : undefined,
         }
@@ -544,6 +564,8 @@ export const options = query({
     }
   },
 })
+/** How many audience contacts the preview looks through for a sample. */
+const SAMPLE_SIZE = 200
 export const sampleContact = query({
   args: {
     ...scope,
@@ -555,21 +577,29 @@ export const sampleContact = query({
     await requireTeam(ctx, organizationId)
     const row = await ctx.db.get("broadcasts", id)
     if (!row || row.organizationId !== organizationId) return null
+    const audience = {
+      ...row,
+      ...(segmentId !== undefined ? { segmentId } : {}),
+      ...(topicId !== undefined ? { topicId } : {}),
+    }
+    const whatsapp = rowChannel(row) === "whatsapp"
+    // The first contacts may have no phone, so look past them.
     const page = await recipientPage(
       ctx,
-      {
-        ...row,
-        ...(segmentId !== undefined ? { segmentId } : {}),
-        ...(topicId !== undefined ? { topicId } : {}),
-      },
+      audience,
       null,
       undefined,
-      10
+      SAMPLE_SIZE
     )
-    return (
-      page.page.find(
-        (contact) => rowChannel(row) !== "whatsapp" || contact.phone
-      ) ?? null
-    )
+    const sample = page.page.find((contact) => !whatsapp || contact.phone)
+    if (sample || !whatsapp || audience.segmentId || page.isDone)
+      return sample ?? null
+    // All contacts: any contact with a phone will do.
+    return await ctx.db
+      .query("contacts")
+      .withIndex("by_organizationId_and_phone", (q) =>
+        q.eq("organizationId", organizationId).gt("phone", "")
+      )
+      .first()
   },
 })

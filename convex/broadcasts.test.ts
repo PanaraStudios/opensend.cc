@@ -7,6 +7,7 @@ import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertEmailEvent } from "./emailRows"
 import { insertRow, patchRow } from "./counts"
 import { recipientPage } from "./broadcasts"
+import { broadcastActions } from "../lib/dashboard/broadcast"
 import { EXPORT_SOURCES } from "./exportSources"
 import { readUnsubscribeToken } from "../lib/unsubscribe/token"
 
@@ -391,6 +392,33 @@ test("fan-out retry and a replayed cursor never enqueue a recipient twice", asyn
     2
   )
 })
+test("Stop is offered exactly while the server accepts cancel", async () => {
+  const f = await setup()
+  await f.contacts([{ email: "ada@example.com" }])
+  const offered = async (id: Id<"broadcasts">) => {
+    const row = (await f.read(id))!
+    return broadcastActions(row.status, row.audienceBefore !== undefined)
+      .canCancel
+  }
+  // Queued but not yet resolving its audience: Stop shows and works.
+  const waiting = await f.create()
+  await f.owner.client.mutation(api.broadcasts.send, { id: waiting })
+  expect(await offered(waiting)).toBe(true)
+  await f.owner.client.mutation(api.broadcasts.cancel, { id: waiting })
+  expect((await f.read(waiting))?.status).toBe("canceled")
+  // Once fan-out starts the server refuses, and Stop is hidden.
+  const going = await f.create()
+  await f.owner.client.mutation(api.broadcasts.send, { id: going })
+  await f.t.mutation(internal.broadcastSend.start, {
+    id: going,
+    generation: (await f.read(going))!.generation,
+  })
+  expect((await f.read(going))?.status).toBe("queued")
+  expect(await offered(going)).toBe(false)
+  await expect(
+    f.owner.client.mutation(api.broadcasts.cancel, { id: going })
+  ).rejects.toThrow(/Only scheduled broadcasts can be canceled/)
+})
 test("schedule, cancel, stale release and deleting a scheduled broadcast", async () => {
   const f = await setup()
   const id = await f.create()
@@ -569,6 +597,30 @@ test("permanent sender failure settles the broadcast as failed", async () => {
     failureReason: row?.failureReason,
     providerError: row?.providerError,
   })
+})
+test("a broadcast whose emails partly failed settles as sent", async () => {
+  const f = await setup()
+  vi.spyOn(SESv2Client.prototype, "send").mockResolvedValue({
+    MessageId: "broadcast-message",
+  } as never)
+  await f.contacts([{ email: "ada@example.com" }, { email: "bo@example.com" }])
+  const id = await f.create()
+  const [sent, failed] = await f.fanout(id)
+  await f.t.action(internal.emailSend.deliver, {
+    id: sent.emailId!,
+    generation: 0,
+  })
+  expect((await f.read(id))?.status).toBe("queued")
+  await f.t.mutation(internal.emails.record, {
+    id: failed.emailId!,
+    generation: 0,
+    outcome: {
+      kind: "failed",
+      error: "Amazon SES rejected this email",
+      retryable: false,
+    },
+  })
+  expect((await f.read(id))?.status).toBe("sent")
 })
 async function rest(f: F) {
   const { token } = await f.owner.client.action(api.apiKeys.create, {

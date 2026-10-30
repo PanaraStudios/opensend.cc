@@ -276,6 +276,14 @@ export type Broadcast = EmailDraft & {
   }
   whatsappStats?: WhatsAppBroadcastStats
   status: BroadcastStatus
+  /** Fan-out has started resolving the audience; the send can no longer be
+      canceled. */
+  fanoutStarted?: boolean
+  /** A WhatsApp, Messenger or Instagram send whose recipients are all queued
+      and whose paced send queue is empty; it waits on delivery receipts (up
+      to 24 hours after the last message) to settle. Computed by
+      `broadcastDelivering` in convex/broadcasts.ts. */
+  delivering?: boolean
   segmentId: string | null
   topicId: string | null
   createdAt: number

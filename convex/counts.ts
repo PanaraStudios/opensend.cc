@@ -5,6 +5,7 @@ import { v, type Value } from "convex/values"
 import { components } from "./_generated/api"
 import type { DataModel, Doc, Id, TableNames } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
+import { deliveryFailureReason } from "../lib/meta/errors"
 
 /* Every row count the dashboard shows is read here, from the Aggregate
    component (https://www.convex.dev/components/aggregate): one mounted
@@ -606,6 +607,15 @@ async function syncRecipientMessageStatus(
   )
     await patchRow(ctx, "broadcastRecipients", recipient._id, {
       displayMessageStatus: status,
+      // A removed message keeps the reason it failed with.
+      ...(status === null
+        ? {}
+        : {
+            failureReason:
+              status === "failed"
+                ? deliveryFailureReason(message.errorCode, message.error)
+                : undefined,
+          }),
     })
 }
 

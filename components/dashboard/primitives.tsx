@@ -1159,7 +1159,16 @@ export function RecipientOutcomeBadge({
   return <ToneBadge tone="warning" label="Sending" />
 }
 
-export function BroadcastStatusBadge({ status }: { status: BroadcastStatus }) {
+export function BroadcastStatusBadge({
+  status,
+  delivering,
+}: {
+  status: BroadcastStatus
+  delivering?: boolean
+}) {
+  // Every message is out; only delivery receipts are still arriving.
+  if (status === "queued" && delivering)
+    return <ToneBadge tone="success" label="Delivering" />
   return (
     <ToneBadge
       tone={BROADCAST_STATUS_TONE[status]}
