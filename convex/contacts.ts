@@ -356,7 +356,7 @@ export const upsert = mutation({
             properties,
             segmentIds,
             skipExisting: args.skipExisting,
-            emit: !args.csvImport,
+            emit: true,
             budget,
           }
         )
