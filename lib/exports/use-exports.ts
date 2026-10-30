@@ -14,14 +14,19 @@ import { actionError } from "@/lib/action-error"
 import { exportOutcome, type ExportFilterLine } from "@/lib/dashboard/exports"
 import { useTeamList } from "@/components/dashboard/primitives"
 import type { ExportJob } from "@/lib/dashboard/types"
-import { downloadBlob } from "@/lib/dashboard/download"
+import { downloadBlob, downloadFromUrl } from "@/lib/dashboard/download"
 
 type ExportRow = NonNullable<FunctionReturnType<typeof api.exports.get>>
 
-export function asExport(row: ExportRow): ExportJob & {
+/** An export as the dashboard shows it. `volumes` > 1 when the CSV is
+    larger than one download carries and comes as several files. */
+export type ExportItem = ExportJob & {
   creatorEmail: string
   summary: ExportFilterLine[]
-} {
+  volumes: number
+}
+
+export function asExport(row: ExportRow): ExportItem {
   return {
     id: row._id,
     resource: row.resource,
@@ -32,30 +37,42 @@ export function asExport(row: ExportRow): ExportJob & {
     rows: row.rows,
     creatorEmail: row.creatorEmail,
     summary: row.summary,
+    volumes: row.volumes,
   }
 }
 
-/** Saves a completed export under its own file name: the storage URL alone
-    would download as a random id. Team admins only. */
+/** Saves one file of a completed export. Exports written in parts come
+    from the backend's streaming route, which names the file itself, so the
+    browser saves it straight to disk without holding it in page memory:
+    "started", as the bytes arrive after this returns. Older single-file
+    exports are fetched and saved under their own name, as the storage URL
+    alone would download as a random id: "saved". Team admins only. */
 async function download(
   convex: ConvexReactClient,
   id: string,
-  fileName: string
-) {
+  fileName: string,
+  volume = 0
+): Promise<"started" | "saved"> {
   const url = await convex.action(api.exports.downloadUrl, {
     id: id as Id<"exports">,
+    volume,
   })
   if (!url) throw new Error("This export is no longer available")
+  if (new URL(url).pathname.startsWith("/exports/download/")) {
+    downloadFromUrl(url)
+    return "started"
+  }
   const response = await fetch(url)
   if (!response.ok) throw new Error("The download failed. Try again.")
   downloadBlob(fileName, await response.blob())
+  return "saved"
 }
 
 export function useDownloadExport() {
   const convex = useConvex()
-  return async (job: Pick<ExportJob, "id" | "fileName">) => {
+  return async (job: Pick<ExportJob, "id" | "fileName">, volume = 0) => {
     try {
-      await download(convex, job.id, job.fileName)
+      await download(convex, job.id, job.fileName, volume)
     } catch (e) {
       toast.add({ type: "error", title: actionError(e) })
     }
@@ -115,10 +132,13 @@ export function useStartExport() {
         })
       } else {
         try {
-          await download(convex, id, row!.fileName)
+          const saved = await download(convex, id, row!.fileName)
           toast.add({
             type: "success",
-            title: "Export downloaded successfully.",
+            title:
+              saved === "saved"
+                ? "Export downloaded successfully."
+                : "Download started",
           })
         } catch (e) {
           toast.add({ type: "error", title: actionError(e) })

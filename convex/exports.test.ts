@@ -6,16 +6,26 @@ import type { FunctionReturnType } from "convex/server"
 import { fixture } from "./testHelpers/ses.fixture"
 import { insertRow, patchRow } from "./counts"
 import { writeLog } from "./logs"
-import { parseCsv } from "../lib/dashboard/csv"
+import { csvLine, parseCsv } from "../lib/dashboard/csv"
+import { EXPORT_SOURCES } from "./exportSources"
+import { exportLimits } from "./exports"
+import { signedFileLinkForOrigin } from "./fileDownloads"
+import { TEAM_TABLES } from "./teamCleanup"
+import { exportVolumes, volumeFileName } from "../lib/exports/volumes"
 
 const page = { cursor: null, numItems: 2 }
 type Fixture = Awaited<ReturnType<typeof fixture>>
+const limits = { ...exportLimits }
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+  Object.assign(exportLimits, limits)
 })
 async function setup() {
   vi.useFakeTimers()
+  // Downloads of exports written in parts are signed links.
+  vi.stubEnv("BETTER_AUTH_SECRET", "export-download-test-secret-at-least-32")
   return fixture()
 }
 const start = (
@@ -31,11 +41,23 @@ const start = (
   })
 const drain = (f: Fixture) =>
   f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
-async function csv(f: Fixture, id: Id<"exports">) {
-  return f.t.run(async (ctx) => {
+/** The storage behind each part of an export, in order. */
+const partStorage = (f: Fixture, id: Id<"exports">) =>
+  f.t.run(async (ctx) => {
     const row = await ctx.db.get("exports", id)
-    return (await ctx.storage.get(row!.storageId!))!.text()
+    const ids: Id<"_storage">[] = []
+    for (const part of row?.parts ?? [])
+      ids.push((await ctx.db.get("storedFiles", part.fileId))!.storageId!)
+    return ids
   })
+/** The stored CSV: its parts concatenated. */
+async function csv(f: Fixture, id: Id<"exports">) {
+  let text = ""
+  for (const storageId of await partStorage(f, id))
+    text += await f.t.run(async (ctx) =>
+      (await ctx.storage.get(storageId))!.text()
+    )
+  return text
 }
 
 const headers = {
@@ -354,11 +376,16 @@ test("expiry is enforced before cleanup; files and old rows are removed with cou
   expect(await f.owner.client.query(api.exports.get, { id })).toMatchObject({
     status: "ready",
   })
+  const stored = await partStorage(f, id)
+  expect(stored).toHaveLength(1)
   await f.t.mutation(internal.exports.expire, {})
   expect(await f.owner.client.query(api.exports.get, { id })).toMatchObject({
     status: "expired",
   })
-  expect(await f.t.run((ctx) => ctx.storage.get(old!.storageId!))).toBeNull()
+  expect(await f.t.run((ctx) => ctx.storage.get(stored[0]))).toBeNull()
+  expect(
+    await f.t.run((ctx) => ctx.db.get("storedFiles", old!.parts![0].fileId))
+  ).toBeNull()
   expect(
     await f.owner.client.query(api.exports.count, {
       organizationId: f.owner.team,
@@ -659,4 +686,279 @@ test("the watchdog fails exports idle for 30 minutes and spares fresh ones", asy
   expect(
     await f.owner.client.action(api.exports.downloadUrl, { id: stuck })
   ).toBeNull()
+})
+
+/** Six pages of three contact rows with quotes, commas, line breaks and
+    multi-byte text; pages follow the cursor so every export reads the same. */
+function mockContactPages() {
+  return vi
+    .spyOn(EXPORT_SOURCES.contacts, "page")
+    .mockImplementation(async (_ctx, _team, _filters, { cursor }) => {
+      const page = cursor ? Number(cursor) : 0
+      return {
+        rows: Array.from({ length: 3 }, (_, i) => [
+          `row${page * 3 + i}`,
+          `"quoted", ${"é".repeat(page + 1)}`,
+          `line\nbreak ${i}`,
+        ]),
+        isDone: page === 5,
+        continueCursor: String(page + 1),
+      }
+    })
+}
+const expectedRows = Array.from({ length: 18 }, (_, n) => {
+  const page = Math.floor(n / 3)
+  return csvLine([
+    `row${n}`,
+    `"quoted", ${"é".repeat(page + 1)}`,
+    `line\nbreak ${n % 3}`,
+  ])
+}).join("")
+/** Downloads one file of an export through its signed link. */
+async function fetchExport(f: Fixture, id: Id<"exports">, volume?: number) {
+  const link = await f.owner.client.action(api.exports.downloadUrl, {
+    id,
+    volume,
+  })
+  expect(link).toContain("/exports/download/")
+  return f.t.fetch(new URL(link!).pathname)
+}
+
+test("an export written in many parts downloads byte-identical to one written in a single part", async () => {
+  const f = await setup()
+  mockContactPages()
+  const single = await start(f, "contacts")
+  await drain(f)
+  // Every page closes a part: the header and first page, then one per page.
+  exportLimits.partBytes = 1
+  const multi = await start(f, "contacts")
+  await drain(f)
+  const rows = await f.t.run(async (ctx) => ({
+    single: (await ctx.db.get("exports", single))!,
+    multi: (await ctx.db.get("exports", multi))!,
+  }))
+  expect(rows.single.parts).toHaveLength(1)
+  expect(rows.multi.parts).toHaveLength(6)
+  expect(rows.multi.parts!.map((part) => part.rows)).toEqual([3, 3, 3, 3, 3, 3])
+  for (const row of [rows.single, rows.multi]) {
+    expect(row).toMatchObject({ status: "ready", rows: 18 })
+    expect(row.storageId).toBeUndefined()
+    expect(row.cursor).toBeUndefined()
+  }
+  expect(
+    await f.owner.client.query(api.exports.get, { id: multi })
+  ).toMatchObject({ status: "ready", rows: 18, volumes: 1 })
+  const responses = [await fetchExport(f, single), await fetchExport(f, multi)]
+  const [a, b] = await Promise.all(
+    responses.map(async (response) => {
+      expect(response.status).toBe(200)
+      expect(response.headers.get("Content-Type")).toBe(
+        "text/csv;charset=utf-8"
+      )
+      expect(response.headers.get("Cache-Control")).toBe("no-store")
+      return new Uint8Array(await response.arrayBuffer())
+    })
+  )
+  expect(b).toEqual(a)
+  const text = new TextDecoder().decode(a)
+  expect(text).toBe(`${headers.contacts}\r\n${expectedRows}`)
+  expect(text).toBe(await csv(f, multi))
+  expect(Number(responses[1].headers.get("Content-Length"))).toBe(a.byteLength)
+  expect(rows.multi.bytes).toBe(a.byteLength)
+  expect(responses[1].headers.get("Content-Disposition")).toContain(
+    encodeURIComponent(rows.multi.fileName!)
+  )
+})
+
+test("download links are signed, scoped to the export and expire", async () => {
+  const f = await setup()
+  mockContactPages()
+  const id = await start(f, "contacts")
+  const other = await start(f, "contacts")
+  await drain(f)
+  const link = new URL(
+    (await f.owner.client.action(api.exports.downloadUrl, { id }))!
+  ).pathname
+  expect((await f.t.fetch(link)).status).toBe(200)
+  // Forged, tampered and other-audience tokens download nothing.
+  expect((await f.t.fetch("/exports/download/not-a-token")).status).toBe(404)
+  const tampered = link.slice(0, -2) + (link.endsWith("AA") ? "BB" : "AA")
+  expect((await f.t.fetch(tampered)).status).toBe(404)
+  const foreign = await signedFileLinkForOrigin(
+    "",
+    "/exports/download/",
+    "received-file",
+    { exportId: id, volume: 0 },
+    Date.now()
+  )
+  expect((await f.t.fetch(foreign.download_url)).status).toBe(404)
+  // Only team admins get a link, and only for a file the export has.
+  await expect(
+    f.outsider.client.action(api.exports.downloadUrl, { id })
+  ).rejects.toThrow("permission")
+  expect(
+    await f.owner.client.action(api.exports.downloadUrl, { id, volume: 1 })
+  ).toBeNull()
+  // An expired export stops a fresh link at once, before the cron runs.
+  const fresh = new URL(
+    (await f.owner.client.action(api.exports.downloadUrl, { id: other }))!
+  ).pathname
+  expect((await f.t.fetch(fresh)).status).toBe(200)
+  await f.t.run((ctx) =>
+    patchRow(ctx, "exports", other, { expiresAt: Date.now() - 1 })
+  )
+  // The link itself is seconds old: only the export's expiry stops it.
+  expect((await f.t.fetch(fresh)).status).toBe(404)
+  // The link lapses after an hour, though the export is still kept.
+  expect((await f.t.fetch(link)).status).toBe(200)
+  vi.setSystemTime(Date.now() + 3601_000)
+  expect((await f.t.fetch(link)).status).toBe(404)
+})
+
+test("expiry, failure and team deletion remove every part", async () => {
+  const f = await setup()
+  mockContactPages()
+  exportLimits.partBytes = 1
+  const expiring = await start(f, "contacts")
+  const retired = await start(f, "contacts")
+  await drain(f)
+  const gone = async (id: Id<"exports">, storage: Id<"_storage">[]) => {
+    expect(storage).toHaveLength(6)
+    for (const storageId of storage)
+      expect(await f.t.run((ctx) => ctx.storage.get(storageId))).toBeNull()
+    expect(
+      await f.t.run((ctx) =>
+        ctx.db
+          .query("storedFiles")
+          .withIndex("by_storageId", (q) => q.eq("storageId", storage[0]))
+          .first()
+      )
+    ).toBeNull()
+    expect(
+      (await f.t.run((ctx) => ctx.db.get("exports", id)))?.parts
+    ).toBeUndefined()
+  }
+
+  const expiringParts = await partStorage(f, expiring)
+  await f.t.run((ctx) =>
+    patchRow(ctx, "exports", expiring, { expiresAt: Date.now() - 1 })
+  )
+  await f.t.mutation(internal.exports.expire, {})
+  await gone(expiring, expiringParts)
+
+  const retiredParts = await partStorage(f, retired)
+  await f.t.run((ctx) =>
+    ctx.db.insert("teamRetirements", { teamId: f.owner.team })
+  )
+  for (let row = 0; row < 2; row++)
+    await f.t.mutation(internal.teamCleanup.purge, {
+      organizationId: f.owner.team,
+      table: TEAM_TABLES.indexOf("exports"),
+    })
+  await gone(retired, retiredParts)
+})
+
+test("a stalled part fails the export and drops the parts it wrote", async () => {
+  const f = await setup()
+  mockContactPages()
+  exportLimits.partBytes = 1
+  const id = await start(f, "contacts")
+  // Scheduled runs never fire unless the test runs them: one part at a time.
+  await f.t.action(internal.exports.run, { id })
+  vi.setSystemTime(Date.now() + 20 * 60_000)
+  await f.t.action(internal.exports.run, { id })
+  // 40 minutes after the start, but the last part is 20 minutes old.
+  vi.setSystemTime(Date.now() + 20 * 60_000)
+  await f.t.mutation(internal.exports.failStalled, {})
+  expect(await f.owner.client.query(api.exports.get, { id })).toMatchObject({
+    status: "processing",
+    rows: 6,
+  })
+  const written = await partStorage(f, id)
+  expect(written).toHaveLength(2)
+  vi.setSystemTime(Date.now() + 11 * 60_000)
+  await f.t.mutation(internal.exports.failStalled, {})
+  expect(await f.owner.client.query(api.exports.get, { id })).toMatchObject({
+    status: "failed",
+    rows: 0,
+    error: expect.stringContaining("stopped before it finished"),
+  })
+  for (const storageId of written)
+    expect(await f.t.run((ctx) => ctx.storage.get(storageId))).toBeNull()
+  // The stalled run's part, arriving late, is deleted rather than recorded.
+  const late = await f.t.run((ctx) => ctx.storage.store(new Blob(["late"])))
+  await f.t.mutation(internal.exports.addPart, {
+    id,
+    index: 2,
+    part: { storageId: late, rows: 1, bytes: 4 },
+    header: [],
+    cursor: "3",
+    isDone: false,
+  })
+  expect(await f.t.run((ctx) => ctx.storage.get(late))).toBeNull()
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("exports", id)))?.parts
+  ).toBeUndefined()
+  // A duplicate run of an index already written is dropped the same way.
+  exportLimits.partBytes = limits.partBytes
+  const again = await start(f, "contacts")
+  await drain(f)
+  const dup = await f.t.run((ctx) => ctx.storage.store(new Blob(["dup"])))
+  await f.t.run((ctx) =>
+    patchRow(ctx, "exports", again, { status: "processing" })
+  )
+  await f.t.mutation(internal.exports.addPart, {
+    id: again,
+    index: 0,
+    part: { storageId: dup, rows: 1, bytes: 3 },
+    header: [],
+    cursor: "1",
+    isDone: true,
+  })
+  expect(await f.t.run((ctx) => ctx.storage.get(dup))).toBeNull()
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("exports", again)))?.parts
+  ).toHaveLength(1)
+})
+
+test("files past the HTTP response cap download as several files, each with the header", async () => {
+  expect(
+    exportVolumes(
+      [{ bytes: 40 }, { bytes: 40 }, { bytes: 40 }, { bytes: 90 }],
+      5,
+      100
+    )
+  ).toEqual([
+    { from: 0, to: 2, bytes: 80 },
+    { from: 2, to: 3, bytes: 45 },
+    { from: 3, to: 4, bytes: 95 },
+  ])
+  expect(volumeFileName("contacts-1.csv", 1, 3)).toBe(
+    "contacts-1-part-2-of-3.csv"
+  )
+  expect(volumeFileName("contacts-1.csv", 0, 1)).toBe("contacts-1.csv")
+
+  const f = await setup()
+  mockContactPages()
+  exportLimits.partBytes = 1
+  exportLimits.volumeBytes = 1
+  const id = await start(f, "contacts")
+  await drain(f)
+  const job = (await f.owner.client.query(api.exports.get, { id }))!
+  expect(job.volumes).toBe(6)
+  let body = ""
+  for (let volume = 0; volume < 6; volume++) {
+    const response = await fetchExport(f, id, volume)
+    expect(response.status).toBe(200)
+    expect(response.headers.get("Content-Disposition")).toContain(
+      `part-${volume + 1}-of-6.csv`
+    )
+    const text = await response.text()
+    expect(text.startsWith(`${headers.contacts}\r\n`)).toBe(true)
+    expect(Number(response.headers.get("Content-Length"))).toBe(
+      new TextEncoder().encode(text).byteLength
+    )
+    body += volume === 0 ? text : text.slice(headers.contacts.length + 2)
+  }
+  expect(body).toBe(`${headers.contacts}\r\n${expectedRows}`)
 })

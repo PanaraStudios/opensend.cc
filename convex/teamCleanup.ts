@@ -6,7 +6,7 @@ import type { OrderedQuery } from "convex/server"
 import { cancel, cleanup, type WorkflowId } from "@convex-dev/workflow"
 import { internalMutation, type MutationCtx } from "./_generated/server"
 import { components, internal } from "./_generated/api"
-import type { DataModel, Id, TableNames } from "./_generated/dataModel"
+import type { DataModel, Doc, Id, TableNames } from "./_generated/dataModel"
 import {
   retireBroadcastCounters,
   COUNTED_TABLES,
@@ -15,6 +15,7 @@ import {
   type CountedTable,
 } from "./counts"
 import { deleteEmailContent } from "./emailRows"
+import { deleteExportFiles } from "./exportRows"
 import { deleteChannelMessageContent } from "./channels/rows"
 import { retirement } from "./teamLifecycle"
 
@@ -297,11 +298,8 @@ export const purge = internalMutation({
             q.eq("webhookId", row._id as Id<"webhooks">)
           )
       )
-    } else if (
-      name === "exports" &&
-      (("storageId" in row && row.storageId) || ("fileId" in row && row.fileId))
-    ) {
-      await deleteFile(ctx, row)
+    } else if (name === "exports") {
+      await deleteExportFiles(ctx, row as Doc<"exports">)
     } else if (
       name === "automationRuns" &&
       "workflowId" in row &&

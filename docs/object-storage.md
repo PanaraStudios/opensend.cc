@@ -34,7 +34,17 @@ Action memory and execution time still apply.
 
 Downloads use `ctx.storage.getUrl`, so large downloads bypass HTTP actions.
 These URLs grant bearer access and do not expire automatically. Existing signed
-download endpoints remain for compatibility. Outbound WhatsApp media is uploaded
+download endpoints remain for compatibility.
+
+CSV exports are the exception. An export is stored in parts of about 8 MiB,
+and `GET /exports/download/<token>` on the Convex site origin streams them in
+order behind a signed link that expires after one hour. A streamed HTTP-action
+response is capped at 100 MiB (`HTTP_ACTION_RESPONSE_BODY_LIMIT` in the Convex
+backend), so an export over 90 MiB (`VOLUME_BYTES` in
+`lib/exports/volumes.ts`) downloads as several files, each up to 90 MiB.
+`VOLUME_BYTES` must stay below that cap. A proxy in front of the site origin
+must allow responses of that size and keep the connection open while a large
+file streams. Outbound WhatsApp media is uploaded
 to `/{phone}/media` and sent using Meta’s returned media ID.
 
 The existing multipart `POST /whatsapp/media` retains Opensend’s 20 MB request

@@ -3,9 +3,11 @@ import workpoolTest from "@convex-dev/workpool/test"
 import { api, components, internal } from "./_generated/api"
 import { createAuth } from "./auth"
 import { fixture } from "./testHelpers/ses.fixture"
-import { insertRow } from "./counts"
+import { insertRow, patchRow } from "./counts"
 import { EXPORT_SOURCES } from "./exportSources"
-import { MAX_BYTES, MAX_ROWS } from "./exports"
+import { exportLimits } from "./exports"
+
+const { rows: MAX_ROWS, bytes: MAX_BYTES, partBytes: PART_BYTES } = exportLimits
 import { listProperties } from "./audience"
 import { SEGMENT_DELETED } from "./contactImports"
 import type { Id } from "./_generated/dataModel"
@@ -20,6 +22,7 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
+  exportLimits.partBytes = PART_BYTES
 })
 
 test.each(["verify", "reset", "change-email", "invite"] as const)(
@@ -344,21 +347,18 @@ test("metrics reject oversized queries but every existing day preset fits", asyn
 const DAY = 86_400_000
 
 test.each(["rows", "bytes"])(
-  "exports fail readably at the %s cap without publishing a partial file",
+  "exports fail readably at the %s cap and keep no part already written",
   async (limit) => {
     const f = await fixture()
-    const pages =
-      limit === "rows"
-        ? Math.ceil(MAX_ROWS / 500) + 1
-        : Math.ceil(MAX_BYTES / (512 * 1024)) + 1
     let calls = 0
+    // Pages of 500 one-character rows, or of one 256 KiB row.
     vi.spyOn(EXPORT_SOURCES.contacts, "page").mockImplementation(async () => ({
       rows:
         limit === "rows"
           ? Array.from({ length: 500 }, () => ["a"])
-          : [["é".repeat(256 * 1024)]],
-      isDone: ++calls === pages,
-      continueCursor: String(calls),
+          : [["é".repeat(128 * 1024)]],
+      isDone: false,
+      continueCursor: String(++calls),
     }))
     const id = await f.owner.client.mutation(api.exports.start, {
       organizationId: f.owner.team,
@@ -366,16 +366,37 @@ test.each(["rows", "bytes"])(
       filters: {},
       summary: [],
     })
+    // The first part is written; the export is then already near its cap.
+    exportLimits.partBytes = 1
+    await f.t.action(internal.exports.run, { id })
+    const first = (await f.t.run((ctx) => ctx.db.get("exports", id)))!
+    expect(first.parts).toHaveLength(1)
+    const partFile = first.parts![0].fileId
+    await f.t.run((ctx) =>
+      patchRow(
+        ctx,
+        "exports",
+        id,
+        limit === "rows"
+          ? { rows: MAX_ROWS - 100 }
+          : { bytes: MAX_BYTES - 1024 }
+      )
+    )
+    exportLimits.partBytes = PART_BYTES
     await f.t.action(internal.exports.run, { id })
     expect(await f.owner.client.query(api.exports.get, { id })).toMatchObject({
       status: "failed",
+      rows: 0,
       error: expect.stringContaining(
-        limit === "rows" ? "200,000 rows" : "16 MiB"
+        limit === "rows" ? "1,000,000 rows" : "1 GiB"
       ),
     })
+    const row = (await f.t.run((ctx) => ctx.db.get("exports", id)))!
+    expect(row.parts).toBeUndefined()
+    expect(row.storageId).toBeUndefined()
     expect(
-      (await f.t.run((ctx) => ctx.db.get("exports", id)))?.storageId
-    ).toBeUndefined()
+      await f.t.run((ctx) => ctx.db.get("storedFiles", partFile))
+    ).toBeNull()
   }
 )
 
