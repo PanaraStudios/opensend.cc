@@ -907,7 +907,7 @@ test("status before send record retries independently and cannot duplicate an in
       (job) => job.args[0]?.id === eventId && job.args[0]?.attempt === 1
     )
   )
-  expect(JSON.parse(retry?.args[0].retryItems)).toMatchObject([
+  expect(unpackRetryItems(retry?.args[0].retryItems)).toMatchObject([
     { kind: "status", externalId: "mid.race" },
   ])
   await f.t.mutation(internal.meta.projection.project, retry!.args[0])
