@@ -305,6 +305,10 @@ export class VoiceMediaEndpoint {
   private ready = false
   private address = ""
   private fsAddress = ""
+  /** drachtio by IP: FreeSWITCH only treats a SIP destination as local, and
+      offers its private media address instead of FREESWITCH_PUBLIC_IP, when
+      the Request-URI host is an address inside its local network ACL. */
+  private sipAddress = ""
   private readonly reservations = new Map<string, Reservation>()
   private readonly sessions = new Map<
     string,
@@ -343,6 +347,7 @@ export class VoiceMediaEndpoint {
       await lookup(this.options.advertiseHost, { family: 4 })
     ).address
     this.fsAddress = (await lookup(this.options.fsHost, { family: 4 })).address
+    this.sipAddress = (await lookup(this.options.host, { family: 4 })).address
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.srf.disconnect()
@@ -365,7 +370,7 @@ export class VoiceMediaEndpoint {
     const token = randomUUID()
     this.reservations.set(token, reservation)
     return {
-      uri: `sip:${token}@${this.options.host}:5060`,
+      uri: `sip:${token}@${this.sipAddress}:5060`,
       release: async () => {
         reservation.closed = true
         this.reservations.delete(token)
