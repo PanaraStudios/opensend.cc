@@ -29,6 +29,7 @@ import {
 } from "../tables/channels"
 import { findMetaApp, requireMetaConfigured } from "../access"
 import { NUMBER_LIMIT, registration } from "../../lib/meta/whatsapp-account"
+import { INSTAGRAM_SCOPES } from "../../lib/meta/page-account"
 
 /* A team's Meta connections and the sending endpoints they bring. The Graph
    calls live in connectActions.ts; everything here reads or writes rows. A
@@ -375,6 +376,54 @@ async function pageRows(
     )
     .take(20)
 }
+/** A Page login without Instagram permissions connects the Page alone, but
+    must not retire the Instagram account the team already runs through
+    that Page: the new Page token could not message on it anyway. */
+async function assertInstagramKept(
+  ctx: QueryCtx,
+  organizationId: string,
+  scopes: readonly string[],
+  accounts: { channel: PageChannel; externalId: string; pageId?: string }[]
+) {
+  const missing = INSTAGRAM_SCOPES.filter((scope) => !scopes.includes(scope))
+  if (!missing.length) return
+  for (const page of accounts) {
+    if (
+      page.channel !== "messenger" ||
+      accounts.some(
+        (other) =>
+          other.channel === "instagram" && other.pageId === page.externalId
+      )
+    )
+      continue
+    const messenger = await ctx.db
+      .query("channelAccounts")
+      .withIndex("by_organizationId_and_channel_and_externalId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("channel", "messenger")
+          .eq("externalId", page.externalId)
+      )
+      .first()
+    if (!messenger) continue
+    const linked = await ctx.db
+      .query("channelAccounts")
+      .withIndex("by_connectionId", (q) =>
+        q.eq("connectionId", messenger.connectionId)
+      )
+      .take(500)
+    const instagram = linked.find(
+      (row) =>
+        row.channel === "instagram" &&
+        row.pageId === page.externalId &&
+        live(row)
+    )
+    if (instagram)
+      throw new ConvexError(
+        `The Facebook Page ${messenger.displayName} has a connected Instagram account (${instagram.handle}), and this login is missing the ${missing.join(" and ")} permission${missing.length > 1 ? "s" : ""}. Connect again and allow Instagram access to keep it.`
+      )
+  }
+}
 async function assertPagesFree(
   ctx: QueryCtx,
   organizationId: string,
@@ -392,12 +441,19 @@ async function assertPagesFree(
 export const checkPages = internalQuery({
   args: {
     organizationId: v.string(),
-    accounts: v.array(pageAccountValue.pick("channel", "externalId")),
+    scopes: v.array(v.string()),
+    accounts: v.array(pageAccountValue.pick("channel", "externalId", "pageId")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
     await assertPagesFree(ctx, args.organizationId, args.accounts)
+    await assertInstagramKept(
+      ctx,
+      args.organizationId,
+      args.scopes,
+      args.accounts
+    )
     return null
   },
 })
@@ -412,6 +468,12 @@ export const storePages = internalMutation({
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId, "write")
     await assertPagesFree(ctx, args.organizationId, args.accounts)
+    await assertInstagramKept(
+      ctx,
+      args.organizationId,
+      args.scopes,
+      args.accounts
+    )
     const now = Date.now(),
       saved = []
     const connections = new Map<string, Id<"metaConnections">>()

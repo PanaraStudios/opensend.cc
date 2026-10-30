@@ -99,9 +99,11 @@ async function attach(
   }
   await ctx.runQuery(internal.meta.connect.checkPages, {
     organizationId,
-    accounts: accounts.map(({ channel, externalId }) => ({
+    scopes: info.scopes,
+    accounts: accounts.map(({ channel, externalId, pageId }) => ({
       channel,
       externalId,
+      pageId,
     })),
   })
   for (const page of pages) {

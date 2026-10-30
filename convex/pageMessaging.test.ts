@@ -260,6 +260,44 @@ test("a Page Meta lists without a token is skipped instead of failing the login"
     `/${PAGE_ID}/subscribed_apps`,
   ])
 })
+test("a reconnect without Instagram permissions refuses rather than dropping a connected Instagram account", async () => {
+  const f = await pagesFixture()
+  graph.use({
+    path: "/debug_token",
+    respond: () => ({
+      data: {
+        app_id: META_APP.appId,
+        is_valid: true,
+        scopes: ["pages_messaging", "pages_manage_metadata", "pages_show_list"],
+      },
+    }),
+  })
+  graph.calls.length = 0
+  for (const connect of [
+    () =>
+      f.owner.client.action(api.meta.pageConnectActions.connectPageManual, {
+        organizationId: f.owner.team,
+        pageId: PAGE_ID,
+        token: PAGE_TOKEN,
+      }),
+    () =>
+      f.owner.client.action(api.meta.pageConnectActions.connectFacebookLogin, {
+        organizationId: f.owner.team,
+        code: "login-code",
+      }),
+  ])
+    await expect(connect()).rejects.toThrow(
+      /missing the instagram_basic and instagram_manage_messages permissions/
+    )
+  expect(graph.to(/subscribed_apps$/)).toHaveLength(0)
+  const instagram = await f.t.run(async (ctx) =>
+    (await ctx.db.query("channelAccounts").collect()).find(
+      (row) => row.channel === "instagram"
+    )
+  )
+  expect(instagram).toMatchObject({ status: "active", externalId: IG_ID })
+  expect(instagram?.disconnectedAt).toBeUndefined()
+})
 test("manual connect reuses rows; another team is refused before subscribing, and unauthorized callers cannot connect", async () => {
   const f = await pagesFixture()
   const reconnect = await f.owner.client.action(
