@@ -140,12 +140,13 @@ services:
       - ./docker/backup/backup.sh:/usr/local/bin/backup.sh:ro
     entrypoint: ["sh", "/usr/local/bin/backup.sh", "loop"]
     healthcheck:
-      # Healthy while the newest dump is younger than two intervals.
+      # Healthy while the newest dump is younger than two intervals, or while
+      # the first dump is not due yet, so `up --wait` does not block on it.
       test: ["CMD-SHELL", "sh /usr/local/bin/backup.sh status"]
       interval: 5m
       timeout: 10s
       retries: 3
-      start_period: 15m
+      start_period: 1m
     deploy:
       resources:
         limits:

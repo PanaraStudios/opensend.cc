@@ -4,6 +4,7 @@ import { test } from "node:test"
 import {
   productionDefaults,
   productionProblems,
+  productionServices,
   usesProductionOverlay,
 } from "./prod-env.mjs"
 
@@ -19,6 +20,9 @@ test("overlay detection and generated secrets", () => {
   assert.equal(usesProductionOverlay({ COMPOSE_FILE: "compose.yaml" }), false)
   assert.deepEqual(productionDefaults({}), {})
   assert.match(productionDefaults(good).POSTGRES_PASSWORD, /^[0-9a-f]{48}$/)
+  // Setup starts the backup service; nothing extra without the overlay.
+  assert.deepEqual(productionServices(good), ["backup"])
+  assert.deepEqual(productionServices({ COMPOSE_FILE: "compose.yaml" }), [])
 })
 
 test("production env validation", () => {

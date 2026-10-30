@@ -15,6 +15,12 @@ export function productionDefaults(env) {
     : {}
 }
 
+/** Services setup starts after a successful deploy, without waiting on their
+    health: the backup service is healthy only once its first dump is due. */
+export function productionServices(env) {
+  return usesProductionOverlay(env) ? ["backup"] : []
+}
+
 /** Problems that make a production overlay start unsafe. Empty when fine. */
 export function productionProblems(env) {
   if (!usesProductionOverlay(env)) return []

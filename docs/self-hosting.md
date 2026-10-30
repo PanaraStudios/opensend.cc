@@ -619,7 +619,7 @@ Better Auth verification expiry index is reused, never duplicated.
 The default Compose file keeps Convex's data in SQLite on the `convex-data` volume, which suits evaluation. For production, `compose.prod.yaml` adds:
 
 - Postgres 17 (pinned by digest) with data checksums, a `pg_isready` healthcheck, a named volume and no published port. Convex connects over the private Compose network via `POSTGRES_URL`.
-- A `backup` service that runs `pg_dump` every `BACKUP_INTERVAL_HOURS` (default 24) into `BACKUP_DIR` (default `./backups`), checks each dump with `pg_restore --list`, deletes dumps older than `BACKUP_RETENTION_DAYS` (default 14), and reports unhealthy when the newest dump is older than two intervals. It mounts `docker/backup/backup.sh`, so run it from a source checkout.
+- A `backup` service that runs `pg_dump` every `BACKUP_INTERVAL_HOURS` (default 24) into `BACKUP_DIR` (default `./backups`), checks each dump with `pg_restore --list`, deletes dumps older than `BACKUP_RETENTION_DAYS` (default 14), and reports unhealthy once the first dump is overdue or the newest is older than two intervals. `pnpm setup` starts it after a successful deploy. It mounts `docker/backup/backup.sh`, so run it from a source checkout.
 - Log rotation (`json-file`, `LOG_MAX_FILE` × `LOG_MAX_SIZE`, default 5 × 20 MB) on every service, memory limits (`POSTGRES_MEMORY=4g`, `CONVEX_MEMORY=6g`, `APP_MEMORY=1g`) and higher Convex concurrency limits (`APPLICATION_MAX_CONCURRENT_*`).
 
 Enable it before the first start:

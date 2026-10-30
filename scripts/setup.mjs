@@ -3,7 +3,11 @@ import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs"
 import { resolve } from "node:path"
 import { parse, run } from "./lib.mjs"
 import { convexEnvEntries } from "./convex-env.mjs"
-import { productionDefaults, productionProblems } from "./prod-env.mjs"
+import {
+  productionDefaults,
+  productionProblems,
+  productionServices,
+} from "./prod-env.mjs"
 const filename = resolve(process.env.OPENSEND_ENV_FILE || ".env.docker")
 const env = existsSync(filename) ? parse(readFileSync(filename, "utf8")) : {}
 for (const [key, value] of convexEnvEntries(process.env)) env[key] ||= value
@@ -124,6 +128,8 @@ if (exitCode !== "0") {
   run("docker", [...compose, "logs", "migrate"])
   throw new Error(`Migrate container failed (${exitCode})`)
 }
+const extra = productionServices({ COMPOSE_FILE: composeFile })
+if (extra.length) run("docker", [...compose, "up", "-d", "--no-deps", ...extra])
 console.log(
   `Opensend is ready at ${env.SITE_URL}. Create the first account at /signup. Its account links appear in Convex function logs until you choose an account sender.`
 )
