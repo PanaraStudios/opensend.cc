@@ -93,6 +93,27 @@ const METRIC_CHANNEL_ITEMS: readonly SelectOption[] = [
   ...CHANNEL_IDS.map((value) => ({ value, label: CHANNELS[value].label })),
 ]
 
+/** Round a count-axis max onto a step Recharts can space evenly, so the
+    top tick is not pinned on an odd data max such as 7. */
+function chartDomainMax(dataMax: number, floor: number, unit: string) {
+  if (unit)
+    return dataMax > floor ? Math.ceil(dataMax / 10) * 10 : Math.max(floor, 0)
+  const max = Math.max(floor, dataMax, 0)
+  if (max <= 0) return 1
+  const rough = Math.max(max / 4, 1)
+  const magnitude = 10 ** Math.floor(Math.log10(rough))
+  const step =
+    [1, 2, 5, 10]
+      .map((factor) => factor * magnitude)
+      .find((value) => value >= rough) ?? magnitude * 10
+  return Math.ceil(max / step) * step
+}
+
+/** A rate over nothing sent is not 0%. */
+function rateLabel(sent: number, rate: number) {
+  return sent === 0 ? "—" : `${rate}%`
+}
+
 export function Stat({
   label,
   value,
@@ -187,10 +208,7 @@ function SeriesChart({
           allowDecimals={unit !== ""}
           domain={[
             0,
-            (dataMax: number) =>
-              unit && dataMax > minMax
-                ? Math.ceil(dataMax / 10) * 10
-                : Math.max(minMax, dataMax),
+            (dataMax: number) => chartDomainMax(dataMax, minMax, unit),
           ]}
           tickFormatter={(value: number) => `${value}${unit}`}
         />
@@ -431,11 +449,7 @@ function ChannelMetrics({
           {CHANNEL_IDS.map((value) => {
             const totals = totalsFor(value)
             return (
-              <TableRow
-                key={value}
-                data-testid={`metrics-channel-${value}`}
-                onClick={() => onChannelChange(value)}
-              >
+              <TableRow key={value} data-testid={`metrics-channel-${value}`}>
                 <TableCell>
                   <Button
                     variant="ghost"
@@ -450,7 +464,7 @@ function ChannelMetrics({
                 <TableCell>{totals.received}</TableCell>
                 <TableCell>
                   {CHANNELS[value].supports.delivered
-                    ? `${channelRates(totals).deliveryRate}%`
+                    ? rateLabel(totals.sent, channelRates(totals).deliveryRate)
                     : "—"}
                 </TableCell>
                 <TableCell>{totals.failed}</TableCell>
@@ -514,7 +528,7 @@ function ChannelMetrics({
         {delivered ? (
           <RateCard
             label="Delivery rate"
-            value={`${rates.deliveryRate}%`}
+            value={rateLabel(totals.sent, rates.deliveryRate)}
             help="Delivered or read messages as a share of all outbound attempts, including queued and failed messages."
             chart={
               <SeriesChart
@@ -534,7 +548,7 @@ function ChannelMetrics({
                 {
                   label: "Delivered",
                   count: totals.delivered,
-                  share: `${rates.deliveryRate}%`,
+                  share: rateLabel(totals.sent, rates.deliveryRate),
                 },
               ]}
             />
@@ -542,7 +556,7 @@ function ChannelMetrics({
         ) : null}
         <RateCard
           label="Read rate"
-          value={`${rates.readRate}%`}
+          value={rateLabel(totals.sent, rates.readRate)}
           help="Read messages as a share of all outbound attempts, including queued and failed messages."
           chart={
             <SeriesChart
@@ -562,7 +576,7 @@ function ChannelMetrics({
               {
                 label: "Read",
                 count: totals.read,
-                share: `${rates.readRate}%`,
+                share: rateLabel(totals.sent, rates.readRate),
               },
             ]}
           />
