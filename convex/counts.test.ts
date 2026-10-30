@@ -559,6 +559,21 @@ const scheduledPostDeploys = (f: Awaited<ReturnType<typeof setup>>["f"]) =>
     )
   )
 
+test("postDeploy reads migration status from a stale snapshot", () => {
+  // convex-test does not model write conflicts, so check the call itself: a
+  // normal read would conflict with every batch a running step writes.
+  const source = import.meta.glob<string>("./migrations.ts", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  })["./migrations.ts"]
+  const runner = source.slice(source.indexOf("const postDeployRunner"))
+  expect(runner).toMatch(
+    /runQuery\(\s*components\.migrations\.lib\.getStatus,\s*\{ names \},\s*\{ useStaleSnapshot: true \}/
+  )
+  expect(runner).not.toContain("migrations.getStatus(")
+})
+
 test("a postDeploy recheck never resumes a step an operator canceled", async () => {
   const { f, org, owner } = await setup()
   await legacyContacts(f, org)

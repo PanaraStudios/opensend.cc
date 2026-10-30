@@ -169,9 +169,13 @@ const postDeployRunner = {
     { recheck = 0 }: { recheck?: number }
   ): Promise<null> => {
     const names = postDeployMigrations.map((ref) => getFunctionName(ref))
-    const statuses = await migrations.getStatus(ctx, {
-      migrations: postDeployMigrations,
-    })
+    // A stale snapshot, as the component's own in-progress check reads it:
+    // a normal read would conflict with every batch a running step writes.
+    const statuses = await ctx.runQuery(
+      components.migrations.lib.getStatus,
+      { names },
+      { useStaleSnapshot: true }
+    )
     const running = statuses.find((status) => status.state === "inProgress")
     if (running) {
       const rest = names.slice(names.indexOf(running.name) + 1)
