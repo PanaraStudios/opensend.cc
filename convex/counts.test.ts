@@ -531,6 +531,90 @@ test("postDeploy waits for a step another runner left running, then runs the res
   ).toBe(1)
 })
 
+/** Contacts written before counts existed, enough for several batches. */
+async function legacyContacts(
+  f: Awaited<ReturnType<typeof setup>>["f"],
+  org: string
+) {
+  await f.t.run(async (ctx) => {
+    for (let i = 0; i < 250; i++)
+      await ctx.db.insert("contacts", {
+        organizationId: org,
+        email: `legacy${i}@example.com`,
+        firstName: "",
+        lastName: "",
+        unsubscribed: false,
+        properties: {},
+        search: `legacy${i}@example.com`,
+        updatedAt: Date.now(),
+      })
+  })
+}
+
+const scheduledPostDeploys = (f: Awaited<ReturnType<typeof setup>>["f"]) =>
+  f.t.run(async (ctx) =>
+    (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+      (job) =>
+        job.name === "migrations:postDeploy" && job.state.kind === "pending"
+    )
+  )
+
+test("a postDeploy recheck never resumes a step an operator canceled", async () => {
+  const { f, org, owner } = await setup()
+  await legacyContacts(f, org)
+  vi.useFakeTimers()
+  await f.t.run((ctx) =>
+    migrations.runOne(ctx, internal.migrations.countContacts)
+  )
+  await f.t.mutation(internal.migrations.postDeploy, {})
+  expect(await scheduledPostDeploys(f)).toHaveLength(1)
+  await f.t.mutation(components.migrations.lib.cancel, {
+    name: "migrations:countContacts",
+  })
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+  await f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect(warn).toHaveBeenCalledOnce()
+  expect(String(warn.mock.calls[0][0])).toMatch(
+    /countContacts is canceled; not resuming/
+  )
+  // The first batch only: the canceled step stayed canceled.
+  expect(
+    (await owner.query(api.contacts.count, { organizationId: org })).total
+  ).toBe(100)
+  warn.mockRestore()
+})
+
+test("postDeploy leaves its own running series alone, without rechecks or warnings", async () => {
+  const { f, org, owner } = await setup()
+  await legacyContacts(f, org)
+  vi.useFakeTimers()
+  await f.t.mutation(internal.migrations.postDeploy, {})
+  // Step the series until it is part-way through countContacts.
+  const contactsStatus = async () =>
+    (
+      await f.t.query(components.migrations.lib.getStatus, {
+        names: ["migrations:countContacts"],
+      })
+    )[0]
+  for (let i = 0; i < 200; i++) {
+    const status = await contactsStatus()
+    if (status.state === "inProgress" && status.processed > 0) break
+    vi.runOnlyPendingTimers()
+    await f.t.finishInProgressScheduledFunctions()
+  }
+  expect((await contactsStatus()).state).toBe("inProgress")
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+  // install.sh requests the older name right after the migrate image.
+  await f.t.mutation(internal.migrations.backfillCounts, {})
+  expect(await scheduledPostDeploys(f)).toEqual([])
+  await f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect(warn).not.toHaveBeenCalled()
+  expect(
+    (await owner.query(api.contacts.count, { organizationId: org })).total
+  ).toBe(250)
+  warn.mockRestore()
+})
+
 test("counted inserts return stored documents and retirement checks stay transaction scoped", async () => {
   const f = await fixture()
   const value = {

@@ -2,6 +2,7 @@ import { recordBroadcastReport } from "./broadcastMetrics"
 import { recordMetric } from "./metricRows"
 import { projectEvent } from "./ses/projection"
 import { Migrations } from "@convex-dev/migrations"
+import { getFunctionName } from "convex/server"
 import { v } from "convex/values"
 import { components, internal } from "./_generated/api"
 import type { DataModel } from "./_generated/dataModel"
@@ -157,8 +158,9 @@ const POST_DEPLOY_RECHECKS = 288 // 24 hours
    started by another runner (such as the previous release's
    `initializeEventCounts`) does not go on to the rest of this list, so wait
    for it and start the series once nothing is running. A series that
-   `postDeploy` itself started carries on alone; the recheck then finds every
-   step done or skipped. */
+   `postDeploy` itself started carries on to the end alone, so there is
+   nothing to wait for. A recheck never resumes a step that was canceled or
+   failed meanwhile: that is an operator's call. */
 const postDeployRunner = {
   args: { recheck: v.optional(v.number()) },
   returns: v.null(),
@@ -166,25 +168,37 @@ const postDeployRunner = {
     ctx: MutationCtx,
     { recheck = 0 }: { recheck?: number }
   ): Promise<null> => {
+    const names = postDeployMigrations.map((ref) => getFunctionName(ref))
     const statuses = await migrations.getStatus(ctx, {
       migrations: postDeployMigrations,
     })
     const running = statuses.find((status) => status.state === "inProgress")
-    if (!running) {
-      await migrations.runSerially(ctx, postDeployMigrations)
-      return null
-    }
-    if (recheck >= POST_DEPLOY_RECHECKS) {
-      console.warn(
-        `postDeploy: ${running.name} is still running; run migrations:postDeploy again once it finishes`
+    if (running) {
+      const rest = names.slice(names.indexOf(running.name) + 1)
+      if (rest.every((name) => running.next?.includes(name))) return null
+      if (recheck >= POST_DEPLOY_RECHECKS) {
+        console.warn(
+          `postDeploy: ${running.name} is still running; run migrations:postDeploy again once it finishes`
+        )
+        return null
+      }
+      await ctx.scheduler.runAfter(
+        POST_DEPLOY_RECHECK_MS,
+        internal.migrations.postDeploy,
+        { recheck: recheck + 1 }
       )
       return null
     }
-    await ctx.scheduler.runAfter(
-      POST_DEPLOY_RECHECK_MS,
-      internal.migrations.postDeploy,
-      { recheck: recheck + 1 }
+    const stopped = statuses.find(
+      (status) => status.state === "canceled" || status.state === "failed"
     )
+    if (recheck > 0 && stopped) {
+      console.warn(
+        `postDeploy: ${stopped.name} is ${stopped.state}; not resuming it. Run migrations:postDeploy to continue the backfills.`
+      )
+      return null
+    }
+    await migrations.runSerially(ctx, postDeployMigrations)
     return null
   },
 }
