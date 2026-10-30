@@ -6,6 +6,7 @@ import { inboundFixture, WABA_ID } from "./testHelpers/meta.fixture"
 import { insertRow, patchRow } from "./counts"
 import { MAX_STEP_RECIPIENTS, sendStep } from "./broadcastSend"
 import { extrapolate, REVIEW_PAGES, REVIEW_PAGE_SIZE } from "./broadcasts"
+import { SENT_MARK_MS } from "./broadcastMetrics"
 import { broadcastActions } from "../lib/dashboard/broadcast"
 
 /* WhatsApp fan-out on the paced, self-scheduling chain: steps sized to the
@@ -320,6 +321,39 @@ test("Stop is refused once the paced send is going, and works before it starts",
         .first()
     )
   ).toBeNull()
+})
+
+test("lastMessageSentAt is kept to the minute, never before the last send", async () => {
+  const f = await setup({ audience: 3 })
+  await f.start()
+  while (await f.step()) {
+    /* drain */
+  }
+  const [first, second, third] = await f.messages()
+  const accept = (id: Id<"channelMessages">, externalId: string) =>
+    f.t.mutation(internal.channels.messages.record, {
+      id,
+      generation: 0,
+      outcome: { kind: "sent", externalId },
+    })
+  vi.setSystemTime(Math.floor(Date.now() / SENT_MARK_MS) * SENT_MARK_MS + 5000)
+  await accept(first._id, "wamid.1")
+  const mark = (await f.read()).lastMessageSentAt!
+  expect(mark % SENT_MARK_MS).toBe(0)
+  expect(mark).toBeGreaterThan(Date.now())
+  vi.setSystemTime(Date.now() + 20_000)
+  await accept(second._id, "wamid.2")
+  expect((await f.read()).lastMessageSentAt).toBe(mark)
+  vi.setSystemTime(mark + 1)
+  await accept(third._id, "wamid.3")
+  expect((await f.read()).lastMessageSentAt).toBe(mark + SENT_MARK_MS)
+  // Settling 24 hours after the mark is never early for the last send.
+  const settle = (
+    await f.t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect()
+    )
+  ).find((job) => job.name.includes("settleBroadcast"))
+  expect(settle!.scheduledTime).toBeGreaterThanOrEqual(mark + 1 + 86_400_000)
 })
 
 test("review reads at most REVIEW_PAGES pages, then estimates the rest", async () => {
