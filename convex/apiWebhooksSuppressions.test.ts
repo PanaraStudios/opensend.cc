@@ -4,6 +4,7 @@ import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { fixture } from "./testHelpers/ses.fixture"
 import { insertRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { webhookSignature } from "../lib/webhooks/signing"
 
 beforeEach(() => {
@@ -526,6 +527,10 @@ describe("webhook REST parity", () => {
 describe("suppression REST parity", () => {
   test("id/email CRUD, normalized addresses, source origins, shared events and tenant cleanup", async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.owner.team, [
+      "suppression.added",
+      "suppression.removed",
+    ])
     const added = await f.call(
       "/suppressions",
       "POST",
@@ -688,6 +693,10 @@ describe("suppression REST parity", () => {
   })
   test("the 100-entry boundary commits atomically and emits one event per unique address", async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.owner.team, [
+      "suppression.added",
+      "suppression.removed",
+    ])
     const emails = Array.from(
       { length: 100 },
       (_, i) => `batch${i}@example.com`

@@ -9,6 +9,7 @@ import { patchRow } from "./counts"
 import { receiveEvent } from "./automationEvents"
 import { upsertContact } from "./audience"
 import { emitEvent } from "./events"
+import { listenToEvents } from "./testHelpers/eventListener"
 import type { AutomationStep } from "../lib/dashboard/types"
 
 beforeEach(() => {
@@ -456,6 +457,10 @@ describe("automations", () => {
   })
   test("audience effects emit webhooks", async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.organizationId, [
+      "contact.updated",
+      "contact.deleted",
+    ])
     const segmentId = await f.member.client.mutation(api.segments.create, {
       organizationId: f.organizationId,
       name: "VIP",
@@ -707,6 +712,7 @@ describe("automation boundaries", () => {
   })
   test("topic choice emits contact.updated once when the choice changes", async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.organizationId, ["contact.updated"])
     const topicId = await f.member.client.mutation(api.topics.create, {
       organizationId: f.organizationId,
       name: "News",

@@ -1984,6 +1984,13 @@ test("contact note CRUD, cursors, idempotency and webhook sample match the publi
     "contact-notes-fixture-encryption-".repeat(3)
   )
   const f = await setup()
+  // Subscribed before the note exists: events nobody listens to are not
+  // stored.
+  const hook = await f.owner.client.action(api.webhooks.create, {
+    organizationId: f.owner.team,
+    endpoint: "https://example.com/notes",
+    events: ["contact.note_created"],
+  })
   const contact = await response(
     "/contacts",
     "POST",
@@ -2187,20 +2194,15 @@ test("contact note CRUD, cursors, idempotency and webhook sample match the publi
   )
   expect(events.filter((e) => e.data.id === created.id)).toHaveLength(1)
   const event = events.find((e) => e.data.id === created.id)!
-  const hook = await f.owner.client.action(api.webhooks.create, {
-    organizationId: f.owner.team,
-    endpoint: "https://example.com/notes",
-    events: ["contact.note_created"],
-  })
   await f.t.mutation(internal.webhooks.deliverEvent, { id: event._id })
   const delivery = await f.t.run((ctx) =>
     ctx.db.query("webhookDeliveries").first()
   )
   expect(delivery).toMatchObject({
+    webhookId: hook,
     event: "contact.note_created",
     payload: { data: created },
   })
-  expect(hook).toBeDefined()
   const spec = contract as unknown as {
     webhooks: {
       contactNoteCreated: {

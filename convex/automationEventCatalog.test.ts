@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
-import { emitEvent } from "./events"
+import { emitEvent, emitEventAlways } from "./events"
 import { defineEvent } from "./automationEvents"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { upsertContact, contactEventData } from "./audience"
 import { createNote } from "./contactNotes"
 import { startRun } from "./automationRuntime"
@@ -195,7 +196,7 @@ test("an event for a deleted contact cannot attach to a new contact at the same 
     { key: "hold", type: "delay", duration: "1m" },
   ])
   const eventId = await f.t.run((ctx) =>
-    emitEvent(ctx, f.owner.team, "email.opened", {
+    emitEventAlways(ctx, f.owner.team, "email.opened", {
       id: "email-before-deletion",
       contact_id: f.contactId,
       email: "ada@example.test",
@@ -267,7 +268,7 @@ for (const name of [
       [{ field: `trigger.${path}`, operator: "contains", value: "price" }]
     )
     const eventId = await f.t.run((ctx) =>
-      emitEvent(ctx, f.owner.team, name, {
+      emitEventAlways(ctx, f.owner.team, name, {
         id: "price-request",
         subject: "price-request",
         contact_id: f.contactId,
@@ -318,7 +319,7 @@ for (const name of [
       output: { contact: { last_name: "price-request/Ada" } },
     })
     const ignored = await f.t.run((ctx) =>
-      emitEvent(ctx, f.owner.team, name, {
+      emitEventAlways(ctx, f.owner.team, name, {
         id: "different",
         subject: "different",
         contact_id: f.contactId,
@@ -330,7 +331,7 @@ for (const name of [
       cursor: null,
     })
     const foreign = await f.t.run((ctx) =>
-      emitEvent(ctx, f.outsider.team, name, {
+      emitEventAlways(ctx, f.outsider.team, name, {
         id: "price-request",
         subject: "price-request",
         contact_id: f.contactId,
@@ -373,7 +374,7 @@ test("contactless events execute conditions and persist every output for later s
     },
   ])
   const eventId = await f.t.run((ctx) =>
-    emitEvent(ctx, f.owner.team, "domain.updated", {
+    emitEventAlways(ctx, f.owner.team, "domain.updated", {
       id: f.domain,
       status: "verified",
       created_at: new Date(Date.now() + 60000).toISOString(),
@@ -527,6 +528,7 @@ function payloadContract(
 
 test("every event contract covers payload builders, including all WhatsApp content variants and note author/source fields", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team)
   await f.t.run(async (ctx) => {
     const contact = (await ctx.db.get("contacts", f.contactId))!
     const connectionId = await ctx.db.insert("metaConnections", {
@@ -810,7 +812,7 @@ test("contactless event waits resume once and expose the received payload to lat
     },
   ])
   const event = await f.t.run((ctx) =>
-    emitEvent(ctx, f.owner.team, "domain.updated", {
+    emitEventAlways(ctx, f.owner.team, "domain.updated", {
       id: f.domain,
       name: "mail.example.test",
     })
@@ -832,12 +834,15 @@ test("contactless event waits resume once and expose the received payload to lat
     id: run._id,
     key: "wait",
   })
-  const received = await f.t.run((ctx) =>
+  // Nothing listens for domain.deleted but the waiting run: that alone
+  // stores and dispatches it.
+  const received = (await f.t.run((ctx) =>
     emitEvent(ctx, f.owner.team, "domain.deleted", {
       id: f.domain,
       name: "mail.example.test",
     })
-  )
+  ))!
+  expect(received).not.toBeNull()
   for (let attempt = 0; attempt < 2; attempt++)
     await f.t.mutation(internal.automationRuntime.dispatch, {
       id: received,

@@ -6,6 +6,7 @@ import { resolve } from "node:path"
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { inboundFixture } from "./testHelpers/meta.fixture"
+import { listenToEvents } from "./testHelpers/eventListener"
 import {
   saveCollectedField,
   completeCollection,
@@ -355,6 +356,7 @@ test("vector search filters by combined organization and KB and rejects foreign 
 })
 test("collection resolves the caller, maps contact properties, preserves explicit values and requires transcript evidence", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.organizationId, ["call.data_collected"])
   await f.owner.client.mutation(api.contactProperties.create, {
     organizationId: f.organizationId,
     key: "participants",

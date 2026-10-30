@@ -1,6 +1,7 @@
 import { normalizeWhatsAppMessage } from "../../packages/sdk/src/whatsapp/normalize"
 import type { WhatsAppIdentity } from "../../packages/sdk/src/whatsapp/catalog"
-import type { QueryCtx } from "../_generated/server"
+import type { MutationCtx, QueryCtx } from "../_generated/server"
+import { emitLazyEvent } from "../events"
 import { env } from "../_generated/server"
 import { findInstallation } from "../access"
 import { signedFileLinkForOrigin } from "../fileDownloads"
@@ -317,4 +318,32 @@ export async function hydratedChannelMessage(
         }
       : {}),
   }
+}
+
+/** Emits a message event; the hydrated payload (content, identity,
+    account, connection, alias, reactions) is built only when something
+    listens (see `emitLazyEvent`). */
+export function emitMessageEvent(
+  ctx: MutationCtx,
+  organizationId: string,
+  type: string,
+  message: Doc<"channelMessages">,
+  extra: (
+    payload: Awaited<ReturnType<typeof hydratedChannelMessage>>
+  ) => Record<string, unknown> = (payload) => payload,
+  now = Date.now()
+) {
+  return emitLazyEvent(
+    ctx,
+    organizationId,
+    type,
+    // What the hydrated payload's contact is found by.
+    async () => ({
+      contact_id:
+        (await ctx.db.get("channelContacts", message.channelContactId))
+          ?.contactId ?? null,
+      conversation_id: message.conversationId,
+    }),
+    async () => extra(await hydratedChannelMessage(ctx, message, now))
+  )
 }
