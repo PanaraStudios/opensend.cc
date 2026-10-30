@@ -307,8 +307,10 @@ export class VoiceMediaEndpoint {
   private fsAddress = ""
   /** drachtio by IP: FreeSWITCH only treats a SIP destination as local, and
       offers its private media address instead of FREESWITCH_PUBLIC_IP, when
-      the Request-URI host is an address inside its local network ACL. */
+      the Request-URI host is an address inside its local network ACL.
+      Resolved on every (re)connect: a recreated drachtio gets a new IP. */
   private sipAddress = ""
+  private resolved: Promise<void> = Promise.resolve()
   private readonly reservations = new Map<string, Reservation>()
   private readonly sessions = new Map<
     string,
@@ -321,10 +323,24 @@ export class VoiceMediaEndpoint {
       secret: string
       advertiseHost: string
       fsHost: string
+      /** IPv4 address of a host name; DNS by default. */
+      resolve?: (host: string) => Promise<string>
     }
   ) {
     this.srf.on("connect", (error) => {
-      this.ready = !error
+      if (error) {
+        this.ready = false
+        return
+      }
+      // Keep the last address if DNS fails; drachtio itself just answered.
+      this.resolved = this.resolveHost(this.options.host)
+        .then((address) => {
+          this.sipAddress = address
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          this.ready = true
+        })
     })
     this.srf.on("error", () => {
       this.ready = false
@@ -342,12 +358,15 @@ export class VoiceMediaEndpoint {
   get healthy() {
     return this.ready
   }
+  private resolveHost(host: string) {
+    return this.options.resolve
+      ? this.options.resolve(host)
+      : lookup(host, { family: 4 }).then((result) => result.address)
+  }
   async start() {
-    this.address = (
-      await lookup(this.options.advertiseHost, { family: 4 })
-    ).address
-    this.fsAddress = (await lookup(this.options.fsHost, { family: 4 })).address
-    this.sipAddress = (await lookup(this.options.host, { family: 4 })).address
+    this.address = await this.resolveHost(this.options.advertiseHost)
+    this.fsAddress = await this.resolveHost(this.options.fsHost)
+    this.sipAddress = await this.resolveHost(this.options.host)
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.srf.disconnect()
@@ -364,6 +383,7 @@ export class VoiceMediaEndpoint {
         secret: this.options.secret,
       })
     })
+    await this.resolved
   }
   reserve(reservation: Reservation) {
     if (!this.ready) throw new Error("drachtio unavailable")
