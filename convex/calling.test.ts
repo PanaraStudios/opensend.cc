@@ -104,6 +104,200 @@ async function setup() {
   })
   return { ...f, caller, token: key.token, request, project, webhook }
 }
+test("the Meta and calling projectors never write the same document", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const event = await f.project(
+    f.webhook([
+      {
+        id: "wacid.untouched",
+        event: "terminate",
+        direction: "USER_INITIATED",
+        from_user_id: BSUID,
+        timestamp: String(now + 5),
+        status: ["COMPLETED"],
+        start_time: String(now),
+        end_time: String(now + 5),
+        duration: 5,
+      },
+    ])
+  )
+  const marks = () =>
+    f.t.run((ctx) => ctx.db.query("metaWebhookProjections").collect())
+  expect(await marks()).toHaveLength(0)
+  await f.t.mutation(internal.calling.projection.project, { id: event._id })
+  expect(await marks()).toHaveLength(0)
+  // Meta's progress goes to its own marker; the raw event stays as stored.
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  expect(await marks()).toMatchObject([
+    { eventId: event._id, projectedAt: expect.any(Number) },
+  ])
+  expect(
+    await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", event._id))
+  ).toEqual(event)
+  expect(await f.t.run((ctx) => ctx.db.query("calls").collect())).toMatchObject(
+    [{ wacid: "wacid.untouched", status: "completed" }]
+  )
+})
+test("a redelivered call webhook writes nothing", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const call = { id: "wacid.redelivered", from_user_id: BSUID }
+  await f.project(
+    f.webhook([
+      {
+        ...call,
+        event: "connect",
+        direction: "USER_INITIATED",
+        timestamp: String(now),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  const ended = await f.project(
+    f.webhook([
+      {
+        ...call,
+        event: "terminate",
+        direction: "USER_INITIATED",
+        timestamp: String(now + 30),
+        status: ["COMPLETED"],
+        start_time: String(now),
+        end_time: String(now + 30),
+        duration: 30,
+      },
+    ])
+  )
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  const before = await f.t.run(async (ctx) => ({
+    calls: await ctx.db.query("calls").collect(),
+    identities: await ctx.db.query("channelContacts").collect(),
+    aliases: await ctx.db.query("whatsappUserAliases").collect(),
+    threads: await ctx.db.query("conversations").collect(),
+  }))
+  // The call, its identity, BSUID alias and thread all hold these values
+  // already, so every patch on the way is skipped.
+  await f.t.run((ctx) =>
+    ctx.runMutation(
+      internal.calling.projection.project,
+      { id: ended._id },
+      { transactionLimits: { documentsWritten: 0 } }
+    )
+  )
+  expect(
+    await f.t.run(async (ctx) => ({
+      calls: await ctx.db.query("calls").collect(),
+      identities: await ctx.db.query("channelContacts").collect(),
+      aliases: await ctx.db.query("whatsappUserAliases").collect(),
+      threads: await ctx.db.query("conversations").collect(),
+    }))
+  ).toEqual(before)
+})
+test("a status from a known BSUID user rewrites neither its alias nor its identity", async () => {
+  const f = await setup()
+  const written = await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    const { channelContactId } = await upsertChannelThread(ctx, account, {
+      externalId: BSUID,
+      userId: BSUID,
+      at: Date.now(),
+      preview: "Hi",
+      direction: "outbound",
+    })
+    await recordWhatsAppUser(ctx, account, channelContactId, BSUID, {
+      parentUserId: "US.parent",
+    })
+    const first = (await ctx.meta.getTransactionMetrics()).documentsWritten.used
+    await recordWhatsAppUser(ctx, account, channelContactId, BSUID, {
+      parentUserId: "US.parent",
+    })
+    return (
+      (await ctx.meta.getTransactionMetrics()).documentsWritten.used - first
+    )
+  })
+  expect(written).toBe(0)
+})
+test("ingest wakes the calling projector only for bodies it can act on", async () => {
+  const f = await setup()
+  const scheduled = async (body: unknown) => {
+    const response = await f.t.fetch(
+      "/meta/webhook",
+      await signedWebhook(APP_SECRET, body)
+    )
+    expect(response.status).toBe(200)
+    const event = await f.t.run((ctx) =>
+      ctx.db.query("metaWebhookEvents").order("desc").first()
+    )
+    return (
+      await f.t.run((ctx) =>
+        ctx.db.system.query("_scheduled_functions").collect()
+      )
+    )
+      .filter((job) => job.args[0]?.id === event!._id)
+      .map((job) => job.name)
+      .sort()
+  }
+  const both = ["calling/projection:project", "meta/projection:project"]
+  const metaOnly = ["meta/projection:project"]
+  const statuses = {
+    metadata: { phone_number_id: PHONE_ID },
+    statuses: [
+      {
+        id: "wamid.status",
+        status: "delivered",
+        timestamp: "1",
+        recipient_id: "1",
+      },
+    ],
+  }
+  expect(await scheduled(envelope(statuses))).toEqual(metaOnly)
+  expect(
+    await scheduled(
+      envelope(
+        { event: "MESSAGE_TEMPLATE_STATUS_UPDATE", message_template_id: 1 },
+        "message_template_status_update"
+      )
+    )
+  ).toEqual(metaOnly)
+  expect(
+    await scheduled(
+      envelope({
+        metadata: { phone_number_id: PHONE_ID },
+        messages: [
+          { id: "wamid.text", from: "1", type: "text", text: { body: "hi" } },
+        ],
+      })
+    )
+  ).toEqual(metaOnly)
+  expect(
+    await scheduled(envelope(f.webhook([{ id: "wacid.x" }]), "calls"))
+  ).toEqual(both)
+  expect(
+    await scheduled(
+      envelope({
+        metadata: { phone_number_id: PHONE_ID },
+        messages: [
+          {
+            id: "wamid.permission",
+            from: "1",
+            type: "interactive",
+            interactive: {
+              type: "call_permission_reply",
+              call_permission_reply: { response: "accept" },
+            },
+          },
+        ],
+      })
+    )
+  ).toEqual(both)
+  expect(
+    await scheduled(envelope({ event: "ACCOUNT_VIOLATION" }, "account_update"))
+  ).toEqual(both)
+  expect(
+    await scheduled({ object: "page", entry: [{ id: "page", messaging: [] }] })
+  ).toEqual(metaOnly)
+})
 test("BSUID-only connect/terminate/status fixtures are durable, idempotent and cannot resurrect terminated calls", async () => {
   const f = await setup(),
     now = Math.floor(Date.now() / 1000)

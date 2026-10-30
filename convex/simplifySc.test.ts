@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { createChannelMessage } from "./channels/messages"
 import { patchRow } from "./counts"
+import { unpackRetryItems } from "./meta/projection"
 import {
   inboundFixture,
   fakeGraph,
@@ -144,11 +145,11 @@ test("SC review 2: unknown statuses never delay inbound or matched statuses, and
       (job) => job.args[0]?.id === eventId
     )
   )
-  expect(retry?.args[0]).toMatchObject({ attempt: 1, statusIndexes: [1] })
+  expect(retry?.args[0]).toMatchObject({ attempt: 1 })
+  expect(unpackRetryItems(retry?.args[0].retryItems)).toHaveLength(1)
   await f.t.mutation(internal.meta.projection.project, {
-    id: eventId,
+    ...retry?.args[0],
     attempt: 3,
-    statusIndexes: [1],
   })
   expect(
     await f.t.run((ctx) => ctx.db.query("channelMessages").collect())

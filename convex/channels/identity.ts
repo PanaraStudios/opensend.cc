@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
 import { upsertContact, insertContact, patchContact } from "../audience"
 import { insertRow, patchRow, deleteRow } from "../counts"
+import { patchIfChanged, patchRowIfChanged } from "../patchIfChanged"
 import { internalMutation } from "../_generated/server"
 import { internal } from "../_generated/api"
 import { v } from "convex/values"
@@ -113,12 +114,7 @@ export async function upsertChannelThread(
   }
   let channelContactId
   if (identity) {
-    if (
-      Object.entries(changes).some(
-        ([key, value]) => identity[key as keyof typeof changes] !== value
-      )
-    )
-      await ctx.db.patch("channelContacts", identity._id, changes)
+    await patchIfChanged(ctx, "channelContacts", identity, changes)
     channelContactId = identity._id
     if (identity.contactId !== contactId) {
       await ctx.scheduler.runAfter(0, internal.channels.identity.relinkCalls, {
@@ -222,7 +218,8 @@ async function saveThread(
     }
 ): Promise<Id<"conversations">> {
   if (conversation)
-    return (await patchRow(ctx, "conversations", conversation._id, fields))._id
+    return (await patchRowIfChanged(ctx, "conversations", conversation, fields))
+      ._id
   return (
     await insertRow(
       ctx,
@@ -357,17 +354,21 @@ export async function recordWhatsAppUser(
       ? { identityKeyHash: profile.identityKeyHash }
       : {}),
   }
-  if (existing) await ctx.db.patch("whatsappUserAliases", existing._id, fields)
+  if (existing)
+    await patchIfChanged(ctx, "whatsappUserAliases", existing, fields)
   else await ctx.db.insert("whatsappUserAliases", fields)
-  await ctx.db.patch("channelContacts", channelContactId, {
-    userId,
-    userScopeId: connection.businessId,
-    ...(profile.parentUserId ? { parentUserId: profile.parentUserId } : {}),
-    ...(profile.username ? { username: profile.username } : {}),
-    ...(profile.identityKeyHash
-      ? { identityKeyHash: profile.identityKeyHash }
-      : {}),
-  })
+  // Every status from a known user repeats this; skip it once it is stored.
+  const identity = await ctx.db.get("channelContacts", channelContactId)
+  if (identity)
+    await patchIfChanged(ctx, "channelContacts", identity, {
+      userId,
+      userScopeId: connection.businessId,
+      ...(profile.parentUserId ? { parentUserId: profile.parentUserId } : {}),
+      ...(profile.username ? { username: profile.username } : {}),
+      ...(profile.identityKeyHash
+        ? { identityKeyHash: profile.identityKeyHash }
+        : {}),
+    })
 }
 
 /** Link a phone learned from Meta without replacing an existing CRM identity. */
@@ -397,7 +398,7 @@ export async function recordWhatsAppPhone(
     await mergeWhatsAppIdentities(ctx, identity, other)
     return
   }
-  await ctx.db.patch("channelContacts", channelContactId, {
+  await patchIfChanged(ctx, "channelContacts", identity, {
     phone,
     externalId: phone.slice(1),
     scopeId: "whatsapp",

@@ -254,8 +254,14 @@ export const meta = internalMutation({
         maximumBytesRead: 512 * 1024,
         cursor: null,
       })
-    for (const row of page.page)
+    for (const row of page.page) {
+      const mark = await ctx.db
+        .query("metaWebhookProjections")
+        .withIndex("by_eventId", (q) => q.eq("eventId", row._id))
+        .unique()
+      if (mark) await ctx.db.delete("metaWebhookProjections", mark._id)
       await ctx.db.delete("metaWebhookEvents", row._id)
+    }
     if (!page.isDone)
       await ctx.scheduler.runAfter(0, internal.retention.meta, {})
     return null

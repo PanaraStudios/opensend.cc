@@ -1,10 +1,11 @@
 import { v } from "convex/values"
 import { internalMutation, type MutationCtx } from "../_generated/server"
-import type { Doc } from "../_generated/dataModel"
+import type { Doc, Id } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { normalizePhone, fromWaId } from "../../lib/dashboard/phone"
 import { patchContact } from "../audience"
 import { insertRow, patchRow } from "../counts"
+import { patchIfChanged } from "../patchIfChanged"
 import { upsertChannelThread, recordWhatsAppUser } from "../channels/identity"
 import { broadcastMessageMetric } from "../broadcastMetrics"
 import { emitEvent } from "../events"
@@ -29,6 +30,47 @@ import {
   type StatusItem,
   type WebhookItem,
 } from "../../lib/meta/webhooks"
+
+/** Where projecting a Meta event stands. */
+export const projectionMark = (
+  ctx: MutationCtx,
+  eventId: Id<"metaWebhookEvents">
+) =>
+  ctx.db
+    .query("metaWebhookProjections")
+    .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+    .unique()
+
+/** Above this a retry falls back to indexes into the stored event. */
+export const MAX_RETRY_ITEMS_BYTES = 64 * 1024
+
+/** Retry items as JSON with each `data` object stored once. A Page delivery
+    gives every mid its own status item sharing one `data` holding all the
+    mids, so writing it per item would grow with the square of the mids. */
+export function packRetryItems(items: WebhookItem[]) {
+  const data: unknown[] = []
+  const indexes = new Map<unknown, number>()
+  const packed = items.map((item) => {
+    if (!("data" in item)) return item
+    if (!indexes.has(item.data)) {
+      indexes.set(item.data, data.length)
+      data.push(item.data)
+    }
+    return { ...item, data: indexes.get(item.data)! }
+  })
+  return JSON.stringify({ data, items: packed })
+}
+
+export function unpackRetryItems(json: string): WebhookItem[] {
+  const parsed = JSON.parse(json) as
+    WebhookItem[] | { data: Record<string, unknown>[]; items: WebhookItem[] }
+  if (Array.isArray(parsed)) return parsed
+  return parsed.items.map((item) =>
+    "data" in item && typeof item.data === "number"
+      ? ({ ...item, data: parsed.data[item.data] } as WebhookItem)
+      : item
+  )
+}
 
 export const MAX_ATTEMPTS = 3
 export const retryLater = (attempt: number) =>
@@ -87,7 +129,7 @@ async function receive(
   ctx: MutationCtx,
   account: Doc<"channelAccounts">,
   item: InboundItem,
-  event: Doc<"metaWebhookEvents">
+  event: Pick<Doc<"metaWebhookEvents">, "_id">
 ) {
   const {
     externalId,
@@ -196,8 +238,13 @@ async function receive(
               .eq("externalId", nextPhone.slice(1))
         )
         .first()
-      if (!existingIdentity || existingIdentity._id === channelContactId)
-        await ctx.db.patch("channelContacts", channelContactId, {
+      const identity = existingIdentity
+        ? existingIdentity._id === channelContactId
+          ? existingIdentity
+          : null
+        : await ctx.db.get("channelContacts", channelContactId)
+      if (identity)
+        await patchIfChanged(ctx, "channelContacts", identity, {
           phone: nextPhone,
           externalId: nextPhone.slice(1),
           scopeId: "whatsapp",
@@ -246,7 +293,7 @@ async function status(
   account: Doc<"channelAccounts">,
   item: StatusItem,
   message: Doc<"channelMessages">,
-  event: Doc<"metaWebhookEvents">
+  event: Pick<Doc<"metaWebhookEvents">, "_id">
 ) {
   const { data, status: next, at } = item
   // Meta can rebundle the same observation under a new body hash. Only an
@@ -314,32 +361,58 @@ async function status(
         : {}),
     }
   )
-  if (errors.some((error) => error.code === 131050))
-    await ctx.db.patch("channelContacts", message.channelContactId, {
-      marketingOptOut: true,
-    })
+  if (errors.some((error) => error.code === 131050)) {
+    const identity = await ctx.db.get(
+      "channelContacts",
+      message.channelContactId
+    )
+    if (identity)
+      await patchIfChanged(ctx, "channelContacts", identity, {
+        marketingOptOut: true,
+      })
+  }
   return current
 }
 
-/** Project available items immediately. Retries contain only unmatched status indexes. */
+/** Project available items immediately. A retry carries its unmatched
+    status items, so it neither reads nor parses the raw event. Progress is
+    kept on a `metaWebhookProjections` marker: the raw event is written once,
+    so the calling projector reading it never conflicts with this one. */
 export const project = internalMutation({
   args: {
     id: v.id("metaWebhookEvents"),
     attempt: v.optional(v.number()),
+    /** Retries scheduled before `retryItems`: indexes into the event's items. */
     statusIndexes: v.optional(v.array(v.number())),
+    /** The unmatched status and payment items a retry projects, as written
+        by `packRetryItems`. */
+    retryItems: v.optional(v.string()),
     cursor: v.optional(v.number()),
   },
   returns: v.null(),
-  handler: async (ctx, { id, attempt = 0, statusIndexes, cursor = 0 }) => {
-    const event = await ctx.db.get("metaWebhookEvents", id)
-    if (
-      !event ||
-      (!statusIndexes &&
-        (event.projectedAt !== undefined ||
-          (event.projectionCursor ?? 0) !== cursor))
-    )
-      return null
-    const root = object(JSON.parse(event.body))
+  handler: async (
+    ctx,
+    { id, attempt = 0, statusIndexes, retryItems, cursor = 0 }
+  ) => {
+    const retrying = statusIndexes !== undefined || retryItems !== undefined
+    const stored =
+      retryItems === undefined
+        ? await ctx.db.get("metaWebhookEvents", id)
+        : null
+    if (retryItems === undefined && !stored) return null
+    const event = stored ?? { _id: id }
+    const mark = retrying ? null : await projectionMark(ctx, id)
+    if (stored && !retrying) {
+      // Events part-projected before the marker table kept progress inline.
+      const progress = mark ?? stored
+      if (
+        progress.projectedAt !== undefined ||
+        (progress.projectionCursor ?? 0) !== cursor
+      )
+        return null
+    }
+    const root = stored ? object(JSON.parse(stored.body)) : {}
+    const receivedAt = stored?.receivedAt ?? 0
     const retired = new Map<string, boolean>()
     const isRetired = async (org: string) => {
       if (!retired.has(org)) retired.set(org, !!(await retirement(ctx, org)))
@@ -372,7 +445,10 @@ export const project = internalMutation({
       }
       return accounts.get(key)!
     }
-    const items: WebhookItem[] = pageWebhookItems(root, event.receivedAt)
+    const items: WebhookItem[] =
+      retryItems !== undefined
+        ? unpackRetryItems(retryItems)
+        : pageWebhookItems(root, receivedAt)
     const changes: {
       field: string
       value: Record<string, unknown>
@@ -393,7 +469,7 @@ export const project = internalMutation({
           const waba = wabas.get(wabaId)
           const field = string(change.field)
           if (field === "messages")
-            items.push(...whatsappWebhookItems(value, wabaId, event.receivedAt))
+            items.push(...whatsappWebhookItems(value, wabaId, receivedAt))
           else if (waba && !(await isRetired(waba.organizationId)))
             changes.push({
               field,
@@ -409,20 +485,24 @@ export const project = internalMutation({
       message: Doc<"channelMessages"> | null
     }[] = []
     const pendingIndexes = statusIndexes ? new Set(statusIndexes) : null
-    const unmatched: number[] = []
+    const unmatched: WebhookItem[] = []
+    const unmatchedIndexes: number[] = []
     for (const [index, item] of items.entries()) {
       // Ten messages leave headroom for contacts, counts, media and outbox
-      // writes. The raw event and progress commit with the continuation.
-      if (!pendingIndexes && (index < cursor || index >= cursor + 10)) continue
+      // writes. The progress marker commits with the continuation.
+      if (!retrying && (index < cursor || index >= cursor + 10)) continue
       if (
-        pendingIndexes &&
-        (!pendingIndexes.has(index) ||
+        retrying &&
+        ((pendingIndexes && !pendingIndexes.has(index)) ||
           (item.kind !== "status" && item.kind !== "payment"))
       )
         continue
       const account = await accountFor(item)
       if (!account) continue
       if (item.wabaId) {
+        // A retry has no body to parse, so look its WABAs up here.
+        if (!wabas.has(item.wabaId))
+          wabas.set(item.wabaId, await wabaByWabaId(ctx, item.wabaId))
         const waba = wabas.get(item.wabaId)
         if (
           account.wabaId !== item.wabaId ||
@@ -435,7 +515,8 @@ export const project = internalMutation({
           ? await statusMessage(ctx, account, item)
           : null
       if ((item.kind === "status" || item.kind === "payment") && !message) {
-        unmatched.push(index)
+        unmatched.push(item)
+        unmatchedIndexes.push(index)
         continue
       }
       resolved.push({ item, account, message })
@@ -504,8 +585,8 @@ export const project = internalMutation({
           cursor: null,
         })
     }
-    const more = !statusIndexes && cursor + 10 < items.length
-    for (const change of statusIndexes || more ? [] : changes) {
+    const more = !retrying && cursor + 10 < items.length
+    for (const change of retrying || more ? [] : changes) {
       if (oneOf(change.field, TEMPLATE_WEBHOOK_FIELDS))
         await templateWebhook(
           ctx,
@@ -521,25 +602,36 @@ export const project = internalMutation({
         })
     }
     const delay = retryLater(attempt)
-    if (unmatched.length && delay !== null)
+    if (unmatched.length && delay !== null) {
+      const packed = packRetryItems(unmatched)
+      // Indexes point into the stored event, so a retry that works from its
+      // own items keeps them; those only shrink from retry to retry.
       await ctx.scheduler.runAfter(delay, internal.meta.projection.project, {
         id,
         attempt: attempt + 1,
-        statusIndexes: unmatched,
+        ...(packed.length > MAX_RETRY_ITEMS_BYTES && retryItems === undefined
+          ? { statusIndexes: unmatchedIndexes }
+          : { retryItems: packed }),
       })
-    else if (unmatched.length)
+    } else if (unmatched.length)
       console.info(
         "Dropping unmatched Meta statuses after retries",
         unmatched.length
       )
-    if (!statusIndexes) {
-      await ctx.db.patch(
-        "metaWebhookEvents",
-        id,
-        more
-          ? { projectionCursor: cursor + 10 }
-          : { projectedAt: Date.now(), projectionCursor: undefined }
-      )
+    if (!retrying) {
+      const progress = more
+        ? { projectionCursor: cursor + 10 }
+        : { projectedAt: Date.now() }
+      if (mark)
+        await ctx.db.patch("metaWebhookProjections", mark._id, {
+          projectionCursor: undefined,
+          ...progress,
+        })
+      else
+        await ctx.db.insert("metaWebhookProjections", {
+          eventId: id,
+          ...progress,
+        })
       if (more)
         await ctx.scheduler.runAfter(0, internal.meta.projection.project, {
           id,

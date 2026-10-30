@@ -8,6 +8,7 @@ import {
   APP_SECRET,
   META_APP,
   metaFixture,
+  projectionMarks,
 } from "./testHelpers/meta.fixture"
 import {
   pagesFixture,
@@ -23,6 +24,7 @@ import {
   USER_TOKEN,
 } from "./testHelpers/pages.fixture"
 import type { Id } from "./_generated/dataModel"
+import { unpackRetryItems } from "./meta/projection"
 
 let graph: ReturnType<typeof fakeGraph>
 beforeEach(() => {
@@ -889,10 +891,9 @@ test("status before send record retries independently and cannot duplicate an in
     delivery: { mids: ["mid.race"] },
   })
   const eventId = await project(f, batch)
-  expect(
-    (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", eventId)))
-      ?.projectedAt
-  ).toEqual(expect.any(Number))
+  expect(await projectionMarks(f, eventId)).toMatchObject([
+    { projectedAt: expect.any(Number) },
+  ])
   expect(
     await f.t.run((ctx) => ctx.db.query("channelMessages").collect())
   ).toHaveLength(4)
@@ -901,17 +902,93 @@ test("status before send record retries independently and cannot duplicate an in
     generation: 0,
     outcome: { kind: "sent", externalId: "mid.race" },
   })
-  await f.t.mutation(internal.meta.projection.project, {
-    id: eventId,
-    attempt: 1,
-    statusIndexes: [1],
-  })
+  const retry = await f.t.run(async (ctx) =>
+    (await ctx.db.system.query("_scheduled_functions").collect()).find(
+      (job) => job.args[0]?.id === eventId && job.args[0]?.attempt === 1
+    )
+  )
+  expect(unpackRetryItems(retry?.args[0].retryItems)).toMatchObject([
+    { kind: "status", externalId: "mid.race" },
+  ])
+  await f.t.mutation(internal.meta.projection.project, retry!.args[0])
   expect((await f.message(id))?.status).toBe("delivered")
   await f.t.mutation(internal.meta.projection.project, { id: eventId })
   expect(
     await f.t.run((ctx) => ctx.db.query("channelMessages").collect())
   ).toHaveLength(4)
 })
+test.each([
+  [150, 95, "retryItems"],
+  [300, 250, "statusIndexes"],
+] as const)(
+  "a delivery of %i unknown mids retries in bounded arguments and applies the late send once",
+  async (count, length, kind) => {
+    const f = await setup(),
+      id = await f.send()
+    // Business Suite sends never reach channelMessages, so their mids never match.
+    const mids = Array.from({ length: count }, (_, i) =>
+      `m_${String(i).padStart(4, "0")}`.padEnd(length, "x")
+    )
+    const body = pageEnvelope("messenger", {
+      delivery: { mids: [...mids, "mid.bulk-late"] },
+    })
+    const eventId = await project(f, body)
+    for (let cursor = 10; cursor <= count; cursor += 10)
+      await f.t.mutation(internal.meta.projection.project, {
+        id: eventId,
+        cursor,
+      })
+    expect(await projectionMarks(f, eventId)).toMatchObject([
+      { projectedAt: expect.any(Number) },
+    ])
+    const retries = (
+      await f.t.run((ctx) =>
+        ctx.db.system.query("_scheduled_functions").collect()
+      )
+    )
+      .map((job) => job.args[0])
+      .filter((args) => args?.id === eventId && args?.attempt === 1)
+    expect(retries).toHaveLength(Math.ceil((count + 1) / 10))
+    const size = JSON.stringify(body).length
+    for (const retry of retries) {
+      expect(Object.keys(retry).sort()).toEqual(["attempt", "id", kind].sort())
+      if (kind === "retryItems")
+        // The shared delivery is stored once per retry, not once per mid.
+        expect(retry.retryItems.length).toBeLessThan(size + 4000)
+    }
+    expect(
+      retries.flatMap((retry) =>
+        kind === "retryItems"
+          ? unpackRetryItems(retry.retryItems).map(
+              (item) => "externalId" in item && item.externalId
+            )
+          : retry.statusIndexes
+      )
+    ).toEqual(
+      kind === "retryItems"
+        ? [...mids, "mid.bulk-late"]
+        : Array.from({ length: count + 1 }, (_, i) => i)
+    )
+    await f.t.mutation(internal.channels.messages.record, {
+      id,
+      generation: 0,
+      outcome: { kind: "sent", externalId: "mid.bulk-late" },
+    })
+    for (const retry of [...retries, ...retries])
+      await f.t.mutation(internal.meta.projection.project, retry)
+    expect((await f.message(id))?.status).toBe("delivered")
+    expect(
+      (
+        await f.t.run((ctx) =>
+          ctx.db
+            .query("channelMessageEvents")
+            .withIndex("by_messageId_and_at", (q) => q.eq("messageId", id))
+            .collect()
+        )
+      ).filter((row) => row.type === "delivered")
+    ).toHaveLength(1)
+  }
+)
 test("Page and Instagram share a per-Page bucket, with a separate audio/video limit", async () => {
   const f = await setup()
   await f.t.run(async (ctx) => {

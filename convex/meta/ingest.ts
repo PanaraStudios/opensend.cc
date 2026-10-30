@@ -11,9 +11,16 @@ export const appSecret = internalQuery({
 })
 
 export const store = internalMutation({
-  args: { body: v.string(), bodyHash: v.string(), object: v.string() },
+  args: {
+    body: v.string(),
+    bodyHash: v.string(),
+    object: v.string(),
+    /** Whether the body has work for the calling projector
+        (`hasCallingChanges`), decided by the HTTP action that parsed it. */
+    calling: v.boolean(),
+  },
   returns: v.id("metaWebhookEvents"),
-  handler: async (ctx, args) => {
+  handler: async (ctx, { calling, ...args }) => {
     const existing = await ctx.db
       .query("metaWebhookEvents")
       .withIndex("by_bodyHash", (q) => q.eq("bodyHash", args.bodyHash))
@@ -24,7 +31,11 @@ export const store = internalMutation({
       receivedAt: Date.now(),
     })
     await ctx.scheduler.runAfter(0, internal.meta.projection.project, { id })
-    await ctx.scheduler.runAfter(0, internal.calling.projection.project, { id })
+    // Most deliveries are message statuses; only wake calling when it has work.
+    if (calling)
+      await ctx.scheduler.runAfter(0, internal.calling.projection.project, {
+        id,
+      })
     return id
   },
 })

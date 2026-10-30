@@ -4,6 +4,7 @@ import { internal } from "../_generated/api"
 import { BodyTooLarge, limitedBody } from "../ses/web"
 import { decryptSecret } from "../secrets"
 import { verifyMetaSignature } from "../../lib/meta/signature"
+import { hasCallingChanges } from "../../lib/meta/calling"
 import { META_WEBHOOK_PATH } from "./app"
 
 /** Meta's subscription check: echo `hub.challenge` when `hub.verify_token`
@@ -70,6 +71,8 @@ export const ingestWebhook = httpAction(async (ctx, request) => {
       body,
       bodyHash,
       object: payload.object,
+      // Parsed here, outside the ingest transaction.
+      calling: hasCallingChanges(payload as Record<string, unknown>),
     })
     return new Response(null, { status: 200 })
   } catch {

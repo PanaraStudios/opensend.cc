@@ -15,6 +15,33 @@ export const CALL_PERMISSION_STATUSES = [
   "denied",
   "expired",
 ] as const
+/** WhatsApp webhook fields the calling projector reads. */
+export const CALLING_WEBHOOK_FIELDS = [
+  "calls",
+  "messages",
+  "account_settings_update",
+  "account_update",
+]
+
+/** Whether a Meta webhook body has anything for the calling projector: a
+    calling or account change, or a call permission reply. Most WhatsApp
+    deliveries are message statuses and inbound messages, which it ignores. */
+export function hasCallingChanges(root: Record<string, unknown>) {
+  if (root.object !== "whatsapp_business_account") return false
+  return array(root.entry).some((entry) =>
+    array(object(entry).changes).some((raw) => {
+      const change = object(raw),
+        field = string(change.field)
+      if (field !== "messages") return CALLING_WEBHOOK_FIELDS.includes(field)
+      return array(object(change.value).messages).some(
+        (message) =>
+          object(object(message).interactive).call_permission_reply !==
+          undefined
+      )
+    })
+  )
+}
+
 export const callTime = (value: unknown, fallback: number) => {
   const n = Number(value)
   return value !== undefined &&
