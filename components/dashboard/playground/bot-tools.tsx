@@ -573,7 +573,7 @@ function ToolDialog({ row, close }: { row?: BotTool; close: () => void }) {
           <Button type="button" variant="outline" onClick={close}>
             Cancel
           </Button>
-          <Button disabled={busy}>
+          <Button type="submit" disabled={busy}>
             {busy ? "Saving…" : row ? "Save" : "Create tool"}
           </Button>
         </DialogFooter>

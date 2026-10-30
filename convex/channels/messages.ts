@@ -811,6 +811,8 @@ const outcomeValue = v.union(
     kind: v.literal("sent"),
     externalId: v.string(),
     response: v.optional(v.string()),
+    /** The Meta media ids sent for stored files. */
+    mediaIds: v.optional(v.array(v.string())),
   }),
   v.object({
     kind: v.literal("failed"),
@@ -845,7 +847,7 @@ async function recordOutcome(
     if (
       message.status === "queued" ||
       message.externalId === outcome.externalId
-    )
+    ) {
       await acceptChannelMessage(
         ctx,
         message,
@@ -853,6 +855,14 @@ async function recordOutcome(
         Date.now(),
         outcome.response
       )
+      if (outcome.mediaIds?.length) {
+        const body = await content(ctx, message._id)
+        if (body)
+          await ctx.db.patch("channelMessageContents", body._id, {
+            sentMediaIds: outcome.mediaIds,
+          })
+      }
+    }
     return
   }
   if (message.status !== "queued" || message.sentAt !== undefined) return
