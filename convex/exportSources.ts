@@ -367,15 +367,20 @@ export const EXPORT_SOURCES: Record<string, ExportSource> = {
       // A segment that is gone matches no one, rather than everyone.
       if (filters.segmentId && !segmentId)
         return { rows: [], isDone: true, continueCursor: "" }
-      const result = await contactPage(ctx, {
-        organizationId,
-        paginationOpts,
-        search: filters.search,
-        unsubscribed: bool(filters.unsubscribed),
-        segmentId: segmentId ?? undefined,
-        from: time(filters.from),
-        to: time(filters.to),
-      })
+      const result = await contactPage(
+        ctx,
+        {
+          organizationId,
+          paginationOpts,
+          search: filters.search,
+          unsubscribed: bool(filters.unsubscribed),
+          segmentId: segmentId ?? undefined,
+          from: time(filters.from),
+          to: time(filters.to),
+        },
+        // An export holds every match, not the first 1,024 by relevance.
+        { exhaustive: true }
+      )
       return {
         ...result,
         rows: await Promise.all(

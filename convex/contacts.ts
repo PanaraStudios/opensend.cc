@@ -9,7 +9,7 @@ import {
   type PaginationOptions,
 } from "convex/server"
 import { query, mutation, internalMutation } from "./_generated/server"
-import { internal } from "./_generated/api"
+import { components, internal } from "./_generated/api"
 import { requireTeam } from "./access"
 import { retirement } from "./teamLifecycle"
 import schema from "./schema"
@@ -39,6 +39,13 @@ import {
   importResultValue,
   topicSubscriptionValue,
 } from "./tables/audience"
+import {
+  matchesContactSearch,
+  parseContactSearch,
+  searchQuery,
+} from "../lib/dashboard/contact-search"
+import { normalizeEmail } from "../lib/dashboard/contacts"
+import { normalizePhone } from "../lib/dashboard/phone"
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 
@@ -71,10 +78,17 @@ export const CONTACT_SEARCH_BUDGET = {
   bytes: 8 * 1024 * 1024,
 }
 
-/** Newest first; substring search filters each bounded index page. */
+/** The backfill that writes phone endings into `contacts.search`. Until it
+    has run, a search scans the team's contacts as it used to. */
+export const CONTACT_SEARCH_BACKFILL = "migrations:indexContactSearch"
+
+/** Newest first. A search goes through the full-text index once every
+    contact's search text is current; an export (`exhaustive`) and a search
+    before then filter each bounded index page by substring instead. */
 export async function contactPage(
   ctx: QueryCtx,
-  args: Infer<typeof contactFilters> & { paginationOpts: PaginationOptions }
+  args: Infer<typeof contactFilters> & { paginationOpts: PaginationOptions },
+  options: { exhaustive?: boolean } = {}
 ) {
   const { organizationId, unsubscribed, segmentId } = args
   const from = args.from ?? 0
@@ -85,11 +99,31 @@ export async function contactPage(
   const segment = segmentId && (await ctx.db.get("segments", segmentId))
   if (segment && segment.organizationId !== organizationId)
     throw new ConvexError("Segment not found")
-  const inRange = (contact: Doc<"contacts">) =>
+  const inFilters = (contact: Doc<"contacts">) =>
     contact.organizationId === organizationId &&
     contact._creationTime >= from &&
     contact._creationTime <= to &&
-    (unsubscribed === undefined || contact.unsubscribed === unsubscribed) &&
+    (unsubscribed === undefined || contact.unsubscribed === unsubscribed)
+  const inSegment = async (contact: Doc<"contacts">) =>
+    !segmentId ||
+    !!(await ctx.db
+      .query("segmentMembers")
+      .withIndex("by_contactId_and_segmentId", (q) =>
+        q.eq("contactId", contact._id).eq("segmentId", segmentId)
+      )
+      .first())
+  if (
+    search?.trim() &&
+    !options.exhaustive &&
+    (await contactSearchIndexed(ctx))
+  )
+    return contactSearchPage(
+      ctx,
+      { ...args, search },
+      async (contact) => inFilters(contact) && (await inSegment(contact))
+    )
+  const inRange = (contact: Doc<"contacts">) =>
+    inFilters(contact) &&
     matches(
       contact.email,
       contact.phone,
@@ -132,18 +166,90 @@ export async function contactPage(
           )
     ).order("desc"),
     args.paginationOpts,
-    async (contact) =>
-      inRange(contact) &&
-      (!segmentId ||
-        !!(await ctx.db
-          .query("segmentMembers")
-          .withIndex("by_contactId_and_segmentId", (q) =>
-            q.eq("contactId", contact._id).eq("segmentId", segmentId)
-          )
-          .first())),
+    async (contact) => inRange(contact) && (await inSegment(contact)),
     CONTACT_SEARCH_BUDGET,
     search
   )
+}
+
+/** Whether the search text backfill has finished. Writers keep the text
+    current, so once it has, the full-text index covers every contact. */
+async function contactSearchIndexed(ctx: QueryCtx) {
+  const [status] = await ctx.runQuery(components.migrations.lib.getStatus, {
+    names: [CONTACT_SEARCH_BACKFILL],
+  })
+  return status?.state === "success"
+}
+
+/** A typed email, or a phone number with its country code, is one index
+    point read. Anything else reads the full-text index: word prefixes over
+    the email's parts, the names and the phone's digits and endings. Results
+    come in relevance order, and Convex stops a full-text search after
+    1,024 results. */
+async function contactSearchPage(
+  ctx: QueryCtx,
+  args: {
+    organizationId: string
+    search: string
+    unsubscribed?: boolean
+    paginationOpts: PaginationOptions
+  },
+  keep: (contact: Doc<"contacts">) => Promise<boolean>
+) {
+  const exact = await exactContact(ctx, args.organizationId, args.search)
+  if (exact)
+    return {
+      page: (await keep(exact)) ? [exact] : [],
+      isDone: true,
+      continueCursor: "",
+    }
+  const search = parseContactSearch(args.search)
+  const text = searchQuery(search)
+  if (!text) return { page: [], isDone: true, continueCursor: "" }
+  const result = await ctx.db
+    .query("contacts")
+    .withSearchIndex("search_search", (q) => {
+      const team = q
+        .search("search", text)
+        .eq("organizationId", args.organizationId)
+      return args.unsubscribed === undefined
+        ? team
+        : team.eq("unsubscribed", args.unsubscribed)
+    })
+    .paginate(args.paginationOpts)
+  const page = []
+  for (const contact of result.page)
+    if (matchesContactSearch(search, contact) && (await keep(contact)))
+      page.push(contact)
+  return { ...result, page }
+}
+
+/** The team's contact with exactly this email, or this phone number typed
+    with its country code; `null` for any other search. */
+async function exactContact(
+  ctx: QueryCtx,
+  organizationId: string,
+  search: string
+) {
+  const value = search.trim()
+  const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+    ? normalizeEmail(value)
+    : null
+  if (email)
+    return ctx.db
+      .query("contacts")
+      .withIndex("by_organizationId_and_email", (q) =>
+        q.eq("organizationId", organizationId).eq("email", email)
+      )
+      .first()
+  const phone = normalizePhone(value)
+  if (!phone) return null
+  return ctx.db
+    .query("contacts")
+    .withIndex("by_organizationId_and_phone", (q) =>
+      q.eq("organizationId", organizationId).eq("phone", phone)
+    )
+    .first()
 }
 export const list = query({
   args: { ...contactFilters.fields, paginationOpts: paginationOptsValidator },
