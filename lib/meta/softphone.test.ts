@@ -13,6 +13,8 @@ import {
   offerIsFresh,
   permissionAllows,
   presenceIsCurrent,
+  renewalNeedsRegister,
+  sipLogin,
   softphoneTransition as step,
   type SoftphonePhase,
 } from "./softphone"
@@ -178,4 +180,25 @@ test("phone numbers are called as wa_ids and anything else as a BSUID", () => {
   assert.equal(isPhoneRecipient("US.13491208655302741918"), false)
   assert.equal(isPhoneRecipient("12345"), false)
   assert.equal(isPhoneRecipient(""), false)
+})
+test("a renewal with a new SIP login registers again on the same lease, never mid-call", () => {
+  const old = { extension: "2000", password: "old" }
+  const fresh = { extension: "2001", password: "new" }
+  const registered = sipLogin(old)
+  assert.equal(
+    renewalNeedsRegister({ registered, credential: old, inCall: false }),
+    false
+  )
+  assert.equal(
+    renewalNeedsRegister({ registered, credential: fresh, inCall: false }),
+    true
+  )
+  assert.equal(
+    renewalNeedsRegister({ registered, credential: fresh, inCall: true }),
+    false
+  )
+  assert.equal(
+    renewalNeedsRegister({ registered: "", credential: fresh, inCall: false }),
+    false
+  )
 })

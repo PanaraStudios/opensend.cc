@@ -29,7 +29,11 @@ import {
   usesTurn,
   type IceConfiguration,
 } from "@/lib/calling/ice"
-import { BrowserPhone, RingSound } from "@/lib/calling/browser"
+import {
+  BrowserPhone,
+  RingSound,
+  type BrowserCredential,
+} from "@/lib/calling/browser"
 import {
   softphoneTransition,
   callElapsed,
@@ -37,6 +41,8 @@ import {
   offerIsFresh,
   presenceIsCurrent,
   hasAgentRoute,
+  renewalNeedsRegister,
+  sipLogin,
   type SoftphonePhase,
 } from "@/lib/meta/softphone"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -209,7 +215,9 @@ function TeamSoftphone({
   // memory, so after it restarts a renewal hands out a different one and the
   // old registration can no longer be rung; the softphone then signs in again.
   const registered = useRef("")
-  const relogin = useRef<() => void>(() => undefined)
+  const relogin = useRef<(credential: BrowserCredential) => void>(
+    () => undefined
+  )
   const disconnect = useRef<{
     id: Id<"callAgents">
     browserId: string
@@ -331,12 +339,73 @@ function TeamSoftphone({
     }
   }
   useEffect(() => {
-    relogin.current = () => {
-      void goAway()
-        .then(() => goOnline())
-        .catch(() => undefined)
-    }
+    relogin.current = (credential) => void reregister(credential)
   })
+  /** Registers again with the login a renewal just handed out. The lease and
+      that login stay; revoking and asking for another would hold two of the
+      gateway's agent slots until the first one expires. */
+  async function reregister(credential: BrowserCredential) {
+    if (operation.current || active.current || !phone.current) return
+    operation.current = true
+    setPending(true)
+    try {
+      await phone.current.close()
+      const browser = (phone.current = newBrowserPhone())
+      browser.setMicrophone(microphoneId)
+      const configuration = ice.current ?? (await fetchIce(args))
+      ice.current = configuration
+      await browser.register(credential, configuration)
+      registered.current = sipLogin(credential)
+    } catch (reason) {
+      fail(reason)
+      stopRequested.current = true
+    } finally {
+      finishOperation()
+    }
+  }
+  /** The browser's SIP leg; it answers only calls this tab's lease owns. */
+  function newBrowserPhone() {
+    return new BrowserPhone(audio.current!, {
+      invite: async () => {
+        // A transfer INVITE may precede the Convex subscription update. Wait for
+        // the authorized connected call; never answer an arbitrary SIP invite.
+        for (let i = 0; i < 40 && alive.current; i++) {
+          const call = latest.current.find(
+            (c) =>
+              (c.agentLeaseId === expectedLease.current ||
+                (c.test && c.testBrowserId === browserId)) &&
+              (c.status === "connected" || (c.test && c.status === "ringing"))
+          )
+          if (call) {
+            active.current = call._id
+            started.current = Date.now()
+            dispatch("answer")
+            setCurrentId(call._id)
+            if (call.test) testCallId.current = call._id
+            cardDispatch({ type: "connecting", id: call._id })
+            return true
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+        return false
+      },
+      connected: () => {
+        if (alive.current) {
+          dispatch("connected")
+          if (active.current)
+            cardDispatch({ type: "connected", id: active.current })
+        }
+      },
+      ended: () => {
+        if (alive.current) reset()
+      },
+      failed: (reason) => {
+        fail(reason, true)
+        if (operation.current) stopRequested.current = true
+        else void goAway().catch(() => undefined)
+      },
+    })
+  }
   async function goOnline(selectedMicrophone = microphoneId) {
     if (operation.current || !organizationId) return
     operation.current = true
@@ -355,7 +424,7 @@ function TeamSoftphone({
         return
       }
       expectedLease.current = credential.leaseId
-      registered.current = `${credential.extension}:${credential.password}`
+      registered.current = sipLogin(credential)
       setLeaseId(credential.leaseId)
       disconnect.current = {
         id: credential.agentId,
@@ -363,46 +432,7 @@ function TeamSoftphone({
         leaseId: credential.leaseId,
       }
       setQueues(credential.queues)
-      const browser = (phone.current = new BrowserPhone(audio.current!, {
-        invite: async () => {
-          // A transfer INVITE may precede the Convex subscription update. Wait for
-          // the authorized connected call; never answer an arbitrary SIP invite.
-          for (let i = 0; i < 40 && alive.current; i++) {
-            const call = latest.current.find(
-              (c) =>
-                (c.agentLeaseId === expectedLease.current ||
-                  (c.test && c.testBrowserId === browserId)) &&
-                (c.status === "connected" || (c.test && c.status === "ringing"))
-            )
-            if (call) {
-              active.current = call._id
-              started.current = Date.now()
-              dispatch("answer")
-              setCurrentId(call._id)
-              if (call.test) testCallId.current = call._id
-              cardDispatch({ type: "connecting", id: call._id })
-              return true
-            }
-            await new Promise((resolve) => setTimeout(resolve, 100))
-          }
-          return false
-        },
-        connected: () => {
-          if (alive.current) {
-            dispatch("connected")
-            if (active.current)
-              cardDispatch({ type: "connected", id: active.current })
-          }
-        },
-        ended: () => {
-          if (alive.current) reset()
-        },
-        failed: (reason) => {
-          fail(reason, true)
-          if (operation.current) stopRequested.current = true
-          else void goAway().catch(() => undefined)
-        },
-      }))
+      const browser = (phone.current = newBrowserPhone())
       browser.setMicrophone(selectedMicrophone)
       await browser.microphone()
       const configuration = await fetchIce(args)
@@ -618,12 +648,13 @@ function TeamSoftphone({
         if (credential.leaseId !== expectedLease.current)
           throw new Error("Agent session expired; go online again")
         if (
-          registered.current &&
-          registered.current !==
-            `${credential.extension}:${credential.password}` &&
-          !active.current
+          renewalNeedsRegister({
+            registered: registered.current,
+            credential,
+            inCall: !!active.current,
+          })
         ) {
-          relogin.current()
+          relogin.current(credential)
           return
         }
         if (ice.current && iceNeedsRefresh(ice.current)) {
