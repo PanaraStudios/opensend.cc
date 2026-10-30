@@ -46,7 +46,11 @@ appendFileSync(process.env.CALLS_FILE, JSON.stringify({
   deployment: process.env.CONVEX_DEPLOYMENT,
   deployKey: process.env.CONVEX_DEPLOY_KEY,
 }) + "\\n")
-if (process.argv[2] === process.env.FAIL_COMMAND) process.exit(7)
+if (process.argv[2] === process.env.FAIL_COMMAND) {
+  const failed = (await import("node:fs")).readFileSync(process.env.CALLS_FILE, "utf8")
+    .split("\\n").filter((line) => line.includes('"' + process.env.FAIL_COMMAND + '"')).length
+  if (!process.env.FAIL_TIMES || failed <= Number(process.env.FAIL_TIMES)) process.exit(7)
+}
 `
   )
   return {
@@ -134,11 +138,7 @@ test("waits for readiness, skips empty settings and deploys only to self-hosted"
     "--codegen",
     "disable",
   ])
-  assert.deepEqual(calls.at(-1).args, [
-    "run",
-    "migrations:initializeEventCounts",
-    "{}",
-  ])
+  assert.deepEqual(calls.at(-1).args, ["run", "migrations:postDeploy", "{}"])
   for (const call of calls) {
     assert.equal(call.url, url)
     assert.equal(call.key, "test-admin-key")
@@ -196,11 +196,7 @@ test("cloud deploy skips readiness and selects only the deploy key", async (t) =
     "--codegen",
     "disable",
   ])
-  assert.deepEqual(calls.at(-1).args, [
-    "run",
-    "migrations:initializeEventCounts",
-    "{}",
-  ])
+  assert.deepEqual(calls.at(-1).args, ["run", "migrations:postDeploy", "{}"])
   for (const call of calls) {
     assert.equal(call.url, undefined)
     assert.equal(call.key, "")
@@ -288,30 +284,41 @@ test("deploys a normalized override, baked release or unknown version", async (t
       )
     )
     assert.equal(calls.at(-2).args[0], "deploy")
-    assert.deepEqual(calls.at(-1).args, [
-      "run",
-      "migrations:initializeEventCounts",
-      "{}",
-    ])
+    assert.deepEqual(calls.at(-1).args, ["run", "migrations:postDeploy", "{}"])
   }
 })
 
-test("a failed automatic count backfill start fails the upgrade after deployment", async (t) => {
+test("a failed post-deploy migration fails the upgrade after four attempts", async (t) => {
   const f = await fixture(t)
   const { code, stderr, calls } = await f.run([], {
     CONVEX_SELF_HOSTED_ADMIN_KEY: "",
     CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:1",
     CONVEX_DEPLOY_KEY: "fixture-cloud-credential",
     FAIL_COMMAND: "run",
+    OPENSEND_MIGRATION_RETRY_MS: "1",
   })
   assert.equal(code, 1)
   assert.match(stderr, /Convex run failed/)
-  assert.equal(calls.at(-2).args[0], "deploy")
-  assert.deepEqual(calls.at(-1).args, [
-    "run",
-    "migrations:initializeEventCounts",
-    "{}",
-  ])
+  assert.match(stderr, /retrying migrations \(3\/4\)/)
+  const runs = calls.filter((call) => call.args[0] === "run")
+  assert.equal(runs.length, 4)
+  assert.equal(calls.at(-5).args[0], "deploy")
+  for (const run of runs)
+    assert.deepEqual(run.args, ["run", "migrations:postDeploy", "{}"])
+})
+
+test("a transient post-deploy migration failure is retried", async (t) => {
+  const f = await fixture(t)
+  const { code, calls } = await f.run([], {
+    CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+    CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:1",
+    CONVEX_DEPLOY_KEY: "fixture-cloud-credential",
+    FAIL_COMMAND: "run",
+    FAIL_TIMES: "2",
+    OPENSEND_MIGRATION_RETRY_MS: "1",
+  })
+  assert.equal(code, 0)
+  assert.equal(calls.filter((call) => call.args[0] === "run").length, 3)
 })
 
 test("calling deployment supplies gateway and browser settings without erasing empty values", async (t) => {
@@ -338,9 +345,5 @@ test("calling deployment supplies gateway and browser settings without erasing e
       )
     )
   assert.equal(calls.at(-2).args[0], "deploy")
-  assert.deepEqual(calls.at(-1).args, [
-    "run",
-    "migrations:initializeEventCounts",
-    "{}",
-  ])
+  assert.deepEqual(calls.at(-1).args, ["run", "migrations:postDeploy", "{}"])
 })

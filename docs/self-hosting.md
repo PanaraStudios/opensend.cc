@@ -141,8 +141,8 @@ stopped; fix the failure and re-run. Copy the backup to another machine, and
 regularly rehearse restoring it into a separate project and volume.
 
 After backup, the installer pulls images, starts Convex, runs the one-shot migrate
-image to set the backend environment and deploy functions, requests the resumable
-`migrations:backfillCounts` backfill, then starts the application and any selected
+image to set the backend environment, deploy functions and start the resumable
+`migrations:postDeploy` backfills, then starts the application and any selected
 media services. The backfill runs in the background; older row totals may read
 low until it finishes. A failed deployment does not start the application or
 calling stack. The previous volume is never deleted. The migrate image deploys
@@ -631,14 +631,14 @@ For data exports, `pnpm backend export --path backup.zip --include-file-storage`
 
 Back up first. Pin the new image digests and compatible Better Auth/Convex versions on a branch. Regenerate the component schema and Convex types, run the checks below, and rehearse on a restored isolated volume. Apply schema additions compatibly before tightening validators. Re-run setup only after the rehearsal passes. Keep the previous images and backup for rollback; older binaries may not understand an upgraded database.
 
-After deploying a version that adds row counts (the "Page 1 – 3 of 120 contacts" in list footers), count the rows written before it:
+After each deploy, the migrate image starts `migrations:postDeploy`, which runs every backfill in order (row counts such as the "Page 1 – 3 of 120 contacts" in list footers, email metrics, broadcast reports and stored inbound parsing). It retries the start four times with a growing delay, because a fresh deploy can briefly exhaust the backend's write limit. When you deploy without the migrate image, start it yourself and watch progress:
 
 ```sh
-pnpm backend run migrations:backfillCounts
+pnpm backend run migrations:postDeploy
 pnpm backend run --component migrations lib:getStatus --watch
 ```
 
-The backfill runs in the background in batches and is safe to run again: it resumes where it stopped and never counts a row twice. Until it finishes, list totals and segment sizes can read low.
+The backfills run in the background in batches and are safe to run again: they resume where they stopped, skip finished steps and never count a row twice. `migrations:backfillCounts` is an older name for the same runner. Until it finishes, list totals and segment sizes can read low.
 
 The substring-search fix needs no backfill: stored fields and indexes are unchanged. Reload open dashboard lists after deploying it so pagination starts with fresh cursors. Searches now scan bounded index pages and keep totals unknown until the range is exhausted; selective searches may take more requests. See [search pagination](search-pagination.md) for the engine limits, read budgets and regression coverage.
 

@@ -6,8 +6,9 @@ import { components, internal } from "./_generated/api"
 import type { DataModel } from "./_generated/dataModel"
 import { countRow, patchRow, type CountedTable } from "./counts"
 
-/* Online migrations, run after a deploy with
-   `pnpm backend run migrations:backfillCounts` (see docs/self-hosting.md).
+/* Online migrations. The migrate image starts `migrations:postDeploy` after
+   every deploy (docker/migrate/run.mjs); by hand it is
+   `pnpm backend run migrations:postDeploy` (see docs/self-hosting.md).
    The component tracks progress, so a rerun resumes or skips what is done. */
 export const migrations = new Migrations<DataModel>(components.migrations)
 
@@ -103,7 +104,8 @@ export const dropWebhookStats = migrations.define({
   migrateOne: (ctx, row) => ctx.db.delete("webhookStats", row._id),
 })
 
-export const backfillCounts = migrations.runner([
+/** Every backfill, in order. New backfills go at the end. */
+const postDeployMigrations = [
   internal.migrations.countAutomationEvents,
   internal.migrations.countContactImports,
   internal.migrations.countReceivedEmails,
@@ -143,4 +145,10 @@ export const backfillCounts = migrations.runner([
   internal.migrations.countWebhookAttempts,
   internal.migrations.countDomains,
   internal.migrations.dropWebhookStats,
-])
+]
+
+/** Run by the migrate image after each deploy. The component records each
+    step by name, so a rerun skips finished steps and leaves one in progress. */
+export const postDeploy = migrations.runner(postDeployMigrations)
+/** Older name for `postDeploy`, kept for scripts and docs that call it. */
+export const backfillCounts = migrations.runner(postDeployMigrations)

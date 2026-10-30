@@ -6,6 +6,10 @@ import { normalizeTelemetryVersion } from "../../lib/telemetry.ts"
 import { convexEnvEntries } from "../../scripts/convex-env.mjs"
 
 const require = createRequire(import.meta.url)
+const MIGRATION_ATTEMPTS = 4
+const MIGRATION_RETRY_MS = Number(
+  process.env.OPENSEND_MIGRATION_RETRY_MS ?? 3000
+)
 const cli = resolve(
   dirname(require.resolve("convex/package.json")),
   "bin/main.js"
@@ -86,7 +90,23 @@ try {
       "--codegen",
       "disable",
     ])
-    await runCli(["run", "migrations:initializeEventCounts", "{}"])
+    // A fresh deploy installs every component at once, and the backend's
+    // write limit can still be spent when the first migration starts. The
+    // runner is idempotent, so retry it with a growing delay.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await runCli(["run", "migrations:postDeploy", "{}"])
+        break
+      } catch (error) {
+        if (attempt >= MIGRATION_ATTEMPTS) throw error
+        console.error(
+          `Opensend migrate: retrying migrations (${attempt}/${MIGRATION_ATTEMPTS})`
+        )
+        await new Promise((resolve) =>
+          setTimeout(resolve, MIGRATION_RETRY_MS * attempt)
+        )
+      }
+    }
   }
 } catch (error) {
   console.error(`Opensend migrate: ${error.message}`)

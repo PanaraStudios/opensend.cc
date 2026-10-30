@@ -449,6 +449,47 @@ describe("backfill", () => {
   })
 })
 
+test("the post-deploy runner covers every backfill and counts old rows", async () => {
+  const source = import.meta.glob<string>("./migrations.ts", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  })["./migrations.ts"]
+  const defined = [
+    ...source.matchAll(
+      /export const (\w+) = (?:backfill\(|migrations\.define\()/g
+    ),
+  ].map((match) => match[1])
+  const list = source.slice(source.indexOf("const postDeployMigrations"))
+  expect(defined.length).toBeGreaterThan(30)
+  for (const name of defined)
+    expect(list).toContain(`internal.migrations.${name},`)
+
+  const { f, org, owner } = await setup()
+  await f.t.run((ctx) =>
+    ctx.db.insert("contacts", {
+      organizationId: org,
+      email: "legacy@example.com",
+      firstName: "",
+      lastName: "",
+      unsubscribed: false,
+      properties: {},
+      search: "legacy@example.com",
+      updatedAt: Date.now(),
+    })
+  )
+  vi.useFakeTimers()
+  await f.t.mutation(internal.migrations.postDeploy, {})
+  await f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  const total = async () =>
+    (await owner.query(api.contacts.count, { organizationId: org })).total
+  expect(await total()).toBe(1)
+  // The older name walks the same steps, which are already done.
+  await f.t.mutation(internal.migrations.backfillCounts, {})
+  await f.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect(await total()).toBe(1)
+})
+
 test("counted inserts return stored documents and retirement checks stay transaction scoped", async () => {
   const f = await fixture()
   const value = {
