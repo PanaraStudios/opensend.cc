@@ -356,6 +356,17 @@ test("SSO_APPROVED_DOMAINS is forwarded to Convex and documented", async () => {
   )
   for (const path of [".env.example", ".env.docker.example"])
     assert.match(await read(path), /^# SSO_APPROVED_DOMAINS=/m, path)
+  // Setup never erases a setting, so revoking it needs the CLI.
+  for (const path of [
+    ".env.example",
+    ".env.docker.example",
+    "docs/self-hosting.md",
+  ])
+    assert.match(
+      await read(path),
+      /pnpm backend env remove SSO_APPROVED_DOMAINS/,
+      path
+    )
   // The behaviour changes it brings are in the upgrade documentation.
   for (const path of ["docs/releases/v2.0.0.md", "docs/upgrade-v1-to-v2.md"]) {
     const text = await read(path)
