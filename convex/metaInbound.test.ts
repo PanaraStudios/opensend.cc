@@ -861,6 +861,8 @@ test("the reserved reply event starts phone-only automations and resumes wait-fo
     status: "running",
   })
   expect(first.contactEmail).toBeUndefined()
+  // A phone-only contact still names the run.
+  expect(first.contactPhone).toMatch(/\d{10}/)
   await post(f, incoming("second-reply"))
   await tick()
   expect(

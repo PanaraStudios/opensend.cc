@@ -56,6 +56,18 @@ const waitResult = v.object({
   payload: v.optional(payloadValue),
 })
 
+/** The name and phone a run shows for its contact. */
+function runContactLabel(contact: Doc<"contacts"> | null) {
+  const name = [contact?.firstName, contact?.lastName]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ")
+  return {
+    ...(name ? { contactName: name } : {}),
+    ...(contact?.phone ? { contactPhone: contact.phone } : {}),
+  }
+}
+
 export async function startRun(
   ctx: MutationCtx,
   automation: Doc<"automations">,
@@ -83,6 +95,7 @@ export async function startRun(
       automationId: automation._id,
       contactId: contact?._id,
       contactEmail: contact?.email,
+      ...runContactLabel(contact),
       payload,
       graph: automation.graph,
       apiDefinition: automation.apiDefinition,

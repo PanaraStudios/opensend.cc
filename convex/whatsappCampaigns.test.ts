@@ -624,6 +624,8 @@ test("inbound system event starts phone-only run, sends a template, and next rep
   expect(runs).toHaveLength(1)
   const first = runs[0]
   expect(first.contactEmail).toBeUndefined()
+  // A phone-only contact still names the run.
+  expect(first.contactPhone).toMatch(/\d{10}/)
   expect(first.waitingName).toBe("opensend:whatsapp.message.received")
   expect(f.graph.to(`/${PHONE_ID}/messages`)).toHaveLength(1)
   await project(f, incoming("wamid.reply"))
