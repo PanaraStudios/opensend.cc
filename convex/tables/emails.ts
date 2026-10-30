@@ -141,9 +141,5 @@ export const emailTables = {
   })
     .index("by_organizationId_and_email", ["organizationId", "email"])
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_reason", ["organizationId", "reason"])
-    .searchIndex("search_search", {
-      searchField: "search",
-      filterFields: ["organizationId", "reason"],
-    }),
+    .index("by_organizationId_and_reason", ["organizationId", "reason"]),
 }
