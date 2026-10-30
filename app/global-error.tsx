@@ -2,6 +2,8 @@
 
 import { useEffect } from "react"
 
+import { Button } from "@/components/ui/button"
+
 import "./globals.css"
 
 export default function GlobalError({
@@ -19,15 +21,11 @@ export default function GlobalError({
     <html lang="en">
       <body>
         <main className="flex min-h-svh flex-col items-center justify-center gap-4 px-6 text-center">
-          <h1>Something went wrong.</h1>
+          <h1 className="text-h3">Something went wrong.</h1>
           <p>We could not load Opensend. Try again.</p>
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded-md border px-4 py-2"
-          >
+          <Button variant="outline" onClick={reset}>
             Try again
-          </button>
+          </Button>
         </main>
       </body>
     </html>
