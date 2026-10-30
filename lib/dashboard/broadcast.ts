@@ -154,7 +154,7 @@ export function broadcastReachabilityLabel(
 /** A review of a large audience reads its first pages and scales the rest
     (convex/broadcasts.ts, `REVIEW_PAGES`). */
 export const BROADCAST_ESTIMATE_NOTE =
-  "Estimated from the audience’s first 4,000 contacts, the oldest. Each contact is checked again when the broadcast sends."
+  "Estimated from the first 4,000 contacts in the audience: the oldest contacts, or for a segment the earliest added. Each contact is checked again when the broadcast sends."
 
 /** An estimate of none means none among the contacts checked, not an empty
     audience: it never blocks a send. */
@@ -200,7 +200,7 @@ export function broadcastRecipientCheck(
           id: "recipients",
           level: "warn",
           label:
-            "None of the first 4,000 contacts can get this email; the rest are checked when it sends",
+            "None of the first 4,000 contacts in the audience can get this email; the rest are checked when it sends",
         }
       : {
           id: "recipients",

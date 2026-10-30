@@ -163,6 +163,13 @@ it("an estimated audience count says it is one", async () => {
     `About ${(12000).toLocaleString()} contacts will get this email (estimated)`
   )
   assert.equal(audienceCountLabel(3, "recipient"), "3 recipients")
+  const { BROADCAST_ESTIMATE_NOTE } = await import("./broadcast")
+  // A segment's sample is its earliest-added members, not its oldest contacts.
+  assert.match(BROADCAST_ESTIMATE_NOTE, /for a segment the earliest added/)
+  assert.match(
+    broadcastRecipientCheck(0, false, true).label,
+    /first 4,000 contacts in the audience/
+  )
   assert.equal(audienceCountLabel(1, "recipient", true), "About 1 recipient")
   assert.equal(
     broadcastReachabilityLabel(1, 2, true),
