@@ -319,3 +319,15 @@ test("completion checks actual static sticker size even when animation was decla
     )
   ).rejects.toBeTruthy()
 })
+
+test("a WhatsApp file reply refuses a file that is not ready", async () => {
+  const f = await setup(),
+    p = await pending(f)
+  const thread = await f.t.run((ctx) => ctx.db.query("conversations").first())
+  await expect(
+    f.owner.client.mutation(api.conversations.reply, {
+      id: thread!._id,
+      fileId: p.id,
+    })
+  ).rejects.toThrow("Attachment is not ready")
+})
