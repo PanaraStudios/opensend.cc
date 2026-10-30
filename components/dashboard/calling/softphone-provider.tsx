@@ -205,6 +205,11 @@ function TeamSoftphone({
   const seen = useRef<Id<"calls"> | null>(null)
   const started = useRef(0)
   const expectedLease = useRef("")
+  // The SIP login this browser registered with. The gateway keeps logins in
+  // memory, so after it restarts a renewal hands out a different one and the
+  // old registration can no longer be rung; the softphone then signs in again.
+  const registered = useRef("")
+  const relogin = useRef<() => void>(() => undefined)
   const disconnect = useRef<{
     id: Id<"callAgents">
     browserId: string
@@ -325,6 +330,13 @@ function TeamSoftphone({
       finishOperation()
     }
   }
+  useEffect(() => {
+    relogin.current = () => {
+      void goAway()
+        .then(() => goOnline())
+        .catch(() => undefined)
+    }
+  })
   async function goOnline(selectedMicrophone = microphoneId) {
     if (operation.current || !organizationId) return
     operation.current = true
@@ -343,6 +355,7 @@ function TeamSoftphone({
         return
       }
       expectedLease.current = credential.leaseId
+      registered.current = `${credential.extension}:${credential.password}`
       setLeaseId(credential.leaseId)
       disconnect.current = {
         id: credential.agentId,
@@ -604,6 +617,15 @@ function TeamSoftphone({
         if (stopped) return
         if (credential.leaseId !== expectedLease.current)
           throw new Error("Agent session expired; go online again")
+        if (
+          registered.current &&
+          registered.current !==
+            `${credential.extension}:${credential.password}` &&
+          !active.current
+        ) {
+          relogin.current()
+          return
+        }
         if (ice.current && iceNeedsRefresh(ice.current)) {
           const configuration = await fetchIce({ organizationId, browserId })
           if (stopped) return
