@@ -41,6 +41,37 @@ export const projectionMark = (
     .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
     .unique()
 
+/** Above this a retry falls back to indexes into the stored event. */
+export const MAX_RETRY_ITEMS_BYTES = 64 * 1024
+
+/** Retry items as JSON with each `data` object stored once. A Page delivery
+    gives every mid its own status item sharing one `data` holding all the
+    mids, so writing it per item would grow with the square of the mids. */
+export function packRetryItems(items: WebhookItem[]) {
+  const data: unknown[] = []
+  const indexes = new Map<unknown, number>()
+  const packed = items.map((item) => {
+    if (!("data" in item)) return item
+    if (!indexes.has(item.data)) {
+      indexes.set(item.data, data.length)
+      data.push(item.data)
+    }
+    return { ...item, data: indexes.get(item.data)! }
+  })
+  return JSON.stringify({ data, items: packed })
+}
+
+export function unpackRetryItems(json: string): WebhookItem[] {
+  const parsed = JSON.parse(json) as
+    WebhookItem[] | { data: Record<string, unknown>[]; items: WebhookItem[] }
+  if (Array.isArray(parsed)) return parsed
+  return parsed.items.map((item) =>
+    "data" in item && typeof item.data === "number"
+      ? ({ ...item, data: parsed.data[item.data] } as WebhookItem)
+      : item
+  )
+}
+
 export const MAX_ATTEMPTS = 3
 export const retryLater = (attempt: number) =>
   attempt < MAX_ATTEMPTS ? 10000 * 2 ** attempt : null
@@ -353,7 +384,8 @@ export const project = internalMutation({
     attempt: v.optional(v.number()),
     /** Retries scheduled before `retryItems`: indexes into the event's items. */
     statusIndexes: v.optional(v.array(v.number())),
-    /** JSON of the unmatched status and payment items a retry projects. */
+    /** The unmatched status and payment items a retry projects, as written
+        by `packRetryItems`. */
     retryItems: v.optional(v.string()),
     cursor: v.optional(v.number()),
   },
@@ -415,7 +447,7 @@ export const project = internalMutation({
     }
     const items: WebhookItem[] =
       retryItems !== undefined
-        ? (JSON.parse(retryItems) as WebhookItem[])
+        ? unpackRetryItems(retryItems)
         : pageWebhookItems(root, receivedAt)
     const changes: {
       field: string
@@ -454,6 +486,7 @@ export const project = internalMutation({
     }[] = []
     const pendingIndexes = statusIndexes ? new Set(statusIndexes) : null
     const unmatched: WebhookItem[] = []
+    const unmatchedIndexes: number[] = []
     for (const [index, item] of items.entries()) {
       // Ten messages leave headroom for contacts, counts, media and outbox
       // writes. The progress marker commits with the continuation.
@@ -483,6 +516,7 @@ export const project = internalMutation({
           : null
       if ((item.kind === "status" || item.kind === "payment") && !message) {
         unmatched.push(item)
+        unmatchedIndexes.push(index)
         continue
       }
       resolved.push({ item, account, message })
@@ -568,13 +602,18 @@ export const project = internalMutation({
         })
     }
     const delay = retryLater(attempt)
-    if (unmatched.length && delay !== null)
+    if (unmatched.length && delay !== null) {
+      const packed = packRetryItems(unmatched)
+      // Indexes point into the stored event, so a retry that works from its
+      // own items keeps them; those only shrink from retry to retry.
       await ctx.scheduler.runAfter(delay, internal.meta.projection.project, {
         id,
         attempt: attempt + 1,
-        retryItems: JSON.stringify(unmatched),
+        ...(packed.length > MAX_RETRY_ITEMS_BYTES && retryItems === undefined
+          ? { statusIndexes: unmatchedIndexes }
+          : { retryItems: packed }),
       })
-    else if (unmatched.length)
+    } else if (unmatched.length)
       console.info(
         "Dropping unmatched Meta statuses after retries",
         unmatched.length
