@@ -1,7 +1,16 @@
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { test } from "node:test"
 import {
+  prepareBackupDir,
   productionDefaults,
   productionProblems,
   productionServices,
@@ -95,4 +104,29 @@ test("the SQLite-to-Postgres steps create POSTGRES_PASSWORD before starting Post
   assert.ok(password > 0 && up > password, "password before the first up")
   // Writes stop before the export, so it misses nothing.
   assert.ok(steps.indexOf("stop app") < steps.indexOf("backend export"))
+})
+
+test("setup creates the backup directory as its own user before Docker can", (t) => {
+  const project = mkdtempSync(join(tmpdir(), "opensend-setup-"))
+  t.after(() => rmSync(project, { recursive: true, force: true }))
+  assert.equal(
+    prepareBackupDir({ COMPOSE_FILE: "compose.yaml" }, project),
+    undefined
+  )
+  assert.equal(existsSync(join(project, "backups")), false)
+  const dir = prepareBackupDir(good, project)
+  assert.equal(dir, join(project, "backups"))
+  assert.equal(statSync(dir).mode & 0o777, 0o700)
+  assert.equal(statSync(dir).uid, process.getuid())
+  // BACKUP_DIR, relative to the project or absolute, as Compose reads it.
+  assert.equal(
+    prepareBackupDir({ ...good, BACKUP_DIR: "./data/dumps" }, project),
+    join(project, "data/dumps")
+  )
+  const absolute = join(project, "elsewhere")
+  assert.equal(
+    prepareBackupDir({ ...good, BACKUP_DIR: absolute }, project),
+    absolute
+  )
+  assert.ok(existsSync(absolute))
 })

@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto"
+import { mkdirSync } from "node:fs"
+import { resolve } from "node:path"
 
 /** True when the Compose file list includes the production overlay. */
 export function usesProductionOverlay(env) {
@@ -19,6 +21,17 @@ export function productionDefaults(env) {
     health: the backup service is healthy only once its first dump is due. */
 export function productionServices(env) {
   return usesProductionOverlay(env) ? ["backup"] : []
+}
+
+/** Creates the host directory the backup service mounts (`BACKUP_DIR`,
+    relative to the Compose project directory) as the user running setup.
+    Docker would otherwise create it as root, leaving dumps the deploy user's
+    upload cron and scripts/prod-backup.sh cannot read or write. */
+export function prepareBackupDir(env, projectDir) {
+  if (!usesProductionOverlay(env)) return undefined
+  const dir = resolve(projectDir, env.BACKUP_DIR || "backups")
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  return dir
 }
 
 /** Problems that make a production overlay start unsafe. Empty when fine. */

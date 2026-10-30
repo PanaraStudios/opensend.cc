@@ -4,6 +4,7 @@ import { resolve } from "node:path"
 import { parse, run } from "./lib.mjs"
 import { convexEnvEntries } from "./convex-env.mjs"
 import {
+  prepareBackupDir,
   productionDefaults,
   productionProblems,
   productionServices,
@@ -129,7 +130,17 @@ if (exitCode !== "0") {
   throw new Error(`Migrate container failed (${exitCode})`)
 }
 const extra = productionServices({ COMPOSE_FILE: composeFile })
-if (extra.length) run("docker", [...compose, "up", "-d", "--no-deps", ...extra])
+if (extra.length) {
+  // Compose reads BACKUP_DIR from the shell before the env file.
+  prepareBackupDir(
+    {
+      COMPOSE_FILE: composeFile,
+      BACKUP_DIR: process.env.BACKUP_DIR || env.BACKUP_DIR,
+    },
+    resolve(import.meta.dirname, "..")
+  )
+  run("docker", [...compose, "up", "-d", "--no-deps", ...extra])
+}
 console.log(
   `Opensend is ready at ${env.SITE_URL}. Create the first account at /signup. Its account links appear in Convex function logs until you choose an account sender.`
 )
