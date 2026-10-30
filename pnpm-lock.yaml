@@ -365,7 +365,7 @@ importers:
     dependencies:
       '@convex-dev/workpool':
         specifier: 0.4.12
-        version: 0.4.12(convex-helpers@0.1.122(@standard-schema/spec@1.1.0)(convex@1.45.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1))(convex@1.45.0(react@19.2.4))(react@19.2.4)
+        version: 0.4.12(convex-helpers@0.1.127(@standard-schema/spec@1.1.0)(convex@1.46.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1))(convex@1.46.0(react@19.2.4))(react@19.2.4)
       '@opensendcc/sdk':
         specifier: workspace:^
         version: link:../sdk
@@ -381,10 +381,10 @@ importers:
         version: 20.19.43
       convex:
         specifier: ^1.45.0
-        version: 1.45.0(react@19.2.4)
+        version: 1.46.0(react@19.2.4)
       convex-test:
         specifier: 0.0.58
-        version: 0.0.58(convex@1.45.0(react@19.2.4))
+        version: 0.0.58(convex@1.46.0(react@19.2.4))
       eslint:
         specifier: ^9
         version: 9.39.5(jiti@2.7.0)
@@ -408,7 +408,7 @@ importers:
         version: link:..
       convex:
         specifier: ^1.45.0
-        version: 1.45.0(react@19.2.4)
+        version: 1.46.0(react@19.2.4)
     devDependencies:
       typescript:
         specifier: ^5
@@ -475,15 +475,15 @@ importers:
       '@types/js-yaml':
         specifier: 4.0.9
         version: 4.0.9
-      js-yaml:
-        specifier: 4.3.2
-        version: 4.3.2
       '@types/node':
         specifier: ^20
         version: 20.19.43
       '@types/react':
         specifier: ^19
         version: 19.3.0
+      js-yaml:
+        specifier: 4.3.2
+        version: 4.3.2
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -8181,11 +8181,11 @@ snapshots:
     transitivePeerDependencies:
       - react
 
-  '@convex-dev/workpool@0.4.12(convex-helpers@0.1.122(@standard-schema/spec@1.1.0)(convex@1.45.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1))(convex@1.45.0(react@19.2.4))(react@19.2.4)':
+  '@convex-dev/workpool@0.4.12(convex-helpers@0.1.127(@standard-schema/spec@1.1.0)(convex@1.46.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1))(convex@1.46.0(react@19.2.4))(react@19.2.4)':
     dependencies:
-      '@convex-dev/batch-worker': 0.2.2(convex@1.45.0(react@19.2.4))(react@19.2.4)
-      convex: 1.45.0(react@19.2.4)
-      convex-helpers: 0.1.122(@standard-schema/spec@1.1.0)(convex@1.45.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1)
+      '@convex-dev/batch-worker': 0.2.2(convex@1.46.0(react@19.2.4))(react@19.2.4)
+      convex: 1.46.0(react@19.2.4)
+      convex-helpers: 0.1.127(@standard-schema/spec@1.1.0)(convex@1.46.0(react@19.2.4))(hono@4.13.7)(react@19.2.4)(typescript@5.9.3)(zod@4.6.1)
     transitivePeerDependencies:
       - react
 
