@@ -42,6 +42,10 @@ export function asBroadcast(
     topicId: row.topicId,
     status: row.status,
     audienceDone: row.audienceDone,
+    delivering:
+      row.status === "queued" &&
+      row.audienceDone &&
+      (row.channel ?? "email") !== "email",
     createdAt: row._creationTime,
     updatedAt: row.updatedAt,
     scheduledAt: row.scheduledAt ?? null,

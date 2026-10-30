@@ -6,6 +6,7 @@ import {
   audienceLabel,
   BROADCAST_STATUS_ORDER,
   broadcastActions,
+  broadcastDelivering,
   emailEditorMode,
   emailFrom,
   fromAddresses,
@@ -77,6 +78,38 @@ describe("broadcastActions", () => {
       canCancel: false,
     })
     assert.deepEqual(broadcastActions("canceled"), broadcastActions("draft"))
+  })
+})
+
+describe("broadcastDelivering", () => {
+  const stats = {
+    recipients: 3,
+    sent: 2,
+    delivered: 1,
+    read: 0,
+    failed: 0,
+    skipped: 1,
+  }
+  it("waits until every message has left the send queue", () => {
+    assert.equal(
+      broadcastDelivering({ delivering: true, whatsappStats: stats }),
+      false
+    )
+    assert.equal(
+      broadcastDelivering({
+        delivering: true,
+        whatsappStats: { ...stats, failed: 1 },
+      }),
+      true
+    )
+    assert.equal(
+      broadcastDelivering({
+        delivering: false,
+        whatsappStats: { ...stats, failed: 1 },
+      }),
+      false
+    )
+    assert.equal(broadcastDelivering({ delivering: true }), false)
   })
 })
 

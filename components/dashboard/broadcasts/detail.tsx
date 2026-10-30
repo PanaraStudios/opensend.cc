@@ -35,6 +35,7 @@ import { toast } from "@/components/ui/toast"
 import { RenameBroadcastDialog } from "@/components/dashboard/broadcasts/shared"
 import {
   BroadcastStatusBadge,
+  ToneBadge,
   RecipientOutcomeBadge,
   ConfirmDialog,
   DetailHeader,
@@ -52,6 +53,7 @@ import {
 import {
   audienceLabel,
   broadcastActions,
+  broadcastDelivering,
   broadcastAsTemplateInput,
   isBroadcastDraftLike,
   type BroadcastEventTab,
@@ -348,6 +350,9 @@ export function BroadcastDetail() {
   }
 
   const sending = broadcast.status === "queued"
+  // Every message is out and the row waits on delivery receipts to settle
+  // (convex/broadcastMetrics.ts); there is nothing left to stop.
+  const delivering = broadcastDelivering(broadcast)
   function cancelSend() {
     void cancelBroadcast(broadcast.id)
       .then(() =>
@@ -374,9 +379,14 @@ export function BroadcastDetail() {
         icon={MegaphoneIcon}
         badge={
           <span className="flex items-center gap-2">
-            <BroadcastStatusBadge status={broadcast.status} />
+            {delivering ? (
+              <ToneBadge tone="success" label="Delivering" />
+            ) : (
+              <BroadcastStatusBadge status={broadcast.status} />
+            )}
             {/* A sent broadcast can still have recipients it never reached. */}
-            {broadcast.status === "sent" && broadcast.whatsappStats?.failed ? (
+            {(broadcast.status === "sent" || delivering) &&
+            broadcast.whatsappStats?.failed ? (
               <span className="text-xs text-destructive">
                 {broadcast.whatsappStats.failed.toLocaleString()} failed
               </span>
@@ -435,7 +445,7 @@ export function BroadcastDetail() {
       />
 
       {(broadcast.channel ?? "email") !== "email" ? (
-        <WhatsAppBroadcastReport item={broadcast} />
+        <WhatsAppBroadcastReport item={broadcast} delivering={delivering} />
       ) : (
         <BroadcastReport item={broadcast} />
       )}
@@ -470,7 +480,13 @@ export function BroadcastDetail() {
   )
 }
 
-function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
+function WhatsAppBroadcastReport({
+  item,
+  delivering,
+}: {
+  item: Broadcast
+  delivering: boolean
+}) {
   const stats = item.whatsappStats
   if (!stats) return <Skeleton className="h-40 w-full" />
 
@@ -482,7 +498,9 @@ function WhatsAppBroadcastReport({ item }: { item: Broadcast }) {
       {item.status === "queued" ? (
         <Alert>
           <AlertDescription>
-            Metrics update as messages are delivered.
+            {delivering
+              ? "Every message has gone out. Metrics keep updating as delivery and read receipts arrive."
+              : "Metrics update as messages are delivered."}
           </AlertDescription>
         </Alert>
       ) : null}

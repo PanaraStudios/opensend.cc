@@ -71,6 +71,17 @@ export function broadcastActions(
   }
 }
 
+/** A channel send waiting only on delivery receipts: every recipient is
+    queued and every message has left the send queue (sent or failed). */
+export function broadcastDelivering(
+  item: Pick<Broadcast, "delivering" | "whatsappStats">
+): boolean {
+  const stats = item.whatsappStats
+  return Boolean(
+    item.delivering && stats && stats.sent + stats.failed >= stats.recipients
+  )
+}
+
 export function audienceLabel(
   segmentId: string | null,
   segments: Segment[]
