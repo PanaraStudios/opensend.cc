@@ -36,8 +36,10 @@ async function settings(
     mode?: "gateway" | "api"
     routing?: Record<string, unknown>
     announcementFileId?: string
-    /** The dashboard has no route picker: choosing Media gateway there
-        routes calls to the team's agents unless a route is already set. */
+    /** The dashboard has no route picker: switching a number to Media
+        gateway there routes calls to the team's agents unless a route is
+        already set. A gateway number left without a route on purpose (the
+        integrator accepts calls through the API) stays unrouted on save. */
     dashboard?: boolean
   }
 ): Promise<{
@@ -58,7 +60,10 @@ async function settings(
   })
   const requested: Record<string, unknown> | undefined =
     args.routing ??
-    (args.dashboard && args.mode === "gateway" && !target.settings?.routing
+    (args.dashboard &&
+    args.mode === "gateway" &&
+    target.settings?.mode !== "gateway" &&
+    !target.settings?.routing
       ? { kind: "agents" }
       : undefined)
   if (

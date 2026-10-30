@@ -117,18 +117,6 @@ export const partlyFailedBroadcasts = migrations.define({
       await patchRow(ctx, "broadcasts", row._id, { status: "sent" })
   },
 })
-/** Choosing Media gateway in the dashboard now also routes calls to the
-    team's agents; numbers saved before carry no route, so their calls were
-    never answered and the softphone could not go online. */
-export const gatewayAgentRouting = migrations.define({
-  table: "callingSettings",
-  migrateOne: async (ctx, row) => {
-    if (row.mode !== "gateway" || row.routing !== undefined) return
-    await ctx.db.patch("callingSettings", row._id, {
-      routing: { kind: "agents" },
-    })
-  },
-})
 
 /** Every backfill, in order. New backfills go at the end. */
 const postDeployMigrations = [
@@ -172,7 +160,6 @@ const postDeployMigrations = [
   internal.migrations.countDomains,
   internal.migrations.dropWebhookStats,
   internal.migrations.partlyFailedBroadcasts,
-  internal.migrations.gatewayAgentRouting,
 ]
 
 /** How often, and how long, `postDeploy` waits for a step already running. */
