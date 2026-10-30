@@ -71,10 +71,19 @@ export function resolveVariables(
         "contact" in normalized
           ? contact[normalized.contact]
           : "property" in normalized
-            ? contact.properties[normalized.property] ||
-              propertyFallbacks[normalized.property]
+            ? (present(own(contact.properties, normalized.property)) ??
+              own(propertyFallbacks, normalized.property))
             : normalized.value
-      return [key, value || normalized.fallback || ""]
+      return [key, present(value) ?? normalized.fallback ?? ""]
     })
   )
 }
+
+/** A property the record itself holds: a name like `constructor` must not
+    read a member of `Object.prototype`. */
+const own = (record: Readonly<Record<string, string>>, key: string) =>
+  Object.hasOwn(record, key) ? record[key] : undefined
+
+/** A value with text in it; blank or whitespace-only falls back. */
+const present = (value: string | undefined) =>
+  value?.trim() ? value : undefined
