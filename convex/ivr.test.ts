@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, test, expect, vi } from "vitest"
-import { api, internal } from "./_generated/api"
+import { runToCompletion } from "@convex-dev/migrations"
+import { api, components, internal } from "./_generated/api"
 import { inboundFixture } from "./testHelpers/meta.fixture"
 import { signRequest } from "../services/call-gateway/src/auth"
 import * as net from "../lib/net/public-fetch"
@@ -297,6 +298,66 @@ test("IVRs and voice bots that reference each other cannot be deleted, and bot h
     200
   )
   expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
+})
+
+test("IVRs saved before bot references existed are backfilled and then block deleting their bots", async () => {
+  const f = await setup()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "Backfill",
+      key: "fixture-key",
+    })
+  ).json()
+  const bot = await (
+    await f.request("/voice-bots", "POST", {
+      name: "Legacy route",
+      provider: "gemini",
+      credentialId: credential.id,
+    })
+  ).json()
+  // Written straight to the table, as before the reference rows existed.
+  await f.t.run(async (ctx) => {
+    const row = await ctx.db.get("ivrs", f.ivr.id)
+    await ctx.db.patch("ivrs", f.ivr.id, {
+      menus: [
+        {
+          ...row!.menus[0],
+          options: { "1": { kind: "bot", botId: bot.id } },
+        },
+      ],
+    })
+  })
+  await f.t.mutation(components.migrations.lib.clearAll, {})
+  await f.t.action(async (ctx) => {
+    await runToCompletion(
+      ctx,
+      components.migrations,
+      internal.migrations.ivrBotReferences,
+      { cursor: null }
+    )
+  })
+  expect(
+    await f.t.run((ctx) =>
+      ctx.db
+        .query("ivrBotReferences")
+        .withIndex("by_ivrId", (q) => q.eq("ivrId", f.ivr.id))
+        .take(10)
+    )
+  ).toEqual([expect.objectContaining({ botId: bot.id })])
+  expect((await f.request(`/voice-bots/${bot.id}`, "DELETE")).status).toBe(409)
+  // Deleting the IVR drops its references with it.
+  await f.t.run(async (ctx) => {
+    const settings = await ctx.db
+      .query("callingSettings")
+      .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+      .unique()
+    await ctx.db.patch("callingSettings", settings!._id, {
+      routing: { kind: "agents" },
+    })
+  })
+  expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
+  expect((await f.request(`/voice-bots/${bot.id}`, "DELETE")).status).toBe(200)
 })
 
 test("malformed gateway ids are a 404, not a retryable 503", async () => {

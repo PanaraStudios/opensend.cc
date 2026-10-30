@@ -1,4 +1,5 @@
 import { ownedBot } from "../voice/resources"
+import { dropIvrBotReferences, syncIvrBotReferences } from "./botReferences"
 import { v } from "convex/values"
 import { stream } from "convex-helpers/server/stream"
 import {
@@ -282,6 +283,7 @@ async function writeDefinition(
         throw invalid(
           "Remove this IVR from voice bot handoffs before deleting it."
         )
+      await dropIvrBotReferences(ctx, row!._id)
       await ctx.db.delete("ivrs", row!._id)
       return { object: "ivr", id: row!._id, deleted: true }
     }
@@ -317,6 +319,7 @@ async function writeDefinition(
         promptVoice: d.promptVoice,
         updatedAt: now,
       })
+    await syncIvrBotReferences(ctx, (await ctx.db.get("ivrs", id))!)
     if (d.promptVoice)
       await ctx.scheduler.runAfter(0, internal.ivr.rendering.render, { id })
     return {

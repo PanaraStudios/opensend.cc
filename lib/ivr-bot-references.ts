@@ -7,14 +7,22 @@ export type IvrBotRoutes = {
   }>
   businessHours?: { closedAction: IvrAction }
 }
-export function ivrRoutesToBot(ivr: IvrBotRoutes, botId: string): boolean {
-  const hits = (action?: IvrAction) =>
-    action?.kind === "bot" && action.botId === botId
-  if (hits(ivr.businessHours?.closedAction)) return true
-  return ivr.menus.some(
-    (menu) =>
-      hits(menu.noInputAction) ||
-      hits(menu.failureAction) ||
-      Object.values(menu.options).some(hits)
-  )
+/** Every voice bot an IVR routes to: menu options, no-input and failure
+    actions, and the closed-hours action. */
+export function ivrBotIds(ivr: IvrBotRoutes): string[] {
+  const actions = [
+    ...ivr.menus.flatMap((menu) => [
+      ...Object.values(menu.options),
+      menu.noInputAction,
+      menu.failureAction,
+    ]),
+    ...(ivr.businessHours ? [ivr.businessHours.closedAction] : []),
+  ]
+  return [
+    ...new Set(
+      actions.flatMap((action) =>
+        action.kind === "bot" && action.botId ? [action.botId] : []
+      )
+    ),
+  ]
 }

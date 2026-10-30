@@ -27,12 +27,9 @@ import { encryptSecret } from "../secrets"
 import { idempotent } from "../api/idempotency"
 import schema from "../schema"
 import { validateBot } from "../../lib/voice-bots"
-import { ivrRoutesToBot } from "../../lib/ivr-bot-references"
 import { pickerArgs, pickerRows } from "../pickerOptions"
 import { voiceProvider } from "../tables/voice"
 import { own as ownedIvr } from "../ivr/definitions"
-/** IVRs checked for actions routing to a bot before the bot is deleted. */
-const IVR_REFERENCE_SCAN = 200
 /** ElevenLabs voice caches (up to 500 voices each) deleted per transaction. */
 const VOICE_CACHE_BATCH = 5
 export const actor = {
@@ -433,16 +430,11 @@ export const remove = internalMutation({
           "bot_in_use",
           "Remove number routing before deleting this bot"
         )
-      // Bounded to the team's newest IVRs, so a team with very many IVRs can
-      // still delete bots; menus routing to a missing bot fail at call time.
-      const ivrs = await ctx.db
-        .query("ivrs")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId)
-        )
-        .order("desc")
-        .take(IVR_REFERENCE_SCAN)
-      if (ivrs.some((ivr) => ivrRoutesToBot(ivr, row._id)))
+      const ivr = await ctx.db
+        .query("ivrBotReferences")
+        .withIndex("by_botId", (q) => q.eq("botId", row._id))
+        .first()
+      if (ivr)
         throw apiError(
           409,
           "bot_in_use",

@@ -93,6 +93,7 @@ export const TEAM_TABLES = [
   "callingSettings",
   "gatewayEvents",
   "callAgents",
+  "ivrBotReferences",
 ] as const
 
 export const CHILD_TABLES = [

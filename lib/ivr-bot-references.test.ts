@@ -1,6 +1,9 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { ivrRoutesToBot, type IvrBotRoutes } from "./ivr-bot-references"
+import { ivrBotIds, type IvrBotRoutes } from "./ivr-bot-references"
+
+const ivrRoutesToBot = (ivr: IvrBotRoutes, botId: string) =>
+  ivrBotIds(ivr).includes(botId)
 
 const menu = (overrides: Partial<IvrBotRoutes["menus"][number]> = {}) => ({
   options: { "1": { kind: "agents" } },
@@ -43,5 +46,19 @@ test("menu option, noInput, failure and closed actions all count as routes", () 
       "bot1"
     ),
     true
+  )
+})
+
+test("bot ids are listed once each across every action", () => {
+  const bot = (botId: string) => ({ kind: "bot", botId })
+  assert.deepEqual(
+    ivrBotIds({
+      menus: [
+        menu({ options: { "1": bot("a"), "2": bot("b") } }),
+        menu({ noInputAction: bot("a"), failureAction: bot("c") }),
+      ],
+      businessHours: { closedAction: bot("d") },
+    }),
+    ["a", "b", "c", "d"]
   )
 })
