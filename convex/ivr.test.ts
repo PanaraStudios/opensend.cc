@@ -197,6 +197,29 @@ test("IVR REST CRUD, idempotency, dry-run validation and tenant isolation", asyn
   expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
   expect((await f.request(`/ivrs/${f.ivr.id}`)).status).toBe(404)
 })
+test("malformed gateway ids are a 404, not a retryable 503", async () => {
+  const f = await setup()
+  expect(
+    (
+      await f.signed("/calling/gateway/ivr/start", {
+        callId: "not-a-call",
+        ivrId: f.ivr.id,
+      })
+    ).status
+  ).toBe(404)
+  expect(
+    (
+      await f.signed("/calling/gateway/ivr/next", {
+        callId: f.callId,
+        ivrId: "not-an-ivr",
+        menuId: "main",
+        digits: "1",
+        step: 0,
+      })
+    ).status
+  ).toBe(404)
+})
+
 test("a deleted IVR reads as null in the dashboard but stays a 404 in the API", async () => {
   const f = await setup()
   const read = () =>
