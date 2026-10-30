@@ -800,6 +800,42 @@ test("dashboard enables calling from Meta defaults and toggles callback permissi
   expect(g.to(`/${PHONE_ID}/settings`, "POST")).toHaveLength(posts)
 })
 
+test("choosing Media gateway in the dashboard routes calls to the team's agents unless a route is set", async () => {
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_URL", "https://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "s".repeat(64))
+  fakeGraph([
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "GET",
+      respond: () => ({ calling: { status: "ENABLED" } }),
+    },
+  ])
+  const saved = () =>
+    f.t.run((ctx) =>
+      ctx.db
+        .query("callingSettings")
+        .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+        .unique()
+    )
+  await f.owner.client.action(api.calling.settings.dashboardUpdate, {
+    organizationId: f.owner.team,
+    from: f.account,
+    mode: "gateway",
+  })
+  expect(await saved()).toMatchObject({
+    mode: "gateway",
+    routing: { kind: "agents" },
+  })
+  const setupState = await f.owner.client.query(
+    api.calling.playgroundState.setup,
+    { organizationId: f.owner.team }
+  )
+  expect(setupState.numbers).toEqual([
+    expect.objectContaining({ mode: "gateway", routing: "agents" }),
+  ])
+})
+
 test("settings errors reach the API and dashboard toast with every Meta reason field, never the token", async () => {
   const f = await setup()
   const details = "callback_permission_status must be ENABLED or DISABLED"
