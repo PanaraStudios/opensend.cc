@@ -24,3 +24,15 @@ test("every runtime pins the same Node major", () => {
     for (const [, version] of images) assert.equal(version, major, file)
   }
 })
+
+test("the migrate image deploys with convex.json", () => {
+  // Image-based Convex Cloud deploys (compose.cloud.yaml, install.sh) would
+  // otherwise run Node actions on Convex's default Node 20.
+  const dockerfile = read("Dockerfile")
+  const migrate = dockerfile.slice(
+    dockerfile.search(/^FROM \S+ AS migrate$/m),
+    dockerfile.search(/^FROM \S+ AS build$/m)
+  )
+  assert.match(migrate, /^COPY\b.*\sconvex\.json\s.*\.\/$/m)
+  assert.doesNotMatch(read(".dockerignore"), /^convex\.json$/m)
+})

@@ -27,7 +27,8 @@ WORKDIR /app
 ENV NODE_ENV=production ESBUILD_BINARY_PATH=/usr/local/bin/esbuild
 COPY --from=migrate-deps /out/esbuild /usr/local/bin/esbuild
 COPY --from=migrate-deps --chown=node:node /out/node_modules ./node_modules
-COPY --chown=node:node package.json tsconfig.json ./
+# convex.json pins the Node version Convex Cloud runs "use node" actions on.
+COPY --chown=node:node package.json tsconfig.json convex.json ./
 COPY --chown=node:node convex ./convex
 COPY --chown=node:node lib ./lib
 # Convex bundles shared contracts from the SDK and the call-gateway client.
