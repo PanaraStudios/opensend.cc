@@ -13,22 +13,27 @@ KEEP_DAYS=${BACKUP_RETENTION_DAYS:-14}
 DELAY=${BACKUP_START_DELAY_SECONDS:-300}
 STARTED="$DIR/.loop-started"
 
+# Every step returns on failure explicitly: `take || true` in the loop turns
+# off set -e inside this function. A failed take never prunes old dumps.
 take() {
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   tmp="$DIR/.convex-$stamp.dump.partial"
   out="$DIR/convex-$stamp.dump"
   echo "backup: dumping $PGDATABASE to $out"
-  if pg_dump --format=custom --compress=6 --no-owner --file "$tmp"; then
-    mv "$tmp" "$out"
-    # Refuse a dump pg_restore cannot read.
-    pg_restore --list "$out" >/dev/null
-    echo "backup: ok $(du -h "$out" | cut -f1)"
-  else
+  if ! pg_dump --format=custom --compress=6 --no-owner --file "$tmp"; then
     rm -f "$tmp"
     echo "backup: pg_dump FAILED" >&2
     return 1
   fi
-  find "$DIR" -name 'convex-*.dump' -mtime "+$KEEP_DAYS" -print -delete
+  # Refuse a dump pg_restore cannot read before it gets a backup's name.
+  if ! pg_restore --list "$tmp" >/dev/null; then
+    rm -f "$tmp"
+    echo "backup: dump unreadable by pg_restore, discarded" >&2
+    return 1
+  fi
+  mv "$tmp" "$out" || { rm -f "$tmp"; return 1; }
+  echo "backup: ok $(du -h "$out" | cut -f1)"
+  find "$DIR" -name 'convex-*.dump' -mtime "+$KEEP_DAYS" -print -delete || return 1
 }
 
 case ${1:-loop} in
