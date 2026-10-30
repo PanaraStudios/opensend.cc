@@ -133,11 +133,6 @@ export const callingTables = {
       "supportsHeartbeats",
       "lastActivityAt",
     ])
-    .index("by_mode_and_status_and_lastActivityAt", [
-      "mode",
-      "status",
-      "lastActivityAt",
-    ])
     .index("by_organizationId_and_botId_and_test", [
       "organizationId",
       "botId",
@@ -148,15 +143,10 @@ export const callingTables = {
       "testUserId",
       "status",
     ])
-    .index("by_organizationId_and_botActive", ["organizationId", "botActive"])
     .index("by_organizationId_and_botActive_and_test", [
       "organizationId",
       "botActive",
       "test",
-    ])
-    .index("by_organizationId_and_botStartedAt", [
-      "organizationId",
-      "botStartedAt",
     ])
     .index("by_organizationId_and_assignedAgent_and_status", [
       "organizationId",

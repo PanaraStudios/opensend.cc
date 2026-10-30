@@ -60,7 +60,6 @@ export const storageTables = {
     animated: v.optional(v.boolean()),
     pendingKey: v.optional(v.string()),
   })
-    .index("by_sourceStorageId", ["sourceStorageId"])
     .index("by_storageId", ["storageId"])
     .index("by_organizationId", ["organizationId"])
     .index("by_state_and_expiresAt", ["state", "expiresAt"]),
