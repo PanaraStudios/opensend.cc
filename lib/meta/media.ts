@@ -188,8 +188,12 @@ export function isMediaIdGone(error: {
   details?: string
 }) {
   if (error.code === MEDIA_UNUSABLE_CODE) return true
+  // Only wording about the id itself: an unsupported type or a header that
+  // does not match the template fails the same way after a fresh upload.
   return (
     (error.code === 100 || error.code === 131009) &&
-    /media/i.test(`${error.details ?? ""} ${error.message ?? ""}`)
+    /\bmedia[ _]?id\b|\bmedia\b.*\b(does not exist|not found|expired)\b/i.test(
+      `${error.details ?? ""} ${error.message ?? ""}`
+    )
   )
 }

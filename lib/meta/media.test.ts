@@ -68,5 +68,32 @@ test("a media id Meta no longer knows reads as gone; other refusals do not", () 
     isMediaIdGone({ code: 131026, message: "Media undeliverable" }),
     false
   )
+  assert.equal(
+    isMediaIdGone({
+      code: 100,
+      details: "The media you requested does not exist",
+    }),
+    true
+  )
+  assert.equal(
+    isMediaIdGone({ code: 131009, details: "media_id has expired" }),
+    true
+  )
+  // Refusals a fresh upload would not fix.
+  assert.equal(
+    isMediaIdGone({
+      code: 131009,
+      message: "Parameter value is not valid",
+      details: "Unsupported media type",
+    }),
+    false
+  )
+  assert.equal(
+    isMediaIdGone({
+      code: 100,
+      details: "Header media type does not match the template",
+    }),
+    false
+  )
   assert.equal(isMediaIdGone({}), false)
 })
