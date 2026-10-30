@@ -14,6 +14,7 @@ import {
 import { NAVIGATION_SHORTCUTS } from "@/lib/dashboard/shortcuts"
 import {
   NavigationKeys,
+  ShortcutKeys,
   ShortcutsDialog,
 } from "@/components/dashboard/shortcuts-dialog"
 import { useQuery } from "convex/react"
@@ -209,7 +210,7 @@ function CommandMenu({
                 onShortcuts()
               }}
             >
-              Keyboard shortcuts <Kbd className="ml-auto">?</Kbd>
+              Keyboard shortcuts <ShortcutKeys keys={["?"]} />
             </CommandItem>
             {DASHBOARD_NAV.map((item) => (
               <CommandItem
