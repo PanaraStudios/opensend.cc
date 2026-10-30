@@ -14,6 +14,7 @@ import { registerSesRoutes } from "./ses/http"
 import { registerChannelDownloadRoutes } from "./channels/downloads"
 import { registerMetaRoutes } from "./meta/http"
 import { registerUnsubscribeRoutes } from "./unsubscribeHttp"
+import { registerExportRoutes } from "./exports"
 
 /* Each feature registers its own routes, so features can be built in
    parallel without editing the same lines here. */
@@ -33,4 +34,5 @@ registerEmailShareRoutes(http)
 registerReceivedDownloadRoutes(http)
 registerBroadcastRoutes(http)
 registerUnsubscribeRoutes(http)
+registerExportRoutes(http)
 export default http

@@ -14,6 +14,14 @@ export const exportFilterLineValue = v.object({
   value: v.string(),
 })
 
+/** One stored slice of an export's CSV: whole lines, the first part starting
+    with the header. The download streams the parts in order. */
+export const exportPartValue = v.object({
+  fileId: v.id("storedFiles"),
+  rows: v.number(),
+  bytes: v.number(),
+})
+
 /* Every write goes through convex/exportRows.ts. */
 export const exportTables = {
   exports: defineTable({
@@ -24,10 +32,19 @@ export const exportTables = {
     rows: v.number(),
     error: v.optional(v.string()),
     notificationEmailId: v.optional(v.id("emails")),
+    /** The single file of an export written before exports came in parts. */
     ...fileReference,
+    /** The CSV in order, one stored file per part. */
+    parts: v.optional(v.array(exportPartValue)),
+    /** Header cells, fixed by the first part so later parts keep to it. */
+    header: v.optional(v.array(v.string())),
+    /** Where the next part continues in the source's pagination. */
+    cursor: v.optional(v.string()),
+    /** CSV bytes written so far, header included. */
+    bytes: v.optional(v.number()),
     expiresAt: v.number(),
-    /** When the export was started; the watchdog fails a "processing"
-        export idle for too long. Absent on older rows. */
+    /** When the export was started or last stored a part; the watchdog
+        fails a "processing" export idle for too long. Absent on older rows. */
     touchedAt: v.optional(v.number()),
     /** The list filters the export was started with, as the source reads
         them. */

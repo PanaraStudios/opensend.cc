@@ -8,12 +8,44 @@ import { useTeamRole } from "@/components/auth/workspace"
 import { useDownloadExport } from "@/lib/exports/use-exports"
 import type { ExportJob } from "@/lib/dashboard/types"
 
+/** Downloads a completed export. A CSV too large for one download comes as
+    several files: the detail page shows a button per file, the list's icon
+    downloads them one after another. */
 export function ExportDownload({
   job,
   iconOnly = false,
 }: {
+  job: ExportJob & { volumes?: number }
+  iconOnly?: boolean
+}) {
+  const volumes = job.volumes ?? 1
+  if (iconOnly || volumes <= 1)
+    return <DownloadButton job={job} iconOnly={iconOnly} volumes={volumes} />
+  return (
+    <div className="flex flex-wrap gap-2">
+      {Array.from({ length: volumes }, (_, volume) => (
+        <DownloadButton
+          key={volume}
+          job={job}
+          volumes={volumes}
+          volume={volume}
+        />
+      ))}
+    </div>
+  )
+}
+
+function DownloadButton({
+  job,
+  iconOnly = false,
+  volumes,
+  volume,
+}: {
   job: ExportJob
   iconOnly?: boolean
+  volumes: number
+  /** One file of a multi-file export; every file when omitted. */
+  volume?: number
 }) {
   const { isAdmin } = useTeamRole()
   const download = useDownloadExport()
@@ -26,19 +58,29 @@ export function ExportDownload({
       <Button
         variant={iconOnly ? "ghost" : "default"}
         size={iconOnly ? "icon" : "default"}
-        aria-label="Download CSV"
+        aria-label={
+          volume === undefined
+            ? "Download CSV"
+            : `Download part ${volume + 1} of ${volumes}`
+        }
         disabled={!isAdmin || job.status !== "ready" || pending}
         onClick={async () => {
           setPending(true)
           try {
-            await download(job)
+            if (volume !== undefined) await download(job, volume)
+            else
+              for (let file = 0; file < volumes; file++)
+                await download(job, file)
           } finally {
             setPending(false)
           }
         }}
       >
         <DownloadIcon data-icon={iconOnly ? undefined : "inline-start"} />
-        {!iconOnly && "Download CSV"}
+        {!iconOnly &&
+          (volume === undefined
+            ? "Download CSV"
+            : `Part ${volume + 1} of ${volumes}`)}
       </Button>
     </DisabledTooltip>
   )
