@@ -59,8 +59,14 @@ import {
   type BroadcastEventTab,
 } from "@/lib/dashboard/broadcast"
 import { parseMailbox, senderDomainOf } from "@/lib/dashboard/email-send"
-import { percent, sentenceCase } from "@/lib/dashboard/format"
-import { useQuery, usePaginatedQuery } from "convex/react"
+import {
+  formatDateTime,
+  percent,
+  pluralize,
+  sentenceCase,
+} from "@/lib/dashboard/format"
+import { useAction, useQuery, usePaginatedQuery } from "convex/react"
+import { requireTeamId, useWorkspace } from "@/components/auth/workspace"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -310,6 +316,10 @@ export function BroadcastDetail() {
   const { leaving, deleteAndLeave } = useDeleteRecord("/broadcasts")
   const [pending, setPending] = React.useState(false)
   const [renameOpen, setRenameOpen] = React.useState(false)
+  const review = useAction(api.broadcastWhatsApp.review)
+  const { activeTeamId } = useWorkspace()
+  const [reviewing, setReviewing] = React.useState(false)
+  const [sendSummary, setSendSummary] = React.useState<string | null>(null)
   /* Drafts are authored in the full-screen editor, which lives outside the
      dashboard chrome, so this page only ever shows the report. */
   const editable = Boolean(item) && isBroadcastDraftLike(item!.status)
@@ -343,10 +353,31 @@ export function BroadcastDetail() {
     void saveAsTemplate(broadcastAsTemplateInput(broadcast))
   }
 
-  function sendNow() {
-    void sendBroadcast(broadcast.id)
-      .then(() => toast.add({ type: "success", title: "Broadcast sent" }))
+  /* Sending can't be recalled, so a channel send shows who it reaches first
+     and an email send asks once. */
+  function reviewSend() {
+    const instead =
+      broadcast.status === "scheduled" && broadcast.scheduledAt
+        ? ` now instead of ${formatDateTime(broadcast.scheduledAt)}`
+        : ""
+    if ((broadcast.channel ?? "email") === "email") {
+      setSendSummary(
+        `This emails ${broadcast.segmentId ? `everyone in ${audience}` : "all contacts"}${instead}.`
+      )
+      return
+    }
+    setReviewing(true)
+    void review({
+      organizationId: requireTeamId(activeTeamId),
+      id: broadcast.id as Id<"broadcasts">,
+    })
+      .then((estimate) =>
+        setSendSummary(
+          `${pluralize(estimate.recipients, "recipient")} will receive this broadcast${instead}; ${estimate.skipped.toLocaleString()} will be skipped.`
+        )
+      )
       .catch(reportError)
+      .finally(() => setReviewing(false))
   }
 
   const sending = broadcast.status === "queued"
@@ -401,7 +432,11 @@ export function BroadcastDetail() {
                 {sending ? "Stop sending" : "Cancel"}
               </Button>
             ) : null}
-            {canSend ? <Button onClick={sendNow}>Send now</Button> : null}
+            {canSend ? (
+              <Button disabled={reviewing} onClick={reviewSend}>
+                Send now
+              </Button>
+            ) : null}
             <MoreMenu>
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => setRenameOpen(true)}>
@@ -461,6 +496,20 @@ export function BroadcastDetail() {
             )
             .catch(reportError)
         }}
+      />
+      <ConfirmDialog
+        open={sendSummary !== null}
+        onOpenChange={(next) => {
+          if (!next) setSendSummary(null)
+        }}
+        title={`Send ${broadcast.name || "Untitled"}?`}
+        description={`${sendSummary ?? ""} Messages can't be recalled once sent.`}
+        confirmLabel="Send now"
+        onConfirm={() =>
+          sendBroadcast(broadcast.id).then(() =>
+            toast.add({ type: "success", title: "Broadcast sent" })
+          )
+        }
       />
       <ConfirmDialog
         open={pending}
