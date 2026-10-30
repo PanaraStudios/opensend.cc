@@ -6,7 +6,11 @@ import { listenToEvents } from "./testHelpers/eventListener"
 import { emitEvent, emitEventAlways } from "./events"
 import { upsertContact } from "./audience"
 import { upsertChannelThread } from "./channels/identity"
-import { emitMessageEvent, hydratedChannelMessage } from "./channels/payload"
+import {
+  emitMessageEvent,
+  hydratedChannelMessage,
+  type PageLookups,
+} from "./channels/payload"
 import { insertRow } from "./counts"
 import type { MutationCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
@@ -385,4 +389,35 @@ test("custom events are always stored for the automation dispatcher", async () =
     stored: 1,
     jobs: ["automationRuntime:consume"],
   })
+})
+
+test("a page of one thread's messages reads its identity, account, connection, alias and installation once", async () => {
+  const f = await setup()
+  const reads = await f.t.run(async (ctx) => {
+    const page = [f.message, f.message, f.message]
+    const alone = countReads(ctx)
+    for (const message of page)
+      await hydratedChannelMessage(alone.ctx, message, Date.now())
+    const shared = countReads(ctx)
+    const lookups: PageLookups = new Map()
+    const rows = []
+    for (const message of page)
+      rows.push(
+        await hydratedChannelMessage(
+          shared.ctx,
+          message,
+          Date.now(),
+          undefined,
+          lookups
+        )
+      )
+    expect(rows).toEqual(
+      await Promise.all(
+        page.map((message) => hydratedChannelMessage(ctx, message, Date.now()))
+      )
+    )
+    return { alone: alone.reads(), shared: shared.reads() }
+  })
+  // Five lookups per message become five per page.
+  expect(reads.alone - reads.shared).toBe(10)
 })

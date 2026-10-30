@@ -10,6 +10,7 @@ import { object } from "../lib/meta/parse"
 import {
   channelMessagePayload,
   hydratedChannelMessage,
+  type PageLookups,
 } from "./channels/payload"
 import {
   renderedChannelTemplate,
@@ -570,6 +571,7 @@ export const messages = query({
       ? await ctx.db.get("channelAccounts", conversation.accountId)
       : null
     const templateCache: TemplatePageCache = new Map()
+    const lookups: PageLookups = new Map()
     const page = await Promise.all(
       result.page.map(async (message) => {
         const content = await ctx.db
@@ -603,7 +605,8 @@ export const messages = query({
             ctx,
             message,
             Date.now(),
-            content
+            content,
+            lookups
           ),
         }
       })

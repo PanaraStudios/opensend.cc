@@ -28,6 +28,7 @@ import {
 import {
   channelMessagePayload,
   hydratedChannelMessage,
+  type PageLookups,
 } from "../channels/payload"
 import { mediaDownloadLink } from "../channels/downloads"
 import {
@@ -180,11 +181,18 @@ export const list = internalQuery({
         )
       }
     )
+    const lookups: PageLookups = new Map()
     return {
       ...result,
       normalized: await Promise.all(
         result.data.map((m) =>
-          hydratedChannelMessage(ctx, m, now ?? m._creationTime)
+          hydratedChannelMessage(
+            ctx,
+            m,
+            now ?? m._creationTime,
+            undefined,
+            lookups
+          )
         )
       ),
     }
