@@ -4,7 +4,12 @@ import { api, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { inboundFixture, WABA_ID } from "./testHelpers/meta.fixture"
 import { insertRow, patchRow } from "./counts"
-import { MAX_STEP_RECIPIENTS, sendStep } from "./broadcastSend"
+import {
+  MAX_STEP_RECIPIENTS,
+  sendStep,
+  STEP_LIMITS,
+  WATCH_MS,
+} from "./broadcastSend"
 import { extrapolate, REVIEW_PAGES, REVIEW_PAGE_SIZE } from "./broadcasts"
 import { SENT_MARK_MS } from "./broadcastMetrics"
 import { broadcastActions } from "../lib/dashboard/broadcast"
@@ -455,4 +460,72 @@ test("contacts sharing a phone in one step share one WhatsApp identity", async (
   )
   expect(identities).toHaveLength(1)
   expect(await f.recipients()).toHaveLength(3)
+})
+
+test("an oversized step rolls back alone and fails the broadcast", async () => {
+  const f = await setup({ audience: 5 })
+  const generation = await f.start()
+  // The step's caps are tighter than Convex's own limits, so exceeding them
+  // throws inside the caller, which can still write.
+  expect(STEP_LIMITS.databaseQueries).toBeLessThan(4096)
+  await f.t.run(async (ctx) => {
+    await expect(
+      ctx.runMutation(
+        internal.broadcastSend.pumpStep,
+        { id: f.id, generation },
+        { transactionLimits: { databaseQueries: 30 } }
+      )
+    ).rejects.toThrow()
+    await patchRow(ctx, "broadcasts", f.id, { error: "caller still writes" })
+  })
+  expect(await f.recipients()).toHaveLength(0)
+  expect((await f.read()).error).toBe("caller still writes")
+})
+
+test("a chain whose step dies outright is failed by its watchdog", async () => {
+  const f = await setup({ audience: 40 })
+  const generation = await f.start()
+  await f.step()
+  const watches = () =>
+    f.t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+        (job) => job.name.endsWith(":watchPump") && job.state.kind === "pending"
+      )
+    )
+  const [next] = await f.pumps()
+  const watch = (await watches()).find((job) => job.args[0].job === next._id)!
+  expect(watch.scheduledTime).toBe(next.scheduledTime + WATCH_MS)
+  // Still waiting to run: checked again later, nothing failed.
+  await f.t.mutation(internal.broadcastSend.watchPump, watch.args[0])
+  expect((await f.read()).status).toBe("queued")
+  // The step died without committing (its job no longer pending or done).
+  await f.t.run((ctx) => ctx.scheduler.cancel(next._id))
+  await f.t.mutation(internal.broadcastSend.watchPump, watch.args[0])
+  expect(await f.read()).toMatchObject({
+    status: "failed",
+    error: expect.stringMatching(/stopped before reaching everyone/),
+  })
+  expect(generation).toBe((await f.read()).generation)
+})
+
+test("a watchdog after a step that ran leaves the send alone", async () => {
+  const f = await setup({ audience: 40 })
+  await f.start()
+  const [first] = await f.pumps()
+  const watch = (
+    await f.t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect()
+    )
+  ).find((job) => job.name.endsWith(":watchPump"))!
+  expect(watch.args[0].job).toBe(first._id)
+  // The scheduler runs the first step; its job succeeds.
+  vi.advanceTimersByTime(first.scheduledTime - Date.now() + 1)
+  await f.t.finishInProgressScheduledFunctions()
+  const state = await f.t.run(
+    async (ctx) => (await ctx.db.system.get("_scheduled_functions", first._id))!
+  )
+  expect(state.state.kind).toBe("success")
+  expect(await f.recipients()).toHaveLength(MAX_STEP_RECIPIENTS)
+  await f.t.mutation(internal.broadcastSend.watchPump, watch.args[0])
+  expect((await f.read()).status).toBe("queued")
 })

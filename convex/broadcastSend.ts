@@ -170,32 +170,88 @@ export const batch = internalMutation({
   },
 })
 
-/** One paced step, scheduling the next. The step runs as a nested
-    mutation, so one that throws rolls back alone and fails the broadcast,
-    as a failed workflow run did, instead of ending the chain silently. */
+/** Caps on one step, well under Convex's per-transaction limits, so a step
+    that outgrows them rolls back alone and `pump` can still fail the
+    broadcast in its own transaction. */
+export const STEP_LIMITS = {
+  databaseQueries: 3_500,
+  documentsRead: 24_000,
+  documentsWritten: 12_000,
+  bytesRead: 12 * 1024 * 1024,
+  bytesWritten: 12 * 1024 * 1024,
+}
+/** How long after a step was due the watchdog checks it ran. */
+export const WATCH_MS = 5 * 60_000
+
+async function failFanout(
+  ctx: MutationCtx,
+  id: Id<"broadcasts">,
+  generation: number,
+  error: string
+) {
+  const row = await ctx.db.get("broadcasts", id)
+  if (
+    row?.status === "queued" &&
+    row.generation === generation &&
+    !(await retirement(ctx, row.organizationId))
+  )
+    await patchRow(ctx, "broadcasts", id, {
+      status: "failed",
+      settledAt: Date.now(),
+      error,
+      updatedAt: Date.now(),
+    })
+}
+
+/** One paced step, scheduling the next. The step runs as a capped nested
+    mutation, so one that throws or outgrows its caps rolls back alone and
+    fails the broadcast, as a failed workflow run did, instead of ending
+    the chain silently. */
 export const pump = internalMutation({
   args,
   returns: v.null(),
   handler: async (ctx, { id, generation }): Promise<null> => {
     try {
-      await ctx.runMutation(internal.broadcastSend.pumpStep, {
+      await ctx.runMutation(
+        internal.broadcastSend.pumpStep,
+        { id, generation },
+        { transactionLimits: STEP_LIMITS }
+      )
+    } catch (error) {
+      await failFanout(
+        ctx,
         id,
         generation,
-      })
-    } catch (error) {
-      const row = await ctx.db.get("broadcasts", id)
-      if (
-        row?.status === "queued" &&
-        row.generation === generation &&
-        !(await retirement(ctx, row.organizationId))
+        error instanceof Error ? error.message : "Broadcast failed"
       )
-        await patchRow(ctx, "broadcasts", id, {
-          status: "failed",
-          settledAt: Date.now(),
-          error: error instanceof Error ? error.message : "Broadcast failed",
-          updatedAt: Date.now(),
-        })
     }
+    return null
+  },
+})
+/** A step that failed outright (it ran out of time, say) committed nothing,
+    so it scheduled no next step and could not fail the broadcast itself.
+    The step before it scheduled this check: a step that failed or was
+    canceled fails the broadcast; one still waiting is checked again later. */
+export const watchPump = internalMutation({
+  args: { ...args, job: v.id("_scheduled_functions") },
+  returns: v.null(),
+  handler: async (ctx, { id, generation, job }): Promise<null> => {
+    const row = await ctx.db.get("broadcasts", id)
+    if (!(await fanningOut(ctx, row, generation))) return null
+    const state = (await ctx.db.system.get("_scheduled_functions", job))?.state
+    if (state?.kind === "pending" || state?.kind === "inProgress")
+      await ctx.scheduler.runAfter(WATCH_MS, internal.broadcastSend.watchPump, {
+        id,
+        generation,
+        job,
+      })
+    else if (state?.kind !== "success")
+      await failFanout(
+        ctx,
+        id,
+        generation,
+        "The send stopped before reaching everyone. Try sending again."
+      )
     return null
   },
 })
@@ -250,14 +306,20 @@ export const completed = internalMutation({
   },
 })
 
-function enqueuePump(
+async function enqueuePump(
   ctx: MutationCtx,
   id: Id<"broadcasts">,
   generation: number,
   runAfter: number
 ) {
-  return ctx.scheduler.runAfter(runAfter, internal.broadcastSend.pump, {
-    id,
-    generation,
-  })
+  const job = await ctx.scheduler.runAfter(
+    runAfter,
+    internal.broadcastSend.pump,
+    { id, generation }
+  )
+  await ctx.scheduler.runAfter(
+    runAfter + WATCH_MS,
+    internal.broadcastSend.watchPump,
+    { id, generation, job }
+  )
 }
