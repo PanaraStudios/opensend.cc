@@ -37,6 +37,6 @@
     "packages",
     ".claude",
     "test-results",
-    "services/voice-agent/.venv"
+    "services"
   ]
 }

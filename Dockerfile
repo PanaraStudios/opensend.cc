@@ -47,7 +47,10 @@ COPY docker/migrate/package.json ./docker/migrate/package.json
 RUN pnpm install --frozen-lockfile
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build
+# COPY brings in services/*, whose dependencies the app never loads (each
+# service has its own image and typecheck). pnpm's pre-run check would
+# reinstall them from the registry on every build.
+RUN pnpm --config.verify-deps-before-run=false build
 
 FROM node:22.18.0-alpine@sha256:1b2479dd35a99687d6638f5976fd235e26c5b37e8122f786fcd5fe231d63de5b AS app
 WORKDIR /app
