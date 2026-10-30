@@ -63,6 +63,7 @@ import {
   isTemplateName,
   templateProblems,
   templateVariables,
+  typedTemplateName,
   textParams,
   variableLabel,
   type ButtonType,
@@ -328,7 +329,9 @@ export function WhatsAppTemplateEditorScreen({
                       if (/^untitled_template(?:_\d+)?$/.test(templateName))
                         event.target.select()
                     }}
-                    onChange={(event) => setTemplateName(event.target.value)}
+                    onChange={(event) =>
+                      setTemplateName(typedTemplateName(event.target.value))
+                    }
                     onBlur={() => {
                       if (!nameError && templateName !== item.name)
                         commit({ name: templateName })

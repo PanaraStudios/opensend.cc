@@ -8,6 +8,7 @@ import {
   componentsParameterFormat,
   formFromComponents,
   isTemplateName,
+  typedTemplateName,
   readMetaTemplates,
   readTemplateUpdate,
   templateNameFrom,
@@ -67,6 +68,7 @@ describe("template names", () => {
     assert.equal(isTemplateName("Order confirmation"), false)
     assert.equal(isTemplateName(""), false)
     assert.equal(isTemplateName("a".repeat(513)), false)
+    assert.equal(typedTemplateName("Order update "), "order_update_")
   })
   it("makes a valid name from any text", () => {
     assert.equal(templateNameFrom("Spring Sale 2026!"), "spring_sale_2026")
