@@ -93,7 +93,7 @@ export const complete = mutation({
       .unique()
     const invitations = await ctx.db
       .query("invitation")
-      .withIndex("email", (q) => q.eq("email", user.email))
+      .withIndex("email", (q) => q.eq("email", user.email.toLowerCase()))
       .take(100)
     if (
       !member &&

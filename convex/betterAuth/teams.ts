@@ -184,7 +184,7 @@ export const snapshot = query({
     const receivedInvitations = []
     for (const i of await ctx.db
       .query("invitation")
-      .withIndex("email", (q) => q.eq("email", user.email))
+      .withIndex("email", (q) => q.eq("email", user.email.toLowerCase()))
       .take(100)) {
       if (i.status !== "pending" || i.expiresAt <= Date.now()) continue
       const org = await ctx.db.get(
@@ -485,6 +485,22 @@ export const invite = mutation({
     const email = args.email.trim().toLowerCase()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw new ConvexError("Enter a valid email")
+    const invitee = await ctx.db
+      .query("user")
+      .withIndex("email_name", (q) => q.eq("email", email))
+      .first()
+    if (
+      invitee &&
+      (await ctx.db
+        .query("member")
+        .withIndex("by_organizationId_and_userId", (q) =>
+          q.eq("organizationId", args.organizationId).eq("userId", invitee._id)
+        )
+        .unique())
+    )
+      throw new ConvexError(
+        "This person is already on the team. Change their role instead."
+      )
     const existing = await ctx.db
       .query("invitation")
       .withIndex("organizationId", (q) =>
@@ -507,8 +523,13 @@ export const invite = mutation({
       await ctx.db.patch("invitation", old._id, data)
       return { id: old._id, email }
     }
-    if (existing.length >= 100)
-      throw new ConvexError("Cancel old invitations before adding more")
+    if (existing.length >= 100) {
+      // Expired invitations cannot be accepted; make room by dropping them.
+      const expired = existing.filter((i) => i.expiresAt <= Date.now())
+      if (!expired.length)
+        throw new ConvexError("Cancel old invitations before adding more")
+      for (const i of expired) await ctx.db.delete("invitation", i._id)
+    }
     return { id: await ctx.db.insert("invitation", data), email }
   },
 })
@@ -541,7 +562,7 @@ export const respond = mutation({
     )
     if (
       !i ||
-      i.email !== user.email ||
+      i.email !== user.email.toLowerCase() ||
       i.status !== "pending" ||
       i.expiresAt <= Date.now()
     )

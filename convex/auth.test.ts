@@ -600,3 +600,86 @@ test("unlinkProviders drops SSO links and keeps the password", async () => {
   )
   expect(left.map((a) => a.providerId)).toEqual(["credential"])
 })
+
+describe("team invitations", () => {
+  test("a mixed-case account sees and accepts its invitation", async () => {
+    const t = setup()
+    const owner = await user(t, "owner@example.test")
+    const invitee = await user(t, "Mixed.Case@Example.test")
+    const organizationId = await t.mutation(api.teams.create, {
+      sessionId: owner.sessionId,
+      name: "Team",
+    })
+    const invitation = await t.mutation(api.teams.invite, {
+      sessionId: owner.sessionId,
+      organizationId,
+      email: "mixed.case@example.test",
+      role: "member",
+    })
+    const snapshot = await t.query(api.teams.snapshot, {
+      sessionId: invitee.sessionId,
+    })
+    expect(snapshot.receivedInvitations.map((i) => i.id)).toEqual([
+      invitation.id,
+    ])
+    await t.mutation(api.teams.respond, {
+      sessionId: invitee.sessionId,
+      invitationId: invitation.id,
+      accept: true,
+    })
+  })
+  test("inviting an existing member is refused", async () => {
+    const t = setup()
+    const owner = await user(t, "owner@example.test")
+    const organizationId = await t.mutation(api.teams.create, {
+      sessionId: owner.sessionId,
+      name: "Team",
+    })
+    await expect(
+      t.mutation(api.teams.invite, {
+        sessionId: owner.sessionId,
+        organizationId,
+        email: "Owner@example.test",
+        role: "admin",
+      })
+    ).rejects.toThrow("already on the team")
+  })
+  test("expired invitations do not count toward the cap", async () => {
+    const t = setup()
+    const owner = await user(t, "owner@example.test")
+    const organizationId = await t.mutation(api.teams.create, {
+      sessionId: owner.sessionId,
+      name: "Team",
+    })
+    await t.run(async (ctx) => {
+      for (let n = 0; n < 100; n++)
+        await ctx.db.insert("invitation", {
+          organizationId,
+          email: `old${n}@example.test`,
+          role: "member",
+          status: "pending",
+          createdAt: Date.now(),
+          expiresAt: n < 99 ? Date.now() - 1 : Date.now() + 10000,
+          inviterId: owner.id,
+        })
+    })
+    await t.mutation(api.teams.invite, {
+      sessionId: owner.sessionId,
+      organizationId,
+      email: "new@example.test",
+      role: "member",
+    })
+    const left = await t.run((ctx) =>
+      ctx.db
+        .query("invitation")
+        .withIndex("organizationId", (q) =>
+          q.eq("organizationId", organizationId)
+        )
+        .collect()
+    )
+    expect(left.map((i) => i.email).sort()).toEqual([
+      "new@example.test",
+      "old99@example.test",
+    ])
+  })
+})
