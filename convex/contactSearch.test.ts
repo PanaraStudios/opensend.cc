@@ -109,6 +109,10 @@ test("search by name, email, full phone and phone ending through the index", asy
   // A run of digits inside the number is the start of one of its endings.
   expect(await f.names("5552")).toEqual(["Sam"])
   expect(await f.names("0000")).toEqual([])
+  // A short run starting with 0 is an ending, not a trunk prefix to drop:
+  // Olivia's number holds "123456" but no "0123".
+  expect(await f.names("0123")).toEqual([])
+  expect(await f.names("012345")).toEqual([])
   // The unsubscribed filter is a filter field of the index.
   expect(await f.names("123456", true)).toEqual(["Olivia"])
   expect(await f.names("123456", false)).toEqual([])

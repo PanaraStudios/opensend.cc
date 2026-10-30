@@ -46,20 +46,29 @@ export const searchText = (contact: ContactSearchFields) =>
   ].join(" ")
 
 /** What the box asks for. A phone number, however it is formatted, is one
-    run of digits. Typed with a trunk "0" or an international "00", the run
-    without those zeros (`national`) is what the stored words start with;
-    the run as typed (`digits`) still matches a stored ending that starts
-    with 0 ("0123"). Anything else is words, all of which must match. */
+    run of digits (`digits`). A run that reads as a number dialled from
+    abroad ("00" and 4+ digits) or at home (a trunk "0" and 6+ digits) has
+    those zeros stripped (`national`), as stored numbers never start with
+    them. Any shorter run starting with 0 is taken as typed: it is an ending
+    such as "0123", not a prefix to drop. Anything else is words, all of
+    which must match. */
 export type ContactSearch =
   | { kind: "phone"; digits: string; national: string }
   | { kind: "words"; words: string[] }
+
+const nationalRun = (digits: string) =>
+  /^00[1-9]\d{3,}$/.test(digits)
+    ? digits.slice(2)
+    : /^0[1-9]\d{5,}$/.test(digits)
+      ? digits.slice(1)
+      : digits
 
 export function parseContactSearch(search: string): ContactSearch {
   const value = search.trim()
   if (/^\+?[\d\s().-]+$/.test(value) && /\d/.test(value)) {
     const digits = value.replace(/\D/g, "")
-    const national = value.startsWith("+") ? digits : digits.replace(/^0+/, "")
-    return { kind: "phone", digits, national: national || digits }
+    const national = value.startsWith("+") ? digits : nationalRun(digits)
+    return { kind: "phone", digits, national }
   }
   return { kind: "words", words: searchWords(value).slice(0, MAX_TERMS) }
 }

@@ -77,6 +77,22 @@ describe("parseContactSearch", () => {
       national: "0000",
     })
   })
+  it("keeps a short run that starts with 0 as typed", () => {
+    for (const run of ["0", "01", "0123", "012345", "079111", "00", "00123"])
+      assert.deepEqual(parseContactSearch(run), {
+        kind: "phone",
+        digits: run,
+        national: run,
+      })
+    assert.equal(
+      (parseContactSearch("07911 12") as { national: string }).national,
+      "791112"
+    )
+    assert.equal(
+      (parseContactSearch("0044 79") as { national: string }).national,
+      "4479"
+    )
+  })
   it("splits anything else into at most 16 words", () => {
     assert.deepEqual(parseContactSearch("Jane.Doe@Example"), {
       kind: "words",
@@ -139,6 +155,7 @@ describe("searchQuery", () => {
     ]
     const searches = [
       "0791",
+      "07911 1",
       "07911 12",
       "07911 12345",
       "07911 123456",
@@ -168,11 +185,19 @@ describe("searchQuery", () => {
     }
     // The cases that motivated the order: partly typed national numbers.
     const olivia = contacts[1]
-    for (const search of ["0791", "07911 12", "0044 7911 12"])
+    for (const search of ["07911 12", "0044 7911 12"])
       assert.ok(matchesContactSearch(parseContactSearch(search), olivia))
-    assert.ok(
-      matchesContactSearch(parseContactSearch("0123"), contacts[2]),
-      "an ending that starts with 0"
-    )
+    // An ending that starts with 0 is not widened to the digits after it.
+    const matched = (search: string) =>
+      contacts
+        .filter((contact) =>
+          matchesContactSearch(parseContactSearch(search), contact)
+        )
+        .map((contact) => contact.firstName)
+    assert.deepEqual(matched("0123"), ["Zero"])
+    assert.deepEqual(matched("01"), ["Zero"])
+    // Short runs still match the start of any stored ending.
+    assert.deepEqual(matched("55"), ["Sam", "Zero"])
+    assert.deepEqual(matched("267"), ["Sam"])
   })
 })
