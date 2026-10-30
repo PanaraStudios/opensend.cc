@@ -7,6 +7,7 @@ import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertEmailEvent } from "./emailRows"
 import { insertRow, patchRow } from "./counts"
 import { recipientPage } from "./broadcasts"
+import { MAX_STEP_RECIPIENTS } from "./broadcastSend"
 import { broadcastActions } from "../lib/dashboard/broadcast"
 import { EXPORT_SOURCES } from "./exportSources"
 import { readUnsubscribeToken } from "../lib/unsubscribe/token"
@@ -714,7 +715,7 @@ test("export source uses paginated real rows and the same status/search filters"
   expect(result.rows).toHaveLength(1)
   expect(result.rows[0][0]).toBe(id)
 })
-test("the scheduled durable workflow releases, fans out and completes through the send pool", async () => {
+test("a scheduled send releases, fans out on the paced chain and completes through the send pool", async () => {
   const f = await setup()
   const send = vi
     .spyOn(SESv2Client.prototype, "send")
@@ -738,6 +739,44 @@ test("the scheduled durable workflow releases, fans out and completes through th
   expect((await f.read(id))?.status).toBe("sent")
   expect(send).toHaveBeenCalledTimes(12)
   expect(await f.recipients(id)).toHaveLength(12)
+})
+test("email fan-out is paced at the SES region's send rate, which claim still enforces", async () => {
+  const f = await setup()
+  await f.t.run((ctx) =>
+    ctx.db.patch("sesRegions", f.region._id, {
+      quota: { ...f.region.quota, production: true, rate: 4 },
+    })
+  )
+  await f.contacts(
+    Array.from({ length: 40 }, (_, i) => ({ email: `paced${i}@example.com` }))
+  )
+  const id = await f.create()
+  await f.owner.client.mutation(api.broadcasts.send, { id })
+  const generation = (await f.read(id))!.generation
+  await f.t.mutation(internal.broadcastSend.start, { id, generation })
+  const pumps = () =>
+    f.t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+        (job) => job.name.endsWith(":pump") && job.state.kind === "pending"
+      )
+    )
+  const [first] = await pumps()
+  await f.t.run((ctx) => ctx.scheduler.cancel(first._id))
+  await f.t.mutation(internal.broadcastSend.pump, { id, generation })
+  expect(await f.recipients(id)).toHaveLength(MAX_STEP_RECIPIENTS)
+  // The next step waits for the time 32 emails take at 4 a second.
+  const [next] = await pumps()
+  expect(next.scheduledTime - Date.now()).toBe(
+    Math.ceil((MAX_STEP_RECIPIENTS * 1000) / 4)
+  )
+  // Emails keep reserving SES quota per region when they are claimed.
+  const emails = await f.t.run((ctx) => ctx.db.query("emails").collect())
+  expect(emails.every((email) => email.rateReadyAt === undefined)).toBe(true)
+  await f.t.run((ctx) => ctx.scheduler.cancel(next._id))
+  await f.t.mutation(internal.broadcastSend.pump, { id, generation })
+  expect(await f.recipients(id)).toHaveLength(40)
+  expect((await f.read(id))?.audienceDone).toBe(true)
+  expect(await pumps()).toEqual([])
 })
 test("a test email uses the current draft and leaves audience and broadcast status alone", async () => {
   const f = await setup()
@@ -783,7 +822,7 @@ test("an opt-out during the SES queue prevents delivery and is counted once", as
   expect((await f.stats(id)).suppressed).toBe(1)
   expect((await f.read(id))?.status).toBe("sent")
 })
-test("large excluded audiences rotate workflow history and still finish", async () => {
+test("large excluded audiences finish on the paced chain without sending", async () => {
   const f = await setup()
   const send = vi
     .spyOn(SESv2Client.prototype, "send")
@@ -797,16 +836,14 @@ test("large excluded audiences rotate workflow history and still finish", async 
     )
   const id = await f.create()
   await f.owner.client.mutation(api.broadcasts.send, { id })
-  let firstWorkflow: string | undefined
   for (let i = 0; i < 800 && (await f.read(id))?.status !== "sent"; i++) {
     vi.advanceTimersByTime(100)
     await f.t.finishInProgressScheduledFunctions()
-    firstWorkflow ??= (await f.read(id))?.workflowId
   }
   expect((await f.read(id))?.status).toBe("sent")
-  expect((await f.read(id))?.workflowId).not.toBe(firstWorkflow)
+  expect((await f.read(id))?.workflowId).toBeUndefined()
   expect(send).not.toHaveBeenCalled()
-}, 30_000)
+}, 120_000)
 test("search, audience/status filters, history and event counts match their pages", async () => {
   const f = await setup()
   const segmentId = await f.owner.client.mutation(api.segments.create, {

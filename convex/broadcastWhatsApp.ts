@@ -43,8 +43,11 @@ import {
 } from "../lib/meta/variables"
 import {
   createChannelMessage,
+  reserveSends,
   resolveChannelAccount,
 } from "./channels/messages"
+import { retainStepMedia, stepMedia, type StepMedia } from "./storage/media"
+import { toWaId } from "../lib/dashboard/phone"
 import { findWhatsAppIdentity } from "./channels/identity"
 import { matchesSearch } from "./lists"
 import {
@@ -145,7 +148,9 @@ export async function recipientSkipReason(
   topic: Doc<"topics"> | null,
   template?: Infer<typeof resolvedTemplateValue>,
   variables: Record<string, VariableSource> = {},
-  requirePhone = true
+  requirePhone = true,
+  /** The contact's WhatsApp identity when the caller has read it. */
+  knownIdentity?: Doc<"channelContacts"> | null
 ): Promise<Infer<typeof skipReasonValue> | null> {
   if (!contact || contact.organizationId !== row.organizationId)
     return "contact_deleted"
@@ -160,11 +165,10 @@ export async function recipientSkipReason(
   )
     return "topic_opt_out"
   if (template?.category === "MARKETING") {
-    const identity = await findWhatsAppIdentity(
-      ctx,
-      row.organizationId,
-      contact.phone!
-    )
+    const identity =
+      knownIdentity !== undefined
+        ? knownIdentity
+        : await findWhatsAppIdentity(ctx, row.organizationId, contact.phone!)
     if (identity?.marketingOptOut) return "marketing_opt_out"
   }
   if (template) {
@@ -177,15 +181,18 @@ export async function recipientSkipReason(
   return null
 }
 
-/** Ten recipients per transaction; delivery's per-number limiter does the pacing. */
-export async function sendWhatsAppRecipient(
+type MessagingTarget =
+  | NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
+  | Awaited<ReturnType<typeof resolvePageBroadcast>>
+
+/** What one recipient will get: a skip reason, or the address to send to.
+    Null when the recipient was already written (a retried or redone step). */
+async function planRecipient(
   ctx: MutationCtx,
   row: Doc<"broadcasts">,
   contact: Doc<"contacts">,
   topic: Doc<"topics"> | null,
-  target:
-    | NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
-    | Awaited<ReturnType<typeof resolvePageBroadcast>>
+  target: MessagingTarget
 ) {
   const previous = await ctx.db
     .query("broadcastRecipients")
@@ -193,10 +200,23 @@ export async function sendWhatsAppRecipient(
       q.eq("broadcastId", row._id).eq("contactId", contact._id)
     )
     .unique()
-  if (previous) return
+  if (previous) return null
   const channel = rowChannel(row)
-  const configKey = BROADCAST_CAPABILITIES[channel].configKey!
-  const config = row[configKey]!
+  const config = row[BROADCAST_CAPABILITIES[channel].configKey!]!
+  // Read once: for the marketing opt-out here and for the send's thread.
+  const identity =
+    !isPageChannel(channel) &&
+    contact.phone &&
+    contact.organizationId === row.organizationId
+      ? {
+          externalId: toWaId(contact.phone),
+          identity: await findWhatsAppIdentity(
+            ctx,
+            row.organizationId,
+            contact.phone
+          ),
+        }
+      : undefined
   let reason = await recipientSkipReason(
     ctx,
     row,
@@ -204,7 +224,8 @@ export async function sendWhatsAppRecipient(
     topic,
     "template" in target ? target.template : undefined,
     config.variables,
-    !isPageChannel(channel)
+    !isPageChannel(channel),
+    identity?.identity
   )
   const pageRecipient =
     !reason && isPageChannel(channel)
@@ -217,6 +238,25 @@ export async function sendWhatsAppRecipient(
         )
       : null
   reason = reason ?? pageRecipient?.reason ?? null
+  return {
+    contact,
+    config,
+    identity,
+    reason,
+    to: pageRecipient?.to ?? contact.phone!,
+  }
+}
+
+/** Writes a planned recipient: its queued message (unless skipped) and its
+    recipient row, the idempotency key, in the same transaction. */
+async function commitRecipient(
+  ctx: MutationCtx,
+  row: Doc<"broadcasts">,
+  plan: NonNullable<Awaited<ReturnType<typeof planRecipient>>>,
+  target: MessagingTarget,
+  step?: { readyAt?: number; media?: StepMedia }
+) {
+  const { contact, config, reason } = plan
   const variables = resolveVariables(config.variables, contact)
   const messageId = reason
     ? undefined
@@ -225,7 +265,7 @@ export async function sendWhatsAppRecipient(
         {
           channel: target.account.channel,
           from: target.account._id,
-          to: pageRecipient?.to ?? contact.phone!,
+          to: plan.to,
           body: {
             type: "template",
             template: { id: config.templateId, variables },
@@ -235,6 +275,19 @@ export async function sendWhatsAppRecipient(
           organizationId: row.organizationId,
           source: "broadcast",
           broadcastId: row._id,
+          ...(step
+            ? {
+                prepared: {
+                  account: target.account,
+                  ...("template" in target
+                    ? { template: target.template }
+                    : {}),
+                  readyAt: step.readyAt,
+                  media: step.media,
+                  identity: plan.identity,
+                },
+              }
+            : {}),
         }
       )
   await insertRow(ctx, "broadcastRecipients", {
@@ -249,6 +302,61 @@ export async function sendWhatsAppRecipient(
     settled: !!reason,
     failed: false,
   })
+  return !!messageId
+}
+
+/** One recipient on its own, resolving everything per send. */
+export async function sendWhatsAppRecipient(
+  ctx: MutationCtx,
+  row: Doc<"broadcasts">,
+  contact: Doc<"contacts">,
+  topic: Doc<"topics"> | null,
+  target: MessagingTarget
+) {
+  const plan = await planRecipient(ctx, row, contact, topic, target)
+  return plan ? await commitRecipient(ctx, row, plan, target) : false
+}
+
+/** A broadcast step's recipients. The step resolved the account and
+    template once (`target`); this plans every recipient, reserves exactly
+    the sends it will queue on the number's limiter in one write, then
+    writes them. `more` says whether the transaction has room for another
+    recipient; the step redoes the rest of its page next time. */
+export async function sendMessagingRecipients(
+  ctx: MutationCtx,
+  row: Doc<"broadcasts">,
+  contacts: Doc<"contacts">[],
+  topic: Doc<"topics"> | null,
+  target: MessagingTarget,
+  more: () => Promise<boolean>
+) {
+  const plans = []
+  const seen = new Set<Doc<"contacts">["_id"]>()
+  for (const contact of contacts) {
+    plans.push(
+      seen.has(contact._id)
+        ? null
+        : await planRecipient(ctx, row, contact, topic, target)
+    )
+    seen.add(contact._id)
+  }
+  const sending = plans.filter((plan) => plan && !plan.reason).length
+  const slots = await reserveSends(ctx, target.account, sending)
+  const media = stepMedia()
+  let slot = 0,
+    written = 0,
+    queued = 0
+  for (const plan of plans) {
+    if (plan) {
+      const readyAt = plan.reason ? undefined : slots?.[slot++]
+      if (await commitRecipient(ctx, row, plan, target, { readyAt, media }))
+        queued++
+    }
+    written++
+    if (written < plans.length && !(await more())) break
+  }
+  await retainStepMedia(ctx, media)
+  return { written, queued, readyAt: slots?.at(-1) }
 }
 
 const scope = { organizationId: v.string(), id: v.id("broadcasts") }

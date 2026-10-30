@@ -1,4 +1,4 @@
-import { requireEmailConfigured } from "./access"
+import { findRegion, requireEmailConfigured } from "./access"
 import { ConvexError } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
@@ -104,14 +104,14 @@ export async function sendEmailRecipient(
 ) {
   const id = row._id
   const email = contact.email
-  if (!email) return
+  if (!email) return false
   const previous = await ctx.db
     .query("broadcastRecipients")
     .withIndex("by_broadcastId_and_email", (q) =>
       q.eq("broadcastId", id).eq("email", email)
     )
     .unique()
-  if (previous) return
+  if (previous) return false
   prepared.linksContext ??= await unsubscribeContext(ctx)
   const links = await unsubscribeLinks(
     ctx,
@@ -181,4 +181,16 @@ export async function sendEmailRecipient(
     settled: false,
     failed: false,
   })
+  return true
+}
+
+/** Messages per second the step's sending region takes: its SES send
+    rate, which the send pipeline's limiter also enforces at claim. */
+export async function emailSendRate(
+  ctx: QueryCtx,
+  prepared: Awaited<ReturnType<typeof prepareEmailBroadcast>>
+) {
+  const [sender] = prepared.senders.values()
+  const region = sender ? await findRegion(ctx, sender.binding.region) : null
+  return Math.max(1, region?.quota.rate ?? 1)
 }

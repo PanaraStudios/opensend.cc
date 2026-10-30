@@ -6,7 +6,7 @@ import {
 } from "@convex-dev/workflow"
 import { v } from "convex/values"
 import { components, internal } from "./_generated/api"
-import type { Id } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import { internalMutation, type MutationCtx } from "./_generated/server"
 import { patchRow } from "./counts"
 import { audience, recipientPage } from "./broadcasts"
@@ -42,10 +42,12 @@ export const start = internalMutation({
       scheduledJob: undefined,
       audienceBefore: newest?._creationTime ?? Date.now(),
     })
-    await startWorkflow(ctx, id, generation)
+    await enqueuePump(ctx, id, generation, 0)
     return null
   },
 })
+/** Legacy: a broadcast that started on the durable workflow finishes its
+    current run, then `completed` hands it to the pump. */
 export const execute = workflow.define({
   args,
   returns: v.null(),
@@ -56,42 +58,156 @@ export const execute = workflow.define({
     return null
   },
 })
+
+/* Fan-out. One `pump` step writes up to `MAX_STEP_RECIPIENTS` recipients
+   (each recipient row and its queued message or email in the step's
+   transaction, so a retried or repeated step never sends twice: the
+   recipient row is the idempotency key), then schedules the next step
+   after the time its messages take at the sender's rate: the WhatsApp
+   number's or Page's throughput, or the SES region's send rate. Delivery
+   still runs behind the same per-sender limiters; pacing the fan-out to
+   them keeps the send queue to about one step instead of the whole
+   audience. */
+
+/** Most recipients one step writes. A WhatsApp recipient costs about 60
+    document reads and 30 writes (its message, events, thread and the
+    aggregates; measured in broadcastFanout.test.ts); `RESERVE` ends a step
+    early if recipients cost more. */
+export const MAX_STEP_RECIPIENTS = 32
+/** Stop a step early (and finish its page next step) below these. */
+const RESERVE = {
+  databaseQueries: 400,
+  documentsRead: 4_000,
+  documentsWritten: 2_000,
+  bytesRead: 2 * 1024 * 1024,
+  bytesWritten: 2 * 1024 * 1024,
+}
+
+async function hasRoom(ctx: MutationCtx) {
+  const metrics = await ctx.meta.getTransactionMetrics()
+  return (Object.keys(RESERVE) as (keyof typeof RESERVE)[]).every(
+    (key) => metrics[key].remaining >= RESERVE[key]
+  )
+}
+
+/** Whether the row is still fanning out under this generation. */
+async function fanningOut(
+  ctx: MutationCtx,
+  row: Doc<"broadcasts"> | null,
+  generation: number
+): Promise<boolean> {
+  return (
+    !!row &&
+    row.generation === generation &&
+    row.status === "queued" &&
+    !row.audienceDone &&
+    !(await retirement(ctx, row.organizationId))
+  )
+}
+
+/** One step from the cursor on the row. Returns whether the audience is
+    done and how long the sender needs for what the step queued. */
+export async function sendStep(ctx: MutationCtx, row: Doc<"broadcasts">) {
+  const topic = await audience(ctx, row)
+  const channel = broadcastChannels[rowChannel(row)]
+  const prepared = await channel.prepare(ctx, row)
+  // A number gets at most a second of its throughput per step, so the
+  // step's sends fit its limiter's bucket in one reservation.
+  const size =
+    prepared.channel === "email"
+      ? MAX_STEP_RECIPIENTS
+      : Math.min(MAX_STEP_RECIPIENTS, await channel.rate(ctx, prepared))
+  const page = await recipientPage(
+    ctx,
+    row,
+    row.cursor ?? null,
+    row.audienceBefore,
+    size,
+    true,
+    topic
+  )
+  const sent = await channel.sendRecipients(
+    ctx,
+    row,
+    page.page,
+    topic,
+    prepared,
+    () => hasRoom(ctx)
+  )
+  // A step cut short keeps its cursor: the next one redoes the page,
+  // skipping the recipients already written.
+  const complete = sent.written === page.page.length
+  if (complete) {
+    await patchRow(ctx, "broadcasts", row._id, {
+      cursor: page.continueCursor,
+      audienceDone: page.isDone,
+    })
+    if (page.isDone) {
+      await finishBroadcast(ctx, row._id)
+      await scheduleBroadcastSettle(ctx, row._id)
+    }
+  }
+  const now = Date.now()
+  const paced = sent.queued
+    ? Math.ceil((sent.queued * 1000) / (await channel.rate(ctx, prepared)))
+    : 0
+  return {
+    done: complete && page.isDone,
+    queued: sent.queued,
+    // A number busy with other sends reserved later slots: wait for them.
+    delay: Math.max(paced, (sent.readyAt ?? now) - now),
+  }
+}
+
+/** One step, as the legacy workflow and tests drive it. */
 export const batch = internalMutation({
   args,
   returns: v.boolean(),
   handler: async (ctx, { id, generation }): Promise<boolean> => {
     const row = await ctx.db.get("broadcasts", id)
-    if (
-      !row ||
-      row.generation !== generation ||
-      row.status !== "queued" ||
-      row.audienceDone ||
-      (await retirement(ctx, row.organizationId))
-    )
-      return true
-    const topic = await audience(ctx, row)
-    const page = await recipientPage(
-      ctx,
-      row,
-      row.cursor ?? null,
-      row.audienceBefore,
-      10,
-      true,
-      topic
-    )
-    const channel = broadcastChannels[rowChannel(row)]
-    const prepared = await channel.prepare(ctx, row)
-    for (const contact of page.page)
-      await channel.sendRecipient(ctx, row, contact, topic, prepared)
-    await patchRow(ctx, "broadcasts", id, {
-      cursor: page.continueCursor,
-      audienceDone: page.isDone,
-    })
-    if (page.isDone) {
-      await finishBroadcast(ctx, id)
-      await scheduleBroadcastSettle(ctx, id)
+    if (!row || !(await fanningOut(ctx, row, generation))) return true
+    return (await sendStep(ctx, row)).done
+  },
+})
+
+/** One paced step, scheduling the next. The step runs as a nested
+    mutation, so one that throws rolls back alone and fails the broadcast,
+    as a failed workflow run did, instead of ending the chain silently. */
+export const pump = internalMutation({
+  args,
+  returns: v.null(),
+  handler: async (ctx, { id, generation }): Promise<null> => {
+    try {
+      await ctx.runMutation(internal.broadcastSend.pumpStep, {
+        id,
+        generation,
+      })
+    } catch (error) {
+      const row = await ctx.db.get("broadcasts", id)
+      if (
+        row?.status === "queued" &&
+        row.generation === generation &&
+        !(await retirement(ctx, row.organizationId))
+      )
+        await patchRow(ctx, "broadcasts", id, {
+          status: "failed",
+          settledAt: Date.now(),
+          error: error instanceof Error ? error.message : "Broadcast failed",
+          updatedAt: Date.now(),
+        })
     }
-    return page.isDone
+    return null
+  },
+})
+export const pumpStep = internalMutation({
+  args,
+  returns: v.null(),
+  handler: async (ctx, { id, generation }): Promise<null> => {
+    const row = await ctx.db.get("broadcasts", id)
+    if (!row || !(await fanningOut(ctx, row, generation))) return null
+    const step = await sendStep(ctx, row)
+    if (!step.done) await enqueuePump(ctx, id, generation, step.delay)
+    return null
   },
 })
 export const completed = internalMutation({
@@ -128,26 +244,20 @@ export const completed = internalMutation({
       !row.audienceDone &&
       row.generation === context.generation
     )
-      await startWorkflow(ctx, row._id, row.generation)
+      await enqueuePump(ctx, row._id, row.generation, 0)
     await cleanup(ctx, components.workflow, workflowId)
     return null
   },
 })
 
-async function startWorkflow(
+function enqueuePump(
   ctx: MutationCtx,
   id: Id<"broadcasts">,
-  generation: number
+  generation: number,
+  runAfter: number
 ) {
-  const workflowId = await workflow.start(
-    ctx,
-    internal.broadcastSend.execute,
-    { id, generation },
-    {
-      startAsync: true,
-      onComplete: internal.broadcastSend.completed,
-      context: { id, generation },
-    }
-  )
-  await patchRow(ctx, "broadcasts", id, { workflowId })
+  return ctx.scheduler.runAfter(runAfter, internal.broadcastSend.pump, {
+    id,
+    generation,
+  })
 }
