@@ -351,6 +351,25 @@ export const channelTables = {
       "reactionTargetExternalId",
       "observedAt",
     ]),
+  /** Meta media ids of stored files a number already uploaded (template
+      headers, attachments), so each send reuses the upload instead of
+      uploading the same bytes again. Meta keeps an upload for 30 days. */
+  channelMediaCache: defineTable({
+    organizationId: v.string(),
+    accountId: v.id("channelAccounts"),
+    fileId: v.id("storedFiles"),
+    /** The file's bytes when uploaded; a replaced file uploads again. */
+    storageId: v.id("_storage"),
+    mediaId: v.string(),
+    expiresAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_accountId_and_fileId_and_storageId", [
+      "accountId",
+      "fileId",
+      "storageId",
+    ])
+    .index("by_expiresAt", ["expiresAt"]),
   channelMediaUploads: defineTable({
     organizationId: v.string(),
     accountId: v.id("channelAccounts"),
@@ -375,6 +394,9 @@ export const channelTables = {
     rendered: v.optional(renderedTemplateValue),
     /** A message carries at most a few files. */
     media: v.optional(v.array(channelMediaValue)),
+    /** The Meta media ids the accepted send used for its stored files, so a
+        later media failure drops only those cached uploads. */
+    sentMediaIds: v.optional(v.array(v.string())),
   }).index("by_messageId", ["messageId"]),
   /** The message's timeline; status webhooks append to it. */
   channelMessageEvents: defineTable({

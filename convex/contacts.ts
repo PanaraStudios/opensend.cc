@@ -248,7 +248,12 @@ export const identities = query({
     v.object({
       identity: schema.doc("channelContacts"),
       accounts: v.array(
-        v.object({ id: v.id("channelAccounts"), name: v.string() })
+        v.object({
+          id: v.id("channelAccounts"),
+          name: v.string(),
+          /** Still connected, so it can send and call. */
+          live: v.boolean(),
+        })
       ),
     })
   ),
@@ -298,7 +303,11 @@ export const identities = query({
                 account !== null &&
                 account.organizationId === contact.organizationId
             )
-            .map((account) => ({ id: account._id, name: account.displayName })),
+            .map((account) => ({
+              id: account._id,
+              name: account.displayName,
+              live: account.disconnectedAt === undefined,
+            })),
         }
       })
     )
