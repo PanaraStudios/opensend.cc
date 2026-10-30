@@ -197,6 +197,108 @@ test("IVR REST CRUD, idempotency, dry-run validation and tenant isolation", asyn
   expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
   expect((await f.request(`/ivrs/${f.ivr.id}`)).status).toBe(404)
 })
+test("IVRs and voice bots that reference each other cannot be deleted, and bot handoffs must name a team IVR", async () => {
+  const f = await setup()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "References",
+      key: "fixture-key",
+    })
+  ).json()
+  const bot = (body: Record<string, unknown>) =>
+    f.request("/voice-bots", "POST", {
+      provider: "gemini",
+      credentialId: credential.id,
+      ...body,
+    })
+  for (const ivrId of ["not-an-id", f.callId]) {
+    const rejected = await bot({
+      name: "Bad handoff",
+      tools: ["transfer_to_ivr"],
+      handoff: { agents: false, ivrId },
+    })
+    expect(rejected.status).toBe(404)
+  }
+  const foreignIvr = await f.t.run((ctx) =>
+    ctx.db.insert("ivrs", {
+      organizationId: f.outsider.team,
+      name: "Elsewhere",
+      language: "en",
+      entryMenuId: "main",
+      menus: [
+        {
+          id: "main",
+          name: "Main",
+          prompt: { kind: "tts", text: "Hello" },
+          options: {},
+          noInputAction: { kind: "hangup" },
+          failureAction: { kind: "hangup" },
+          timeoutSeconds: 5,
+          retries: 1,
+          maxDigits: 1,
+        },
+      ],
+      webhookSecret: "unused",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  )
+  expect(
+    (
+      await bot({
+        name: "Foreign handoff",
+        tools: ["transfer_to_ivr"],
+        handoff: { agents: false, ivrId: foreignIvr },
+      })
+    ).status
+  ).toBe(404)
+  const handoff = await (
+    await bot({
+      name: "Handoff",
+      tools: ["transfer_to_ivr"],
+      handoff: { agents: false, ivrId: f.ivr.id },
+    })
+  ).json()
+  const routed = await (await bot({ name: "Routed" })).json()
+  // An IVR option routing to the bot blocks deleting it.
+  const menu = {
+    ...f.definition.menus[0],
+    options: { "1": { kind: "bot", botId: routed.id } },
+  }
+  expect(
+    (await f.request(`/ivrs/${f.ivr.id}`, "PATCH", { menus: [menu] })).status
+  ).toBe(200)
+  const blocked = await f.request(`/voice-bots/${routed.id}`, "DELETE")
+  expect(blocked.status).toBe(409)
+  expect(await blocked.json()).toMatchObject({ name: "bot_in_use" })
+  expect(
+    (
+      await f.request(`/ivrs/${f.ivr.id}`, "PATCH", {
+        menus: f.definition.menus,
+      })
+    ).status
+  ).toBe(200)
+  expect((await f.request(`/voice-bots/${routed.id}`, "DELETE")).status).toBe(
+    200
+  )
+  // A bot handing off to the IVR blocks deleting the IVR.
+  await f.t.run(async (ctx) => {
+    const settings = await ctx.db
+      .query("callingSettings")
+      .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+      .unique()
+    await ctx.db.patch("callingSettings", settings!._id, {
+      routing: { kind: "agents" },
+    })
+  })
+  expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(422)
+  expect((await f.request(`/voice-bots/${handoff.id}`, "DELETE")).status).toBe(
+    200
+  )
+  expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
+})
+
 test("malformed gateway ids are a 404, not a retryable 503", async () => {
   const f = await setup()
   expect(

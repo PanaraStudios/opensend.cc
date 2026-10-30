@@ -26,8 +26,12 @@ import { encryptSecret } from "../secrets"
 import { idempotent } from "../api/idempotency"
 import schema from "../schema"
 import { validateBot } from "../../lib/voice-bots"
+import { ivrRoutesToBot } from "../../lib/ivr-bot-references"
 import { pickerArgs, pickerRows } from "../pickerOptions"
 import { voiceProvider } from "../tables/voice"
+import { own as ownedIvr } from "../ivr/definitions"
+/** IVRs checked for actions routing to a bot before the bot is deleted. */
+const IVR_REFERENCE_SCAN = 200
 export const actor = {
   organizationId: v.string(),
   caller: v.optional(callerValue),
@@ -229,6 +233,11 @@ export const save = internalMutation({
     } catch {
       throw invalid("Invalid voice bot configuration")
     }
+    // A handoff to another team's (or a deleted) IVR fails only mid-call.
+    if (config.handoff?.ivrId)
+      config.handoff.ivrId = (
+        await ownedIvr(ctx, args.organizationId, config.handoff.ivrId)
+      )._id
     for (const id of config.knowledgeBaseIds ?? [])
       await ownedToolkit(ctx, "knowledgeBases", args.organizationId, id)
     for (const id of config.customToolIds ?? [])
@@ -425,6 +434,21 @@ export const remove = internalMutation({
           409,
           "bot_in_use",
           "Remove number routing before deleting this bot"
+        )
+      // Bounded to the team's newest IVRs, so a team with very many IVRs can
+      // still delete bots; menus routing to a missing bot fail at call time.
+      const ivrs = await ctx.db
+        .query("ivrs")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId)
+        )
+        .order("desc")
+        .take(IVR_REFERENCE_SCAN)
+      if (ivrs.some((ivr) => ivrRoutesToBot(ivr, row._id)))
+        throw apiError(
+          409,
+          "bot_in_use",
+          "Remove IVR actions routing to this bot before deleting it"
         )
       await ctx.db.delete("voiceBots", row._id)
     }

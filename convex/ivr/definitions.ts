@@ -273,6 +273,17 @@ async function writeDefinition(
         throw invalid(
           "Remove this IVR from calling settings before deleting it."
         )
+      // Nor bots whose transfer_to_ivr would then fail mid-call.
+      const handoff = await ctx.db
+        .query("voiceBots")
+        .withIndex("by_handoff_ivrId", (q) =>
+          q.eq("handoff.ivrId", row!._id)
+        )
+        .first()
+      if (handoff)
+        throw invalid(
+          "Remove this IVR from voice bot handoffs before deleting it."
+        )
       await ctx.db.delete("ivrs", row!._id)
       return { object: "ivr", id: row!._id, deleted: true }
     }
