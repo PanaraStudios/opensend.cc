@@ -9,12 +9,12 @@ import type { Doc } from "./_generated/dataModel"
 import { internalMutation, query, type MutationCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { requireTeam } from "./access"
+import { teamRow as findTeamRow } from "./lists"
 import { retirement } from "./teamLifecycle"
 import {
   BATCH,
   MEMBERSHIP_BATCH,
   listProperties,
-  teamRow,
   upsertContact,
   setTopicChoices,
 } from "./audience"
@@ -32,6 +32,8 @@ export function importCounts(
   const failed = row.failedCount ?? 0
   return { ...row.result, skipped: row.result.skipped - failed, failed }
 }
+export const SEGMENT_DELETED =
+  "A segment was deleted during the import, so later contacts were not added to it."
 
 export const get = query({
   args: { id: v.id("contactImports") },
@@ -61,8 +63,17 @@ export const step = internalMutation({
       await deleteRow(ctx, "contactImports", id)
       return null
     }
+    const result = importCounts(job)
+    // A segment deleted mid-import is dropped; the import itself goes on.
+    const segmentIds = []
     for (const segmentId of job.segmentIds)
-      await teamRow(ctx, "segments", job.organizationId, segmentId)
+      if (await findTeamRow(ctx, "segments", job.organizationId, segmentId))
+        segmentIds.push(segmentId)
+    if (
+      segmentIds.length < job.segmentIds.length &&
+      !result.errors.includes(SEGMENT_DELETED)
+    )
+      result.errors.push(SEGMENT_DELETED)
     const properties = await listProperties(ctx, job.organizationId)
     // Each contact's memberships past its own share join in scheduled steps.
     const size = Math.min(
@@ -71,12 +82,11 @@ export const step = internalMutation({
         1,
         Math.floor(
           MEMBERSHIP_BATCH /
-            Math.max(1, job.segmentIds.length + (job.topics?.length ?? 0))
+            Math.max(1, segmentIds.length + (job.topics?.length ?? 0))
         )
       )
     )
     const end = Math.min(offset + size, job.contacts.length)
-    const result = importCounts(job)
     let failedCount = job.failedCount ?? 0
     for (const contact of job.contacts.slice(offset, end)) {
       try {
@@ -84,7 +94,7 @@ export const step = internalMutation({
         const outcome = await ctx.runMutation(internal.contactImports.one, {
           organizationId: job.organizationId,
           contact,
-          segmentIds: job.segmentIds,
+          segmentIds,
           skipExisting: job.skipExisting,
           topics: job.topics,
           properties: properties.map(({ key, type }) => ({ key, type })),
@@ -101,6 +111,7 @@ export const step = internalMutation({
     const done = end === job.contacts.length
     await patchRow(ctx, "contactImports", id, {
       offset: end,
+      segmentIds,
       result,
       failedCount,
       ...(done ? { completedAt: Date.now() } : {}),

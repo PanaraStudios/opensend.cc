@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { api, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { EXPORT_SOURCES } from "./exportSources"
+import { SEGMENT_DELETED } from "./contactImports"
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
@@ -259,6 +260,49 @@ test("REST CSV accepts a mapped phone column without an email column", async () 
     phone: "+14155552671",
     first_name: "Ada",
   })
+})
+
+test("an import keeps going when its segment is deleted and says so", async () => {
+  const f = await setup()
+  const [segmentId, kept, other] = await Promise.all(
+    ["Leads", "Kept", "Other"].map((name) =>
+      f.owner.client.mutation(api.segments.create, {
+        organizationId: f.organizationId,
+        name,
+      })
+    )
+  )
+  const contacts = Array.from({ length: 100 }, (_, n) => ({
+    email: `lead${n}@example.test`,
+  }))
+  const { jobId } = await f.owner.client.mutation(api.contacts.upsert, {
+    organizationId: f.organizationId,
+    contacts,
+    segmentIds: [segmentId, kept, other],
+    csvImport: true,
+  })
+  // Three segments share one step's membership budget: 66 contacts a step.
+  await f.t.mutation(internal.contactImports.step, { id: jobId!, offset: 0 })
+  await f.owner.client.mutation(api.segments.remove, { id: segmentId })
+  await f.t.mutation(internal.contactImports.step, { id: jobId!, offset: 66 })
+  const job = await f.owner.client.query(api.contactImports.get, {
+    id: jobId!,
+  })
+  expect(job).toMatchObject({
+    status: "completed",
+    result: { created: 100, skipped: 0, failed: 0 },
+  })
+  expect(job?.result.errors).toEqual([SEGMENT_DELETED])
+  const members = await f.t.run((ctx) =>
+    ctx.db
+      .query("segmentMembers")
+      .withIndex("by_segmentId", (q) => q.eq("segmentId", segmentId))
+      .collect()
+  )
+  expect(members).toEqual([])
+  expect(
+    await f.owner.client.query(api.segments.get, { id: kept })
+  ).toMatchObject({ memberCount: 100 })
 })
 
 test("imports stored before the failed count read invalid rows apart", async () => {
