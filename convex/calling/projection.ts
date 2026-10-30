@@ -282,7 +282,8 @@ async function lifecycle(
     row = (await ctx.db.get("calls", id))!
   }
   if (duplicate) {
-    await ctx.db.patch("calls", row._id, {
+    // Meta redelivers events; a repeat that adds nothing writes nothing.
+    await patchIfChanged(ctx, "calls", row, {
       ...links,
       ...(userId && !row.userId ? { userId } : {}),
       ...(phone && direction === "inbound" && !row.from

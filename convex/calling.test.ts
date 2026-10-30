@@ -140,6 +140,84 @@ test("the Meta and calling projectors never write the same document", async () =
     [{ wacid: "wacid.untouched", status: "completed" }]
   )
 })
+test("a redelivered call webhook writes nothing", async () => {
+  const f = await setup(),
+    now = Math.floor(Date.now() / 1000)
+  const call = { id: "wacid.redelivered", from_user_id: BSUID }
+  await f.project(
+    f.webhook([
+      {
+        ...call,
+        event: "connect",
+        direction: "USER_INITIATED",
+        timestamp: String(now),
+        session: { sdp_type: "offer", sdp: SDP },
+      },
+    ])
+  )
+  const ended = await f.project(
+    f.webhook([
+      {
+        ...call,
+        event: "terminate",
+        direction: "USER_INITIATED",
+        timestamp: String(now + 30),
+        status: ["COMPLETED"],
+        start_time: String(now),
+        end_time: String(now + 30),
+        duration: 30,
+      },
+    ])
+  )
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  const before = await f.t.run(async (ctx) => ({
+    calls: await ctx.db.query("calls").collect(),
+    identities: await ctx.db.query("channelContacts").collect(),
+    aliases: await ctx.db.query("whatsappUserAliases").collect(),
+    threads: await ctx.db.query("conversations").collect(),
+  }))
+  // The call, its identity, BSUID alias and thread all hold these values
+  // already, so every patch on the way is skipped.
+  await f.t.run((ctx) =>
+    ctx.runMutation(
+      internal.calling.projection.project,
+      { id: ended._id },
+      { transactionLimits: { documentsWritten: 0 } }
+    )
+  )
+  expect(
+    await f.t.run(async (ctx) => ({
+      calls: await ctx.db.query("calls").collect(),
+      identities: await ctx.db.query("channelContacts").collect(),
+      aliases: await ctx.db.query("whatsappUserAliases").collect(),
+      threads: await ctx.db.query("conversations").collect(),
+    }))
+  ).toEqual(before)
+})
+test("a status from a known BSUID user rewrites neither its alias nor its identity", async () => {
+  const f = await setup()
+  const written = await f.t.run(async (ctx) => {
+    const account = (await ctx.db.get("channelAccounts", f.account))!
+    const { channelContactId } = await upsertChannelThread(ctx, account, {
+      externalId: BSUID,
+      userId: BSUID,
+      at: Date.now(),
+      preview: "Hi",
+      direction: "outbound",
+    })
+    await recordWhatsAppUser(ctx, account, channelContactId, BSUID, {
+      parentUserId: "US.parent",
+    })
+    const first = (await ctx.meta.getTransactionMetrics()).documentsWritten.used
+    await recordWhatsAppUser(ctx, account, channelContactId, BSUID, {
+      parentUserId: "US.parent",
+    })
+    return (
+      (await ctx.meta.getTransactionMetrics()).documentsWritten.used - first
+    )
+  })
+  expect(written).toBe(0)
+})
 test("ingest wakes the calling projector only for bodies it can act on", async () => {
   const f = await setup()
   const scheduled = async (body: unknown) => {
