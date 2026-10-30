@@ -165,7 +165,18 @@ test.each(["whatsapp", "messenger"] as const)(
         paginationOpts: page,
       })
       expect(identities.page[0].accounts).toEqual([
-        { id: accountId, name: "Lucky Shrub" },
+        { id: accountId, name: "Lucky Shrub", live: true },
+      ])
+      // A disconnected number can no longer place calls from the contact.
+      await f.t.run((ctx) =>
+        ctx.db.patch("channelAccounts", accountId, { disconnectedAt: 1 })
+      )
+      const disconnected = await f.owner.client.query(
+        api.contacts.identities,
+        { id: ids.contactId, paginationOpts: page }
+      )
+      expect(disconnected.page[0].accounts).toEqual([
+        { id: accountId, name: "Lucky Shrub", live: false },
       ])
     }
   }
