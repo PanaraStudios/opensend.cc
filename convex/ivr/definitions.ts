@@ -277,7 +277,11 @@ async function writeDefinition(
       // Nor bots whose transfer_to_ivr would then fail mid-call.
       const handoff = await ctx.db
         .query("voiceBots")
-        .withIndex("by_handoff_ivrId", (q) => q.eq("handoff.ivrId", row!._id))
+        .withIndex("by_organizationId_and_handoff_ivrId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("handoff.ivrId", row!._id)
+        )
         .first()
       if (handoff)
         throw invalid(

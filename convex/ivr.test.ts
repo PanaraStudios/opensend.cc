@@ -360,6 +360,63 @@ test("IVRs saved before bot references existed are backfilled and then block del
   expect((await f.request(`/voice-bots/${bot.id}`, "DELETE")).status).toBe(200)
 })
 
+test("another team's bot cannot block deleting an IVR, and a bot whose handoff IVR is gone stays editable", async () => {
+  const f = await setup()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "Scope",
+      key: "fixture-key",
+    })
+  ).json()
+  const bot = await (
+    await f.request("/voice-bots", "POST", {
+      name: "Plain",
+      provider: "gemini",
+      credentialId: credential.id,
+    })
+  ).json()
+  await f.t.run(async (ctx) => {
+    const row = (await ctx.db.get("voiceBots", bot.id))!
+    const { _id, _creationTime, ...fields } = row
+    void _id
+    void _creationTime
+    // Another team's bot that names this IVR (saved before handoffs were checked).
+    await ctx.db.insert("voiceBots", {
+      ...fields,
+      organizationId: f.outsider.team,
+      handoff: { agents: false, ivrId: f.ivr.id },
+    })
+    await ctx.db.patch(
+      "callingSettings",
+      (await ctx.db
+        .query("callingSettings")
+        .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+        .unique())!._id,
+      { routing: { kind: "agents" } }
+    )
+  })
+  expect((await f.request(`/ivrs/${f.ivr.id}`, "DELETE")).status).toBe(200)
+  // This team's bot pointing at the now-deleted IVR still saves other edits.
+  await f.t.run((ctx) =>
+    ctx.db.patch("voiceBots", bot.id, {
+      handoff: { agents: false, ivrId: f.ivr.id },
+    })
+  )
+  expect(
+    (await f.request(`/voice-bots/${bot.id}`, "PATCH", { name: "Renamed" }))
+      .status
+  ).toBe(200)
+  // Sending the dangling handoff again is still rejected.
+  expect(
+    (
+      await f.request(`/voice-bots/${bot.id}`, "PATCH", {
+        handoff: { agents: false, ivrId: f.ivr.id },
+      })
+    ).status
+  ).toBe(404)
+})
+
 test("malformed gateway ids are a 404, not a retryable 503", async () => {
   const f = await setup()
   expect(

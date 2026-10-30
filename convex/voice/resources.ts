@@ -234,7 +234,9 @@ export const save = internalMutation({
       throw invalid("Invalid voice bot configuration")
     }
     // A handoff to another team's (or a deleted) IVR fails only mid-call.
-    if (config.handoff?.ivrId)
+    // Only a handoff this save sends is checked, so a bot whose IVR was
+    // deleted before this check existed can still be edited.
+    if (args.input.handoff !== undefined && config.handoff?.ivrId)
       config.handoff.ivrId = (
         await ownedIvr(ctx, args.organizationId, config.handoff.ivrId)
       )._id

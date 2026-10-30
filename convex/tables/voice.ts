@@ -117,7 +117,10 @@ export const voiceTables = {
     .index("by_stt_credentialId", ["stt.credentialId"])
     .index("by_llm_credentialId", ["llm.credentialId"])
     .index("by_tts_credentialId", ["tts.credentialId"])
-    .index("by_handoff_ivrId", ["handoff.ivrId"]),
+    .index("by_organizationId_and_handoff_ivrId", [
+      "organizationId",
+      "handoff.ivrId",
+    ]),
   callTranscripts: defineTable({
     organizationId: v.string(),
     callId: v.id("calls"),
