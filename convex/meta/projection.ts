@@ -1,10 +1,11 @@
 import { v } from "convex/values"
 import { internalMutation, type MutationCtx } from "../_generated/server"
-import type { Doc } from "../_generated/dataModel"
+import type { Doc, Id } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { normalizePhone, fromWaId } from "../../lib/dashboard/phone"
 import { patchContact } from "../audience"
 import { insertRow, patchRow } from "../counts"
+import { patchIfChanged } from "../patchIfChanged"
 import { upsertChannelThread, recordWhatsAppUser } from "../channels/identity"
 import { broadcastMessageMetric } from "../broadcastMetrics"
 import { emitEvent } from "../events"
@@ -196,8 +197,13 @@ async function receive(
               .eq("externalId", nextPhone.slice(1))
         )
         .first()
-      if (!existingIdentity || existingIdentity._id === channelContactId)
-        await ctx.db.patch("channelContacts", channelContactId, {
+      const identity = existingIdentity
+        ? existingIdentity._id === channelContactId
+          ? existingIdentity
+          : null
+        : await ctx.db.get("channelContacts", channelContactId)
+      if (identity)
+        await patchIfChanged(ctx, "channelContacts", identity, {
           phone: nextPhone,
           externalId: nextPhone.slice(1),
           scopeId: "whatsapp",
@@ -314,10 +320,16 @@ async function status(
         : {}),
     }
   )
-  if (errors.some((error) => error.code === 131050))
-    await ctx.db.patch("channelContacts", message.channelContactId, {
-      marketingOptOut: true,
-    })
+  if (errors.some((error) => error.code === 131050)) {
+    const identity = await ctx.db.get(
+      "channelContacts",
+      message.channelContactId
+    )
+    if (identity)
+      await patchIfChanged(ctx, "channelContacts", identity, {
+        marketingOptOut: true,
+      })
+  }
   return current
 }
 

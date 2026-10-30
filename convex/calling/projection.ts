@@ -13,7 +13,7 @@ import {
   findWhatsAppUserIdentity,
   findWhatsAppIdentity,
 } from "../channels/identity"
-import { patchRow } from "../counts"
+import { patchIfChanged, patchRowIfChanged } from "../patchIfChanged"
 import { emitEvent } from "../events"
 import { live, wabaByWabaId } from "../meta/connect"
 import { retirement } from "../teamLifecycle"
@@ -397,7 +397,7 @@ async function lifecycle(
       }
     if (next === "connected") patch.connectedAt = row.connectedAt ?? at
   }
-  await ctx.db.patch("calls", row._id, patch)
+  await patchIfChanged(ctx, "calls", row, patch)
   let updated = (await ctx.db.get("calls", row._id))!
   // Inbound calls always refresh the service window, even when termination arrived first.
   if (
@@ -412,13 +412,13 @@ async function lifecycle(
         updated.channelContactId
       )
       if (identity)
-        await ctx.db.patch("channelContacts", identity._id, {
+        await patchIfChanged(ctx, "channelContacts", identity, {
           lastInboundAt: Math.max(at, identity.lastInboundAt ?? 0),
         })
     }
     const thread = await ctx.db.get("conversations", updated.conversationId)
     if (thread)
-      await patchRow(ctx, "conversations", thread._id, {
+      await patchRowIfChanged(ctx, "conversations", thread, {
         lastInboundAt: Math.max(at, thread.lastInboundAt ?? 0),
         windowExpiresAt: Math.max(at, thread.lastInboundAt ?? 0) + 86400000,
       })

@@ -160,6 +160,7 @@ import type * as oauthAdmin from "../oauthAdmin.js";
 import type * as oauthHttp from "../oauthHttp.js";
 import type * as oauthProvider from "../oauthProvider.js";
 import type * as oidc from "../oidc.js";
+import type * as patchIfChanged from "../patchIfChanged.js";
 import type * as publicHttp from "../publicHttp.js";
 import type * as received from "../received.js";
 import type * as receivedDownloads from "../receivedDownloads.js";
@@ -418,6 +419,7 @@ declare const fullApi: ApiFromModules<{
   oauthHttp: typeof oauthHttp;
   oauthProvider: typeof oauthProvider;
   oidc: typeof oidc;
+  patchIfChanged: typeof patchIfChanged;
   publicHttp: typeof publicHttp;
   received: typeof received;
   receivedDownloads: typeof receivedDownloads;
