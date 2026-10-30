@@ -1,0 +1,25 @@
+# Optional: S3-compatible object storage for Convex files, exports, modules and
+# search indexes (AWS S3, Cloudflare R2, MinIO, Backblaze B2). Use together with
+# compose.prod.yaml on a FRESH backend; switching an existing backend needs an
+# export and import (docs/self-hosting.md, "Production overlay").
+#
+#   COMPOSE_FILE=compose.yaml:compose.prod.yaml:compose.prod-s3.yaml:compose.caddy.yaml
+#
+# All five buckets must exist and be private. Use credentials scoped to just
+# these buckets. For R2: S3_ENDPOINT_URL=https://<account>.r2.cloudflarestorage.com
+# and AWS_REGION=auto. For AWS S3 leave S3_ENDPOINT_URL unset. For MinIO also set
+# AWS_S3_FORCE_PATH_STYLE=true. These are the backend's storage credentials, not
+# the SES credentials each team saves in the dashboard.
+services:
+  convex:
+    environment:
+      AWS_REGION: ${AWS_REGION:?Set AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      AWS_S3_FORCE_PATH_STYLE: ${AWS_S3_FORCE_PATH_STYLE:-}
+      S3_STORAGE_EXPORTS_BUCKET: ${S3_STORAGE_EXPORTS_BUCKET:?Set S3_STORAGE_EXPORTS_BUCKET}
+      S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET: ${S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET:?Set S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET}
+      S3_STORAGE_MODULES_BUCKET: ${S3_STORAGE_MODULES_BUCKET:?Set S3_STORAGE_MODULES_BUCKET}
+      S3_STORAGE_FILES_BUCKET: ${S3_STORAGE_FILES_BUCKET:?Set S3_STORAGE_FILES_BUCKET}
+      S3_STORAGE_SEARCH_BUCKET: ${S3_STORAGE_SEARCH_BUCKET:?Set S3_STORAGE_SEARCH_BUCKET}

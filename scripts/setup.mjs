@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs"
 import { resolve } from "node:path"
 import { parse, run } from "./lib.mjs"
 import { convexEnvEntries } from "./convex-env.mjs"
+import { productionDefaults, productionProblems } from "./prod-env.mjs"
 const filename = resolve(process.env.OPENSEND_ENV_FILE || ".env.docker")
 const env = existsSync(filename) ? parse(readFileSync(filename, "utf8")) : {}
 for (const [key, value] of convexEnvEntries(process.env)) env[key] ||= value
@@ -26,7 +27,13 @@ const defaults = {
   MIGRATE_IMAGE: process.env.MIGRATE_IMAGE || "opensend-migrate:local",
   SMTP_IMAGE: process.env.SMTP_IMAGE || "opensend-smtp:local",
 }
-for (const [key, value] of Object.entries(defaults)) env[key] ||= value
+// Compose reads COMPOSE_FILE from the shell before the env file.
+const composeFile = process.env.COMPOSE_FILE || env.COMPOSE_FILE
+for (const [key, value] of Object.entries({
+  ...defaults,
+  ...productionDefaults({ COMPOSE_FILE: composeFile }),
+}))
+  env[key] ||= value
 /** A loopback origin rewritten to reach the host from inside a container, or
     undefined when `url` is not on loopback. */
 function hostOrigin(url) {
@@ -55,6 +62,9 @@ function persist() {
   chmodSync(filename, 0o600)
 }
 persist()
+const problems = productionProblems({ ...env, COMPOSE_FILE: composeFile })
+if (problems.length)
+  throw new Error(`Production overlay not ready:\n- ${problems.join("\n- ")}`)
 const compose = [
   "compose",
   "--env-file",

@@ -614,6 +614,57 @@ are staged for background backfill; this release deliberately uses bounded
 creation-index scans until a later deployment promotes those indexes. The existing
 Better Auth verification expiry index is reused, never duplicated.
 
+### Production overlay
+
+The default Compose file keeps Convex's data in SQLite on the `convex-data` volume, which suits evaluation. For production, `compose.prod.yaml` adds:
+
+- Postgres 17 (pinned by digest) with data checksums, a `pg_isready` healthcheck, a named volume and no published port. Convex connects over the private Compose network via `POSTGRES_URL`.
+- A `backup` service that runs `pg_dump` every `BACKUP_INTERVAL_HOURS` (default 24) into `BACKUP_DIR` (default `./backups`), checks each dump with `pg_restore --list`, deletes dumps older than `BACKUP_RETENTION_DAYS` (default 14), and reports unhealthy when the newest dump is older than two intervals. It mounts `docker/backup/backup.sh`, so run it from a source checkout.
+- Log rotation (`json-file`, `LOG_MAX_FILE` × `LOG_MAX_SIZE`, default 5 × 20 MB) on every service, memory limits (`POSTGRES_MEMORY=4g`, `CONVEX_MEMORY=6g`, `APP_MEMORY=1g`) and higher Convex concurrency limits (`APPLICATION_MAX_CONCURRENT_*`).
+
+Enable it before the first start:
+
+```sh
+# .env.docker
+COMPOSE_FILE=compose.yaml:compose.prod.yaml:compose.caddy.yaml
+```
+
+Then run `pnpm setup`. It generates a hex `POSTGRES_PASSWORD` and stops with a list of problems unless the three public URLs are `https://`, `LOG_AUTH_LINKS`, `ALLOW_LOCAL_OIDC` and `META_GRAPH_ORIGIN` are unset, and `POSTGRES_DB` equals `INSTANCE_NAME` with `-` replaced by `_` (Convex derives its database name that way; both default to `opensend`). Check the merged file with `docker compose --env-file .env.docker config` and look for `Connected to Postgres` in the `convex` log. Email (SES and the optional SMTP service) and calling settings are unchanged by the overlay.
+
+Sizing: the defaults suit a 4 vCPU / 16 GB host. Keep `PG_SHARED_BUFFERS` near 25% and `PG_EFFECTIVE_CACHE_SIZE` near 75% of `POSTGRES_MEMORY`. For a small staging host, try `POSTGRES_MEMORY=1g CONVEX_MEMORY=2g PG_SHARED_BUFFERS=256MB PG_EFFECTIVE_CACHE_SIZE=768MB`. Keep Postgres on the same host or low-latency network as Convex, leave 30% of the disk free for vacuum and WAL, and measure the database size after your first large import.
+
+**Existing SQLite install.** Adding the overlay starts an empty database. Export first (data and files), switch, then import into the fresh backend:
+
+```sh
+pnpm backend export --include-file-storage --path ./to-postgres.zip
+docker compose --env-file .env.docker stop app
+# add compose.prod.yaml to COMPOSE_FILE
+docker compose --env-file .env.docker up -d --wait postgres convex
+pnpm backend import --replace-all ./to-postgres.zip
+pnpm setup
+```
+
+**File storage.** Files stay on the `convex-data` volume, which a database dump does not include. For off-host files, add `compose.prod-s3.yaml` with five private buckets (exports, snapshot imports, modules, files, search) and bucket-scoped credentials, on a fresh backend only (see [object storage](object-storage.md)). These are the backend's storage credentials, separate from each team's SES connection.
+
+**Host backups.** `scripts/prod-backup.sh` adds what the dumps miss: a `convex export --include-file-storage` zip (portable across storage and Postgres versions), a GPG-encrypted copy of `.env.docker` when `BACKUP_GPG_RECIPIENT` is set, retention, and an optional `BACKUP_UPLOAD_COMMAND` for an off-site copy. Run it daily from cron outside peak hours:
+
+```cron
+30 2 * * * cd /srv/opensend && BACKUP_GPG_RECIPIENT=ops@example.com BACKUP_UPLOAD_COMMAND='rclone copy "$BACKUP_DIR" remote:opensend-backups --max-age 2d' ./scripts/prod-backup.sh >> /var/log/opensend-backup.log 2>&1
+```
+
+**Restore from a dump** (destructive; rehearse it in a separate Compose project first):
+
+```sh
+docker compose --env-file .env.docker stop app convex backup
+docker compose --env-file .env.docker exec postgres sh -c \
+  'dropdb -U "$POSTGRES_USER" --if-exists "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+docker compose --env-file .env.docker run --rm --no-deps --entrypoint sh backup -c \
+  'pg_restore --no-owner --jobs 4 --dbname "$PGDATABASE" /backups/convex-<UTC>.dump'
+docker compose --env-file .env.docker up -d --wait
+```
+
+Restoring on a new server needs the same `INSTANCE_NAME`, `INSTANCE_SECRET`, `BETTER_AUTH_SECRET`, `SSO_ENCRYPTION_KEY` (and `SES_ENCRYPTION_KEY`, if set) from the saved env file. If only the export zip survives, or the Postgres major version changed, start a fresh `postgres` and `convex`, then `pnpm backend import --replace-all` the zip and run `pnpm setup`. Upgrade Postgres within 17.x by changing `POSTGRES_IMAGE`; a major upgrade needs a dump and restore into a new volume.
+
 ## Backups and recovery
 
 Keep an encrypted copy of `.env.docker`, especially the instance secret and SSO encryption key, with each backup. Restoring data without the same secrets can invalidate sessions or make OIDC secrets unreadable.
