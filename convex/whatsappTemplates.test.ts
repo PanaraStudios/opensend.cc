@@ -10,6 +10,7 @@ import {
   WABA_ID,
   envelope,
   fakeGraph,
+  graphError,
   inboundFixture,
   signedWebhook,
   type GraphRoute,
@@ -519,6 +520,73 @@ describe("WhatsApp templates", () => {
     expect(f.graph.to(`/${WABA_ID}/message_templates`, "DELETE")).toHaveLength(
       1
     )
+  })
+
+  test("a delete Meta refuses for missing WABA access says how to grant it", async () => {
+    const f = await setup()
+    const id = await f.create()
+    await f.owner.action(api.whatsapp.templateActions.publish, { id })
+    f.graph.use({
+      method: "DELETE",
+      path: `/${WABA_ID}/message_templates`,
+      respond: () =>
+        graphError(
+          "(#100) Need permission on either WhatsApp Business Account or owner/shared business.",
+          100
+        ),
+    })
+    await expect(
+      f.owner.action(api.whatsapp.templateActions.remove, { id })
+    ).rejects.toThrow(/Assign assets/)
+    // Kept here, since it still exists at Meta.
+    expect(await f.t.run((ctx) => ctx.db.get("templates", id))).not.toBeNull()
+  })
+
+  test("that refusal names the token's system user, the account and who is assigned", async () => {
+    const f = await setup()
+    const id = await f.create()
+    await f.owner.action(api.whatsapp.templateActions.publish, { id })
+    f.graph.use(
+      {
+        method: "DELETE",
+        path: `/${WABA_ID}/message_templates`,
+        respond: () =>
+          graphError(
+            "(#100) Need permission on either WhatsApp Business Account or owner/shared business.",
+            100
+          ),
+      },
+      {
+        method: "GET",
+        path: "/me",
+        respond: () => ({ id: "1415893407188257", name: "Sender" }),
+      },
+      {
+        method: "GET",
+        path: `/${WABA_ID}`,
+        respond: () => ({
+          id: WABA_ID,
+          name: "Support",
+          owner_business_info: { id: "317407769087229" },
+        }),
+      },
+      {
+        method: "GET",
+        path: `/${WABA_ID}/assigned_users`,
+        respond: (call) =>
+          call.query.business === "317407769087229"
+            ? { data: [{ id: "1", name: "Sender Admin", tasks: ["MANAGE"] }] }
+            : graphError("wrong business", 100),
+      }
+    )
+    const failure = f.owner.action(api.whatsapp.templateActions.remove, { id })
+    await expect(failure).rejects.toThrow(
+      `system user "Sender" (ID 1415893407188257)`
+    )
+    await expect(failure).rejects.toThrow(
+      `WhatsApp account "Support" (ID ${WABA_ID})`
+    )
+    await expect(failure).rejects.toThrow("Only Sender Admin is assigned now.")
   })
 
   test("names are unique per WABA and language, as Meta requires", async () => {
