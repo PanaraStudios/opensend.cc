@@ -415,7 +415,7 @@ test("outbound permission denial prevents gateway setup and creating a call", as
   )
   expect(graph.calls).toHaveLength(1)
 })
-test("a phone-number recipient is checked by wa_id, a BSUID by recipient", async () => {
+test("a phone-number recipient is checked by wa_id (trimmed), a BSUID by recipient", async () => {
   const f = await setup()
   await f.t.run((ctx) =>
     patchRow(ctx, "channelAccounts", f.account, { registeredAt: Date.now() })
@@ -429,7 +429,11 @@ test("a phone-number recipient is checked by wa_id, a BSUID by recipient", async
       }),
     },
   ])
-  for (const recipient of ["15551234567", "US.13491208655302741918"])
+  for (const recipient of [
+    "15551234567",
+    " 15551234567 ",
+    "US.13491208655302741918",
+  ])
     expect(
       await f.owner.client.action(api.calling.softphone.permission, {
         organizationId: f.ownerArgs.organizationId,
@@ -440,6 +444,8 @@ test("a phone-number recipient is checked by wa_id, a BSUID by recipient", async
   expect(
     graph.to(`/${PHONE_ID}/call_permissions`).map((call) => call.query)
   ).toEqual([
+    expect.objectContaining({ user_wa_id: "15551234567" }),
+    // Pasted numbers keep their padding; it is trimmed before classifying.
     expect.objectContaining({ user_wa_id: "15551234567" }),
     expect.objectContaining({ recipient: "US.13491208655302741918" }),
   ])

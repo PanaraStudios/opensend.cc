@@ -20,7 +20,8 @@ const browserArgs = { organizationId: v.string(), browserId: v.string() }
 const recipientArgs = {
   organizationId: v.string(),
   accountId: v.id("channelAccounts"),
-  /** A WhatsApp business-scoped user ID, or the contact's phone number. */
+  /** A WhatsApp business-scoped user ID, or the contact's phone number;
+      each action trims it once before classifying and sending it. */
   recipient: v.string(),
 }
 /** Phone numbers go to Meta as `to`/wa_id; anything else is a BSUID. */
@@ -173,12 +174,13 @@ export const permission = action({
     canRequest: boolean
     data: Record<string, unknown>
   }> => {
+    const recipient = args.recipient.trim()
     await agentActor(ctx, args.organizationId)
     const data: Record<string, unknown> = await checkPermission(ctx, {
       organizationId: args.organizationId,
       from: args.accountId,
-      identity: args.recipient,
-      bsuid: recipientTarget(args.recipient).bsuid,
+      identity: recipient,
+      bsuid: recipientTarget(recipient).bsuid,
     })
     return {
       canCall: permissionAllows(data, "start_call"),
@@ -191,6 +193,7 @@ export const outbound = action({
   args: { ...recipientArgs, browserId: v.string() },
   returns: v.id("calls"),
   handler: async (ctx, args): Promise<Id<"calls">> => {
+    const recipient = args.recipient.trim()
     const agent = await ctx.runQuery(internal.calling.softphoneState.context, {
       organizationId: args.organizationId,
       browserId: args.browserId,
@@ -198,8 +201,8 @@ export const outbound = action({
     const data: Record<string, unknown> = await checkPermission(ctx, {
       organizationId: args.organizationId,
       from: args.accountId,
-      identity: args.recipient,
-      bsuid: recipientTarget(args.recipient).bsuid,
+      identity: recipient,
+      bsuid: recipientTarget(recipient).bsuid,
     })
     if (!permissionAllows(data, "start_call"))
       throw new ConvexError(
@@ -211,7 +214,7 @@ export const outbound = action({
       agentLeaseId: agent.leaseId,
       input: {
         from: args.accountId,
-        ...recipientInput(args.recipient),
+        ...recipientInput(recipient),
         route: "gateway",
       },
     })
@@ -222,11 +225,12 @@ export const requestPermission = action({
   args: recipientArgs,
   returns: v.id("channelMessages"),
   handler: async (ctx, args): Promise<Id<"channelMessages">> => {
+    const recipient = args.recipient.trim()
     await agentActor(ctx, args.organizationId)
     const result = await requestCallingPermission(
       ctx,
       { organizationId: args.organizationId },
-      { from: args.accountId, ...recipientInput(args.recipient) }
+      { from: args.accountId, ...recipientInput(recipient) }
     )
     return result.id
   },
