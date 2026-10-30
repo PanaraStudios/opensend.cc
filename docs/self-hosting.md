@@ -648,10 +648,10 @@ pnpm setup
 
 **File storage.** Files stay on the `convex-data` volume, which a database dump does not include. For off-host files, add `compose.prod-s3.yaml` with five private buckets (exports, snapshot imports, modules, files, search) and bucket-scoped credentials, on a fresh backend only (see [object storage](object-storage.md)). These are the backend's storage credentials, separate from each team's SES connection.
 
-**Host backups.** `scripts/prod-backup.sh` adds what the dumps miss: a `convex export --include-file-storage` zip (portable across storage and Postgres versions), a GPG-encrypted copy of `.env.docker` when `BACKUP_GPG_RECIPIENT` is set, retention, and an optional `BACKUP_UPLOAD_COMMAND` for an off-site copy. Run it daily from cron outside peak hours:
+**Host backups.** `scripts/prod-backup.sh` adds what the dumps miss: a `convex export --include-file-storage` zip (portable across storage and Postgres versions), a GPG-encrypted copy of `.env.docker` when `BACKUP_GPG_RECIPIENT` is set (use the key's full fingerprint: the imported key is used without a trust check), retention, and an optional `BACKUP_UPLOAD_COMMAND` for an off-site copy. If encryption or the upload fails, it still prunes old files and runs the remaining steps, then exits non-zero so cron reports it. Run it daily outside peak hours:
 
 ```cron
-30 2 * * * cd /srv/opensend && BACKUP_GPG_RECIPIENT=ops@example.com BACKUP_UPLOAD_COMMAND='rclone copy "$BACKUP_DIR" remote:opensend-backups --max-age 2d' ./scripts/prod-backup.sh >> /var/log/opensend-backup.log 2>&1
+30 2 * * * cd /srv/opensend && BACKUP_GPG_RECIPIENT=<key fingerprint> BACKUP_UPLOAD_COMMAND='rclone copy "$BACKUP_DIR" remote:opensend-backups --max-age 2d' ./scripts/prod-backup.sh >> /var/log/opensend-backup.log 2>&1
 ```
 
 **Restore from a dump** (destructive; rehearse it in a separate Compose project first):

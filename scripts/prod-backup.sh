@@ -9,8 +9,11 @@
 # Output goes to $BACKUP_DIR (default ./backups). Set BACKUP_UPLOAD_COMMAND to
 # ship the day's files off the server, for example
 #   BACKUP_UPLOAD_COMMAND='rclone copy "$BACKUP_DIR" r2:opensend-backups --max-age 2d'
-# Encryption needs BACKUP_GPG_RECIPIENT (public key on this host); without it
-# the env file is NOT copied, because it holds every secret.
+# Encryption needs BACKUP_GPG_RECIPIENT (public key on this host; prefer its
+# full fingerprint, since the key is used without a web-of-trust check);
+# without it the env file is NOT copied, because it holds every secret.
+# A failed encryption or upload still runs retention and the remaining steps,
+# then exits non-zero.
 set -eu
 cd "$(dirname "$0")/.."
 ENV_FILE=${OPENSEND_ENV_FILE:-.env.docker}
@@ -22,25 +25,39 @@ umask 077
 mkdir -p "$BACKUP_DIR"
 
 compose="docker compose --env-file $ENV_FILE"
-trap 'docker rm -f -v "$name" >/dev/null 2>&1 || true' EXIT
+export_tmp="$BACKUP_DIR/.convex-export-$stamp.zip.partial"
+env_tmp="$BACKUP_DIR/.env-$stamp.gpg.partial"
+trap 'rm -f "$export_tmp" "$env_tmp"; docker rm -f -v "$name" >/dev/null 2>&1 || true' EXIT
+status=0
 
 $compose run --name "$name" migrate export --include-file-storage --path /tmp/export.zip
-docker cp "$name:/tmp/export.zip" "$BACKUP_DIR/.convex-export-$stamp.zip.partial"
-mv "$BACKUP_DIR/.convex-export-$stamp.zip.partial" "$BACKUP_DIR/convex-export-$stamp.zip"
+docker cp "$name:/tmp/export.zip" "$export_tmp"
 # A zip that cannot be listed is not a backup.
-unzip -tq "$BACKUP_DIR/convex-export-$stamp.zip" >/dev/null
+unzip -tq "$export_tmp" >/dev/null
+mv "$export_tmp" "$BACKUP_DIR/convex-export-$stamp.zip"
 
 if [ -n "${BACKUP_GPG_RECIPIENT:-}" ]; then
-  gpg --batch --yes --encrypt --recipient "$BACKUP_GPG_RECIPIENT" \
-    --output "$BACKUP_DIR/env-$stamp.gpg" "$ENV_FILE"
+  # --trust-model always: an imported key is otherwise "unusable" in batch
+  # mode until it is signed or given ownertrust.
+  if gpg --batch --yes --trust-model always --encrypt \
+    --recipient "$BACKUP_GPG_RECIPIENT" --output "$env_tmp" "$ENV_FILE"; then
+    mv "$env_tmp" "$BACKUP_DIR/env-$stamp.gpg"
+  else
+    echo "prod-backup: encrypting $ENV_FILE FAILED" >&2
+    status=1
+  fi
 else
   echo "prod-backup: BACKUP_GPG_RECIPIENT unset, $ENV_FILE not backed up" >&2
 fi
 
 find "$BACKUP_DIR" -type f \( -name 'convex-export-*.zip' -o -name 'env-*.gpg' \) \
-  -mtime "+$KEEP_DAYS" -print -delete
+  -mtime "+$KEEP_DAYS" -print -delete || status=1
 
 if [ -n "${BACKUP_UPLOAD_COMMAND:-}" ]; then
-  BACKUP_DIR=$BACKUP_DIR sh -c "$BACKUP_UPLOAD_COMMAND"
+  if ! BACKUP_DIR=$BACKUP_DIR sh -c "$BACKUP_UPLOAD_COMMAND"; then
+    echo "prod-backup: upload FAILED" >&2
+    status=1
+  fi
 fi
-echo "prod-backup: ok $stamp"
+[ "$status" -eq 0 ] && echo "prod-backup: ok $stamp"
+exit "$status"
