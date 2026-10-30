@@ -7,6 +7,11 @@ import { signRequest } from "../services/call-gateway/src/auth"
 import * as net from "../lib/net/public-fetch"
 import { minuteUsage } from "./voice/usage"
 import { webhookHeaders } from "../lib/webhooks/signing"
+import {
+  voiceBotFormPayload,
+  type VoiceBotResource,
+} from "../lib/dashboard/voice-bot-form"
+import type { VoiceBotConfig } from "../lib/voice-bots"
 const secret = "a".repeat(64),
   hangup = { kind: "hangup" }
 beforeEach(() => {
@@ -407,14 +412,29 @@ test("another team's bot cannot block deleting an IVR, and a bot whose handoff I
     (await f.request(`/voice-bots/${bot.id}`, "PATCH", { name: "Renamed" }))
       .status
   ).toBe(200)
-  // Sending the dangling handoff again is still rejected.
-  expect(
-    (
-      await f.request(`/voice-bots/${bot.id}`, "PATCH", {
-        handoff: { agents: false, ivrId: f.ivr.id },
-      })
-    ).status
-  ).toBe(404)
+  // The dashboard posts the whole form, stored handoff included.
+  const stored = (await f.owner.client.query(api.voice.resources.dashboardGet, {
+    organizationId: f.owner.team,
+    id: bot.id,
+  })) as VoiceBotResource
+  const dashboardSave = (changes: Partial<VoiceBotConfig>) =>
+    f.owner.client.action(api.voice.resources.dashboardWrite, {
+      organizationId: f.owner.team,
+      kind: "bot",
+      id: bot.id,
+      body: JSON.stringify(voiceBotFormPayload({ ...stored, ...changes })),
+    })
+  await dashboardSave({ name: "Renamed in the dashboard" })
+  expect(await f.t.run((ctx) => ctx.db.get("voiceBots", bot.id))).toMatchObject(
+    {
+      name: "Renamed in the dashboard",
+      handoff: { ivrId: f.ivr.id },
+    }
+  )
+  // Pointing the handoff at an IVR the team doesn't own is still rejected.
+  await expect(
+    dashboardSave({ handoff: { agents: false, ivrId: f.callId } })
+  ).rejects.toMatchObject({ data: { statusCode: 404 } })
 })
 
 test("malformed gateway ids are a 404, not a retryable 503", async () => {
