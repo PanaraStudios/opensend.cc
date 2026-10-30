@@ -22,14 +22,54 @@ import {
   emptyUsage,
   telemetryEnabled,
   TELEMETRY_CAP,
+  TELEMETRY_COUNT_FIELDS,
   TELEMETRY_DAY,
 } from "../lib/telemetry"
-import type { TelemetryPayload, Deployment } from "../lib/telemetry"
+import type {
+  Band,
+  CountField,
+  TelemetryPayload,
+  Deployment,
+} from "../lib/telemetry"
+
+const bandValue = v.union(
+  ...(["0", "1-9", "10-99", "100-999", "1k-9k", "10k+"] satisfies Band[]).map(
+    (band) => v.literal(band)
+  )
+)
+/** Schema 1, as `buildPayload` projects it. */
+const payloadValue = v.object({
+  schema: v.literal(1),
+  installationId: v.string(),
+  sentAt: v.string(),
+  version: v.string(),
+  deployment: v.object({
+    backend: v.union(v.literal("self-hosted"), v.literal("convex-cloud")),
+    installMethod: v.union(
+      v.literal("script"),
+      v.literal("compose"),
+      v.literal("source"),
+      v.literal("unknown")
+    ),
+    arch: v.union(v.literal("amd64"), v.literal("arm64"), v.literal("unknown")),
+    calling: v.boolean(),
+  }),
+  installedDays: v.number(),
+  usage: v.object({
+    ...(Object.fromEntries(
+      TELEMETRY_COUNT_FIELDS.map((field) => [field, bandValue])
+    ) as Record<CountField, typeof bandValue>),
+    sesProduction: v.union(v.boolean(), v.null()),
+    smtpUsed30d: v.boolean(),
+    ssoEnabled: v.boolean(),
+  }),
+})
 
 const enabled = (preference?: boolean) =>
   telemetryEnabled(env.OPENSEND_TELEMETRY, preference)
 export const settings = query({
   args: {},
+  returns: v.object({ enabled: v.boolean(), locked: v.boolean() }),
   handler: async (ctx) => {
     await requireInstallationAdmin(ctx)
     const installation = await findInstallation(ctx)
@@ -58,6 +98,14 @@ export const setEnabled = mutation({
 })
 export const identify = internalMutation({
   args: { candidate: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      installationId: v.string(),
+      installedAt: v.number(),
+      sesProduction: v.union(v.boolean(), v.null()),
+    })
+  ),
   handler: async (ctx, { candidate }) => {
     const installation = await findInstallation(ctx)
     if (!installation) return null
@@ -125,6 +173,7 @@ export const reserve = internalMutation({
 })
 export const canSend = internalQuery({
   args: {},
+  returns: v.boolean(),
   handler: async (ctx) => {
     const installation = await findInstallation(ctx)
     return !!installation?.completedAt && enabled(installation.telemetryEnabled)
@@ -154,6 +203,7 @@ export const metric = internalQuery({
     team: v.string(),
     now: v.number(),
   },
+  returns: v.number(),
   handler: async (ctx, { field, team, now }) => {
     // Presence can use a single indexed row, including the current partial bucket.
     if (field === "smtpRequests30d")
@@ -226,6 +276,11 @@ export const rows = internalQuery({
     userAgent: v.optional(v.string()),
     paginationOpts: paginationOptsValidator,
   },
+  returns: v.object({
+    count: v.number(),
+    done: v.boolean(),
+    cursor: v.string(),
+  }),
   handler: async (ctx, args) => {
     const { team, now, paginationOpts } = args
     const since = now - 30 * TELEMETRY_DAY
@@ -278,6 +333,7 @@ export const nextAgent = internalQuery({
     prefix: v.string(),
     after: v.union(v.string(), v.null()),
   },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, { team, prefix, after }) => {
     const row = await ctx.db
       .query("apiLogs")
@@ -464,6 +520,7 @@ async function gather(
 }
 export const preview = action({
   args: {},
+  returns: v.union(payloadValue, v.null()),
   handler: async (ctx): Promise<TelemetryPayload | null> => {
     await ctx.runQuery(api.telemetry.settings, {}) // Admin guard, including when hard off.
     return gather(ctx, Date.now())
