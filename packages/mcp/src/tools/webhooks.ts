@@ -5,30 +5,14 @@ import type {
   CreateWebhookResponseSuccess,
   UpdateWebhookResponseSuccess,
 } from "@opensendcc/sdk"
+import { SYSTEM_EVENT_NAMES } from "@opensendcc/sdk"
 import { z } from "zod"
 
+// Every event Opensend delivers, plus the upstream topic events kept for
+// prompt compatibility and refused by validateEvents.
 const webhookEventSchema = z.enum([
-  "email.sent",
-  "email.scheduled",
-  "email.delivered",
-  "email.delivery_delayed",
-  "email.complained",
-  "email.bounced",
-  "email.opened",
-  "email.clicked",
-  "email.received",
-  "email.failed",
-  "email.suppressed",
-  "contact.created",
-  "contact.note_created",
-  "contact.updated",
-  "contact.deleted",
+  ...SYSTEM_EVENT_NAMES,
   "contact.topics.updated",
-  "domain.created",
-  "domain.updated",
-  "domain.deleted",
-  "suppression.added",
-  "suppression.removed",
   "topic.created",
   "topic.updated",
   "topic.deleted",
@@ -50,7 +34,7 @@ function validateEvents(events?: string[]) {
 const CREATE_WEBHOOK_TOOL = {
   title: "Create Webhook",
   description:
-    "Create a new webhook in Opensend. A webhook allows you to receive notifications at a specified URL when certain events occur (e.g. email.sent, email.delivered, email.bounced).",
+    "Create a new webhook in Opensend. A webhook allows you to receive notifications at a specified URL when certain events occur (e.g. email.delivered, whatsapp.message.received, call.outbound_completed).",
   inputSchema: {
     idempotencyKey: z.string().optional(),
     endpoint: z.url().describe("The URL where webhook events will be sent"),
@@ -75,7 +59,7 @@ const GET_WEBHOOK_TOOL = {
   title: "Get Webhook",
   annotations: { readOnlyHint: true },
   description:
-    "Get a webhook by ID from Opensend, including its signing secret. Use this when the user needs the current secret to verify payloads; use rotate-webhook-signing-secret only to replace it.",
+    "Get a webhook by ID from Opensend, including its signing secret when the API key has webhooks write access. Use this when the user needs the current secret to verify payloads; use rotate-webhook-signing-secret only to replace it.",
   inputSchema: {
     webhookId: z.string().nonempty().describe("Webhook ID"),
   },

@@ -257,6 +257,32 @@ describe("webhook event tools", () => {
     )
   })
 
+  it("create-webhook accepts channel and call events as well as email", async () => {
+    createWebhook.mockResolvedValue({
+      data: { object: "webhook", id: WEBHOOK_ID, signing_secret: "whsec_new" },
+      error: null,
+    })
+    const events = [
+      "email.delivered",
+      "whatsapp.message.received",
+      "messenger.message.sent",
+      "instagram.message.received",
+      "call.outbound_completed",
+      "whatsapp.call.completed",
+    ]
+
+    const client = await makeClient()
+    const result = await client.callTool({
+      name: "create-webhook",
+      arguments: { endpoint: "https://example.com/webhooks", events },
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(createWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ events })
+    )
+  })
+
   it("surfaces the API error when a list fails", async () => {
     listEvents.mockResolvedValue({
       data: null,
