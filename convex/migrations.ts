@@ -1,4 +1,4 @@
-import { recordBroadcastReport } from "./broadcastMetrics"
+import { reachedAnyone, recordBroadcastReport } from "./broadcastMetrics"
 import { recordMetric } from "./metricRows"
 import { projectEvent } from "./ses/projection"
 import { Migrations } from "@convex-dev/migrations"
@@ -106,6 +106,17 @@ export const dropWebhookStats = migrations.define({
   table: "webhookStats",
   migrateOne: (ctx, row) => ctx.db.delete("webhookStats", row._id),
 })
+/** A broadcast used to fail when any one recipient failed, so one number not
+    on WhatsApp failed a send that reached thousands. Settled ones that reached
+    anyone are sent; a broadcast whose send broke keeps its `error`. */
+export const partlyFailedBroadcasts = migrations.define({
+  table: "broadcasts",
+  migrateOne: async (ctx, row) => {
+    if (row.status !== "failed" || row.error !== undefined) return
+    if (await reachedAnyone(ctx, row))
+      await patchRow(ctx, "broadcasts", row._id, { status: "sent" })
+  },
+})
 
 /** Every backfill, in order. New backfills go at the end. */
 const postDeployMigrations = [
@@ -148,6 +159,7 @@ const postDeployMigrations = [
   internal.migrations.countWebhookAttempts,
   internal.migrations.countDomains,
   internal.migrations.dropWebhookStats,
+  internal.migrations.partlyFailedBroadcasts,
 ]
 
 /** How often, and how long, `postDeploy` waits for a step already running. */

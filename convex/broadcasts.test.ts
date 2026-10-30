@@ -570,6 +570,30 @@ test("permanent sender failure settles the broadcast as failed", async () => {
     providerError: row?.providerError,
   })
 })
+test("a broadcast whose emails partly failed settles as sent", async () => {
+  const f = await setup()
+  vi.spyOn(SESv2Client.prototype, "send").mockResolvedValue({
+    MessageId: "broadcast-message",
+  } as never)
+  await f.contacts([{ email: "ada@example.com" }, { email: "bo@example.com" }])
+  const id = await f.create()
+  const [sent, failed] = await f.fanout(id)
+  await f.t.action(internal.emailSend.deliver, {
+    id: sent.emailId!,
+    generation: 0,
+  })
+  expect((await f.read(id))?.status).toBe("queued")
+  await f.t.mutation(internal.emails.record, {
+    id: failed.emailId!,
+    generation: 0,
+    outcome: {
+      kind: "failed",
+      error: "Amazon SES rejected this email",
+      retryable: false,
+    },
+  })
+  expect((await f.read(id))?.status).toBe("sent")
+})
 async function rest(f: F) {
   const { token } = await f.owner.client.action(api.apiKeys.create, {
     organizationId: f.org,

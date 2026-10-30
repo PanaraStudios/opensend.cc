@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, expect, test, vi } from "vitest"
 import workpoolTest from "@convex-dev/workpool/test"
-import { api, internal } from "./_generated/api"
+import { runToCompletion } from "@convex-dev/migrations"
+import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import {
   inboundFixture,
@@ -474,7 +475,7 @@ test("status webhooks settle recipients, rank receipts, retain counts after mess
   expect((await f.stats(id)).delivered).toBe(2)
 })
 
-test("sent-without-receipt settles after 24h and final delivery failures settle the broadcast", async () => {
+test("sent-without-receipt settles after 24h; a broadcast that reached anyone is sent despite failures", async () => {
   const f = await setup()
   await f.contacts([{ phone: "+15550000001" }, { phone: "+15550000002" }])
   const id = await f.create()
@@ -497,9 +498,46 @@ test("sent-without-receipt settles after 24h and final delivery failures settle 
   const settledClock = Date.now()
   vi.setSystemTime(Date.now() + 24 * 3600_000)
   await f.t.mutation(internal.broadcastMetrics.settleMessage, { id: sent._id })
-  expect((await f.read(id))?.status).toBe("failed")
+  expect((await f.read(id))?.status).toBe("sent")
   vi.setSystemTime(settledClock)
   expect((await f.stats(id)).failed).toBe(1)
+  // Rows settled before this rule read Failed; the migration corrects them.
+  await f.t.run((ctx) => patchRow(ctx, "broadcasts", id, { status: "failed" }))
+  await f.t.action((ctx) =>
+    runToCompletion(
+      ctx,
+      components.migrations,
+      internal.migrations.partlyFailedBroadcasts
+    )
+  )
+  expect((await f.read(id))?.status).toBe("sent")
+})
+
+test("a broadcast that reached nobody still settles as failed", async () => {
+  const f = await setup()
+  await f.contacts([{ phone: "+15550000001" }])
+  const id = await f.create()
+  await f.fanout(id)
+  const [row] = await f.recipients(id)
+  await f.t.mutation(internal.channels.messages.record, {
+    id: row.messageId!,
+    generation: 0,
+    outcome: {
+      kind: "failed",
+      error: "Not deliverable",
+      code: 131026,
+      action: "final",
+    },
+  })
+  expect((await f.read(id))?.status).toBe("failed")
+  await f.t.action((ctx) =>
+    runToCompletion(
+      ctx,
+      components.migrations,
+      internal.migrations.partlyFailedBroadcasts
+    )
+  )
+  expect((await f.read(id))?.status).toBe("failed")
 })
 
 test("scheduled sends cancel safely, duplicate configuration and enforce team isolation", async () => {

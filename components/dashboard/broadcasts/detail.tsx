@@ -357,7 +357,17 @@ export function BroadcastDetail() {
         backLabel="Broadcasts"
         title={broadcast.name || "Untitled"}
         icon={MegaphoneIcon}
-        badge={<BroadcastStatusBadge status={broadcast.status} />}
+        badge={
+          <span className="flex items-center gap-2">
+            <BroadcastStatusBadge status={broadcast.status} />
+            {/* A sent broadcast can still have recipients it never reached. */}
+            {broadcast.status === "sent" && broadcast.whatsappStats?.failed ? (
+              <span className="text-xs text-destructive">
+                {broadcast.whatsappStats.failed.toLocaleString()} failed
+              </span>
+            ) : null}
+          </span>
+        }
         description={`${audience}${topic ? `. Topic: ${topic.name}` : ""}`}
         actions={
           <>
