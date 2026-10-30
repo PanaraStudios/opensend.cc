@@ -171,10 +171,10 @@ test.each(["whatsapp", "messenger"] as const)(
       await f.t.run((ctx) =>
         ctx.db.patch("channelAccounts", accountId, { disconnectedAt: 1 })
       )
-      const disconnected = await f.owner.client.query(
-        api.contacts.identities,
-        { id: ids.contactId, paginationOpts: page }
-      )
+      const disconnected = await f.owner.client.query(api.contacts.identities, {
+        id: ids.contactId,
+        paginationOpts: page,
+      })
       expect(disconnected.page[0].accounts).toEqual([
         { id: accountId, name: "Lucky Shrub", live: false },
       ])

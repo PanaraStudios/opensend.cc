@@ -15,10 +15,7 @@ import {
 import { requestPermission as requestCallingPermission } from "./outbound"
 import { checkPermission } from "./settings"
 import { agentQueues } from "../../services/call-gateway/src/queues"
-import {
-  isPhoneRecipient,
-  permissionAllows,
-} from "../../lib/meta/softphone"
+import { isPhoneRecipient, permissionAllows } from "../../lib/meta/softphone"
 const browserArgs = { organizationId: v.string(), browserId: v.string() }
 const recipientArgs = {
   organizationId: v.string(),
@@ -33,8 +30,7 @@ function recipientTarget(recipient: string) {
     : { recipient, bsuid: true as const }
 }
 function recipientInput(recipient: string) {
-  const { bsuid: _bsuid, ...target } = recipientTarget(recipient)
-  return target
+  return isPhoneRecipient(recipient) ? { to: recipient } : { recipient }
 }
 export const session = action({
   args: browserArgs,
