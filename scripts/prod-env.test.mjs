@@ -64,3 +64,16 @@ test("compose.prod.yaml keeps Postgres private and secrets in env", () => {
   ])
     assert.match(service(name), /logging: \*logging/, `${name} log rotation`)
 })
+
+test("compose.prod-s3.yaml never sets an optional S3 setting to an empty string", () => {
+  const text = readFileSync(
+    new URL("../compose.prod-s3.yaml", import.meta.url),
+    "utf8"
+  )
+  const settings = text.split("\n").filter((line) => /^ {6}\w+:/.test(line))
+  assert.ok(settings.length >= 8)
+  // Convex reads a set-but-empty S3_ENDPOINT_URL as the endpoint.
+  for (const line of settings) assert.doesNotMatch(line, /:-\}/, line)
+  assert.doesNotMatch(text, /^\s+S3_ENDPOINT_URL:/m)
+  assert.doesNotMatch(text, /^\s+AWS_S3_FORCE_PATH_STYLE:/m)
+})
