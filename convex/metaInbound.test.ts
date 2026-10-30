@@ -13,6 +13,7 @@ import {
   SENDER,
   envelope,
   incoming,
+  projectionMarks,
 } from "./testHelpers/meta.fixture"
 import { createChannelMessage, acceptChannelMessage } from "./channels/messages"
 import { mediaDownloadLink } from "./channels/downloads"
@@ -169,10 +170,140 @@ test("large Meta batches project in bounded transactions and replay once", async
   expect(
     data.events.filter((row) => row.type === "whatsapp.message.received")
   ).toHaveLength(60)
+  expect(await projectionMarks(f, event._id)).toMatchObject([
+    { projectedAt: expect.any(Number) },
+  ])
+  // Progress never rewrites the raw event the calling projector reads.
   expect(
-    (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", event._id)))
-      ?.projectedAt
-  ).toBeDefined()
+    await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", event._id))
+  ).toEqual(event)
+})
+
+const batch = (count: number, prefix: string) =>
+  envelope({
+    metadata: { phone_number_id: PHONE_ID },
+    messages: Array.from({ length: count }, (_, i) => ({
+      from: SENDER,
+      id: `wamid.${prefix}.${i}`,
+      timestamp: String(Math.floor(Date.now() / 1000)),
+      type: "text",
+      text: { body: `Message ${i}` },
+    })),
+  })
+
+test("a chunk that fails leaves no progress, and its retry projects every item exactly once", async () => {
+  const f = await inboundFixture()
+  expect((await post(f, batch(25, "partial"))).status).toBe(200)
+  const event = (await f.t.run((ctx) =>
+    ctx.db.query("metaWebhookEvents").first()
+  ))!
+  await expect(
+    f.t.run((ctx) =>
+      ctx.runMutation(
+        internal.meta.projection.project,
+        { id: event._id },
+        { transactionLimits: { documentsWritten: 5 } }
+      )
+    )
+  ).rejects.toThrow()
+  expect(await projectionMarks(f, event._id)).toEqual([])
+  expect((await rows(f)).messages).toHaveLength(0)
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  expect(await projectionMarks(f, event._id)).toMatchObject([
+    { projectionCursor: 10 },
+  ])
+  // A replayed first chunk is stale and does nothing.
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  await f.t.mutation(internal.meta.projection.project, {
+    id: event._id,
+    cursor: 10,
+  })
+  const data = await rows(f)
+  expect(data.messages.map((row) => row.externalId).sort()).toEqual(
+    Array.from({ length: 25 }, (_, i) => `wamid.partial.${i}`).sort()
+  )
+  expect(data.conversations[0].unreadCount).toBe(25)
+  expect(await projectionMarks(f, event._id)).toEqual([
+    expect.objectContaining({ projectedAt: expect.any(Number) }),
+  ])
+  expect((await projectionMarks(f, event._id))[0].projectionCursor).toBe(
+    undefined
+  )
+})
+
+test("events part-projected under the old inline progress finish once", async () => {
+  const f = await inboundFixture()
+  expect((await post(f, batch(25, "legacy"))).status).toBe(200)
+  const event = (await f.t.run((ctx) =>
+    ctx.db.query("metaWebhookEvents").first()
+  ))!
+  // Project the first chunk, then rewind to how the old projector left it:
+  // progress on the event and no marker.
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  await f.t.run(async (ctx) => {
+    for (const mark of await ctx.db.query("metaWebhookProjections").collect())
+      await ctx.db.delete("metaWebhookProjections", mark._id)
+    await ctx.db.patch("metaWebhookEvents", event._id, { projectionCursor: 10 })
+  })
+  // A stale first pass is refused; the scheduled continuation runs on.
+  await f.t.mutation(internal.meta.projection.project, { id: event._id })
+  expect(await projectionMarks(f, event._id)).toEqual([])
+  await f.t.mutation(internal.meta.projection.project, {
+    id: event._id,
+    cursor: 10,
+  })
+  expect(await projectionMarks(f, event._id)).toMatchObject([
+    { projectionCursor: 20 },
+  ])
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers)
+  await f.t.mutation(internal.meta.projection.project, {
+    id: event._id,
+    cursor: 10,
+  })
+  const data = await rows(f)
+  expect(data.messages).toHaveLength(25)
+  expect(new Set(data.messages.map((row) => row.externalId)).size).toBe(25)
+  expect(
+    data.events.filter((row) => row.type === "whatsapp.message.received")
+  ).toHaveLength(25)
+  expect(await projectionMarks(f, event._id)).toMatchObject([
+    { projectedAt: expect.any(Number) },
+  ])
+
+  // An event the old projector finished stays finished.
+  const done = await project(f, incoming("wamid.legacy.done"))
+  await f.t.run(async (ctx) => {
+    for (const mark of await ctx.db.query("metaWebhookProjections").collect())
+      if (mark.eventId === done)
+        await ctx.db.delete("metaWebhookProjections", mark._id)
+    await ctx.db.patch("metaWebhookEvents", done, { projectedAt: 1 })
+    for (const message of await ctx.db.query("channelMessages").collect())
+      if (message.externalId === "wamid.legacy.done")
+        await ctx.db.delete("channelMessages", message._id)
+  })
+  await f.t.mutation(internal.meta.projection.project, { id: done })
+  expect(
+    (await rows(f)).messages.some((m) => m.externalId === "wamid.legacy.done")
+  ).toBe(false)
+  expect(await projectionMarks(f, done)).toEqual([])
+})
+
+test("a status retry scheduled with the old status indexes still applies once", async () => {
+  const f = await inboundFixture()
+  const id = await project(f, statusPayload("wamid.legacy-retry", "delivered"))
+  const message = await outbound(f, "wamid.legacy-retry")
+  const legacy = { id, attempt: 1, statusIndexes: [0] }
+  await f.t.mutation(internal.meta.projection.project, legacy)
+  await f.t.mutation(internal.meta.projection.project, legacy)
+  expect(
+    (await f.t.run((ctx) => ctx.db.get("channelMessages", message._id)))?.status
+  ).toBe("delivered")
+  expect(
+    (await rows(f)).timeline.filter((e) => e.messageId === message._id)
+  ).toHaveLength(1)
+  expect(await projectionMarks(f, id)).toHaveLength(1)
 })
 
 test.each(["unavailable channel", "interrupted worker"] as const)(
@@ -495,22 +626,23 @@ test("an early status retries independently, then applies once the send is recor
   const f = await inboundFixture()
   const payload = statusPayload("wamid.early", "delivered")
   const id = await project(f, payload)
-  expect(
-    (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", id)))?.projectedAt
-  ).toEqual(expect.any(Number))
+  expect(await projectionMarks(f, id)).toMatchObject([
+    { projectedAt: expect.any(Number) },
+  ])
   const scheduled = await f.t.run((ctx) =>
     ctx.db.system.query("_scheduled_functions").collect()
   )
-  expect(scheduled.some((job) => job.args[0].attempt === 1)).toBe(true)
+  const retry = scheduled.find((job) => job.args[0].attempt === 1)
+  expect(retry?.args[0]).toMatchObject({ id, retryItems: expect.any(String) })
+  expect(retry?.args[0].statusIndexes).toBeUndefined()
   const message = await outbound(f, "wamid.early")
-  await f.t.mutation(internal.meta.projection.project, {
-    id,
-    attempt: 1,
-    statusIndexes: [0],
-  })
+  // The retry carries its items, so it applies even without the raw event.
+  await f.t.run((ctx) => ctx.db.delete("metaWebhookEvents", id))
+  await f.t.mutation(internal.meta.projection.project, retry!.args[0])
   expect(
     (await f.t.run((ctx) => ctx.db.get("channelMessages", message._id)))?.status
   ).toBe("delivered")
+  await f.t.mutation(internal.meta.projection.project, retry!.args[0])
   await f.t.mutation(internal.meta.projection.project, { id, attempt: 2 })
   expect(
     (await rows(f)).timeline.filter((e) => e.messageId === message._id)
@@ -556,9 +688,7 @@ test("drops unmatched statuses after backoff and ignores unknown WABA, phone and
   const f = await inboundFixture(),
     log = vi.spyOn(console, "info").mockImplementation(() => {})
   const id = await project(f, statusPayload("missing", "read"), 6)
-  expect(
-    (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", id)))?.projectedAt
-  ).toBeTypeOf("number")
+  expect((await projectionMarks(f, id))[0]?.projectedAt).toBeTypeOf("number")
   await project(
     f,
     envelope({

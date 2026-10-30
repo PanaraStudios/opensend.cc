@@ -8,6 +8,7 @@ import {
   APP_SECRET,
   META_APP,
   metaFixture,
+  projectionMarks,
 } from "./testHelpers/meta.fixture"
 import {
   pagesFixture,
@@ -889,10 +890,9 @@ test("status before send record retries independently and cannot duplicate an in
     delivery: { mids: ["mid.race"] },
   })
   const eventId = await project(f, batch)
-  expect(
-    (await f.t.run((ctx) => ctx.db.get("metaWebhookEvents", eventId)))
-      ?.projectedAt
-  ).toEqual(expect.any(Number))
+  expect(await projectionMarks(f, eventId)).toMatchObject([
+    { projectedAt: expect.any(Number) },
+  ])
   expect(
     await f.t.run((ctx) => ctx.db.query("channelMessages").collect())
   ).toHaveLength(4)
@@ -901,11 +901,15 @@ test("status before send record retries independently and cannot duplicate an in
     generation: 0,
     outcome: { kind: "sent", externalId: "mid.race" },
   })
-  await f.t.mutation(internal.meta.projection.project, {
-    id: eventId,
-    attempt: 1,
-    statusIndexes: [1],
-  })
+  const retry = await f.t.run(async (ctx) =>
+    (await ctx.db.system.query("_scheduled_functions").collect()).find(
+      (job) => job.args[0]?.id === eventId && job.args[0]?.attempt === 1
+    )
+  )
+  expect(JSON.parse(retry?.args[0].retryItems)).toMatchObject([
+    { kind: "status", externalId: "mid.race" },
+  ])
+  await f.t.mutation(internal.meta.projection.project, retry!.args[0])
   expect((await f.message(id))?.status).toBe("delivered")
   await f.t.mutation(internal.meta.projection.project, { id: eventId })
   expect(

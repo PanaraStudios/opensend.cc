@@ -126,6 +126,18 @@ export async function metaFixture() {
   return { ...f, member }
 }
 
+/** The Meta projector's progress markers for one event. */
+export const projectionMarks = (
+  f: Pick<Awaited<ReturnType<typeof metaFixture>>, "t">,
+  eventId: Id<"metaWebhookEvents">
+) =>
+  f.t.run((ctx) =>
+    ctx.db
+      .query("metaWebhookProjections")
+      .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+      .collect()
+  )
+
 /** A signed Meta webhook request for `t.fetch("/meta/webhook", …)`. */
 export async function signedWebhook(appSecret: string, payload: unknown) {
   const body = typeof payload === "string" ? payload : JSON.stringify(payload)

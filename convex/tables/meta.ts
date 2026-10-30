@@ -81,11 +81,22 @@ export const metaTables = {
     /** The raw JSON body. */
     body: v.string(),
     receivedAt: v.number(),
+    /** Legacy: progress now lives on `metaWebhookProjections`. Events
+        projected before it keep these, and projection still reads them. */
     projectedAt: v.optional(v.number()),
-    /** Next messaging item to project from a large delivery. */
+    /** Legacy: next messaging item to project from a large delivery. */
     projectionCursor: v.optional(v.number()),
     error: v.optional(v.string()),
   })
     .index("by_bodyHash", ["bodyHash"])
     .index("by_receivedAt", ["receivedAt"]),
+  /** How far the Meta projector has got with an event. Kept off the event so
+      the raw event is written once and the calling projector, which reads it
+      concurrently, never conflicts with Meta's progress writes. */
+  metaWebhookProjections: defineTable({
+    eventId: v.id("metaWebhookEvents"),
+    projectedAt: v.optional(v.number()),
+    /** Next messaging item to project from a large delivery. */
+    projectionCursor: v.optional(v.number()),
+  }).index("by_eventId", ["eventId"]),
 }
