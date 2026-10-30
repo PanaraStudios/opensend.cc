@@ -2,16 +2,21 @@ import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { BroadcastInput } from "./broadcasts"
 import { draft } from "./broadcasts"
-import { resolveWhatsAppSend, sendWhatsAppRecipient } from "./broadcastWhatsApp"
+import {
+  resolveWhatsAppSend,
+  sendMessagingRecipients,
+} from "./broadcastWhatsApp"
 import {
   validateEmailBroadcast,
   initializeEmailBroadcast,
   eligibleEmailRecipients,
   prepareEmailBroadcast,
   sendEmailRecipient,
+  emailSendRate,
 } from "./broadcastEmail"
 import { readBroadcastStats, readWhatsAppStats } from "./broadcastMetrics"
 import { resolvePageBroadcast } from "./broadcastMessaging"
+import { channelStrategies } from "../lib/meta/payloads"
 import {
   type Channel,
   type MessagingChannel,
@@ -49,13 +54,20 @@ type Adapter = {
     topic: Doc<"topics"> | null,
     sending: boolean
   ): Promise<Doc<"contacts">[]>
-  sendRecipient(
+  /** A fan-out step's recipients, in order, until `more` says the
+      transaction is full. Returns how many contacts it got through
+      (`written`), how many messages it queued, and when the last reserved
+      send may go, if the step reserved them. */
+  sendRecipients(
     ctx: MutationCtx,
     row: Doc<"broadcasts">,
-    contact: Doc<"contacts">,
+    contacts: Doc<"contacts">[],
     topic: Doc<"topics"> | null,
-    prepared: Prepared
-  ): Promise<void>
+    prepared: Prepared,
+    more: () => Promise<boolean>
+  ): Promise<{ written: number; queued: number; readyAt?: number }>
+  /** Sends per second the step's sender takes, which paces the fan-out. */
+  rate(ctx: QueryCtx, prepared: Prepared): Promise<number>
   readStats(
     ctx: QueryCtx,
     row: Doc<"broadcasts">
@@ -92,11 +104,19 @@ function pageAdapter(channel: PageChannel): Adapter {
       ),
     }),
     eligible: async (_ctx, _row, candidates) => candidates,
-    sendRecipient: async (ctx, row, contact, topic, prepared) => {
+    sendRecipients: async (ctx, row, contacts, topic, prepared, more) => {
       if (prepared.channel !== channel)
         throw new Error("Invalid broadcast preparation")
-      await sendWhatsAppRecipient(ctx, row, contact, topic, prepared.target)
+      return sendMessagingRecipients(
+        ctx,
+        row,
+        contacts,
+        topic,
+        prepared.target,
+        more
+      )
     },
+    rate: async (_ctx, prepared) => messagingRate(prepared),
     readStats: async (ctx, row) => ({
       channel,
       stats:
@@ -105,6 +125,13 @@ function pageAdapter(channel: PageChannel): Adapter {
     retained: (row) => !!row.retainedWhatsAppStats,
   }
 }
+/** The sending number's rate on the channel's limiter. */
+function messagingRate(prepared: Prepared) {
+  if (prepared.channel === "email")
+    throw new Error("Invalid broadcast preparation")
+  const { account } = prepared.target
+  return channelStrategies[account.channel].rate(account).rate
+}
 export const broadcastChannels: Record<Channel, Adapter> = {
   email: {
     validate: (ctx, org, input, sending = false) =>
@@ -112,10 +139,23 @@ export const broadcastChannels: Record<Channel, Adapter> = {
     initialize: initializeEmailBroadcast,
     prepare: prepareEmailBroadcast,
     eligible: eligibleEmailRecipients,
-    sendRecipient: async (ctx, row, contact, topic, prepared) => {
+    sendRecipients: async (ctx, row, contacts, topic, prepared, more) => {
       if (prepared.channel !== "email")
         throw new Error("Invalid broadcast preparation")
-      await sendEmailRecipient(ctx, row, contact, topic, prepared)
+      let written = 0,
+        queued = 0
+      for (const contact of contacts) {
+        if (await sendEmailRecipient(ctx, row, contact, topic, prepared))
+          queued++
+        written++
+        if (written < contacts.length && !(await more())) break
+      }
+      return { written, queued }
+    },
+    rate: async (ctx, prepared) => {
+      if (prepared.channel !== "email")
+        throw new Error("Invalid broadcast preparation")
+      return emailSendRate(ctx, prepared)
     },
     readStats: async (ctx, row) => ({
       channel: "email",
@@ -140,11 +180,19 @@ export const broadcastChannels: Record<Channel, Adapter> = {
       ))!,
     }),
     eligible: async (_ctx, _row, candidates) => candidates,
-    sendRecipient: async (ctx, row, contact, topic, prepared) => {
+    sendRecipients: async (ctx, row, contacts, topic, prepared, more) => {
       if (prepared.channel !== "whatsapp")
         throw new Error("Invalid broadcast preparation")
-      await sendWhatsAppRecipient(ctx, row, contact, topic, prepared.target)
+      return sendMessagingRecipients(
+        ctx,
+        row,
+        contacts,
+        topic,
+        prepared.target,
+        more
+      )
     },
+    rate: async (_ctx, prepared) => messagingRate(prepared),
     readStats: async (ctx, row) => ({
       channel: "whatsapp",
       stats:

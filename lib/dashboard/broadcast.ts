@@ -145,35 +145,71 @@ export function broadcastTopicItems(
 
 export function broadcastReachabilityLabel(
   recipients: number,
-  skipped: number
+  skipped: number,
+  estimated = false
 ) {
-  return `${recipients.toLocaleString()} of ${(recipients + skipped).toLocaleString()} can be reached now`
+  return `${estimated ? "About " : ""}${recipients.toLocaleString()} of ${(recipients + skipped).toLocaleString()} can be reached now`
+}
+
+/** A review of a large audience reads its first pages and scales the rest
+    (convex/broadcasts.ts, `REVIEW_PAGES`). */
+export const BROADCAST_ESTIMATE_NOTE =
+  "Estimated from the first 4,000 contacts in the audience: the oldest contacts, or for a segment the earliest added. Each contact is checked again when the broadcast sends."
+
+/** An estimate of none means none among the contacts checked, not an empty
+    audience: it never blocks a send. */
+export function broadcastSendBlocked(estimate: {
+  recipients: number
+  estimated?: boolean
+}) {
+  return estimate.recipients === 0 && !estimate.estimated
+}
+
+/** "About 1,200 recipients" for an estimate, "3 recipients" for a count. */
+export function audienceCountLabel(
+  count: number,
+  noun: string,
+  estimated = false
+) {
+  return estimated
+    ? `About ${count.toLocaleString()} ${count === 1 ? noun : `${noun}s`}`
+    : pluralize(count, noun)
 }
 
 /** Pending audience counts must never look like an empty audience. */
 export function broadcastRecipientCheck(
   recipients: number | null,
-  failed = false
+  failed = false,
+  estimated = false
 ): {
   id: string
-  level: "loading" | "error" | "ok"
+  level: "loading" | "error" | "warn" | "ok"
   label: string
 } {
+  if (failed)
+    return {
+      id: "recipients",
+      level: "error",
+      label: "Could not load contacts. Reopen review to try again.",
+    }
+  if (recipients === null)
+    return { id: "recipients", level: "loading", label: "Loading contacts…" }
+  if (recipients === 0)
+    return estimated
+      ? {
+          id: "recipients",
+          level: "warn",
+          label:
+            "None of the first 4,000 contacts in the audience can get this email; the rest are checked when it sends",
+        }
+      : {
+          id: "recipients",
+          level: "error",
+          label: "No contacts in this segment",
+        }
   return {
     id: "recipients",
-    level: failed
-      ? "error"
-      : recipients === null
-        ? "loading"
-        : recipients === 0
-          ? "error"
-          : "ok",
-    label: failed
-      ? "Could not load contacts. Reopen review to try again."
-      : recipients === null
-        ? "Loading contacts…"
-        : recipients === 0
-          ? "No contacts in this segment"
-          : `${pluralize(recipients, "contact")} will get this email`,
+    level: "ok",
+    label: `${audienceCountLabel(recipients, "contact", estimated)} will get this email${estimated ? " (estimated)" : ""}`,
   }
 }
