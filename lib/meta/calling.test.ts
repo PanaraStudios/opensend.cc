@@ -7,6 +7,7 @@ import {
   callWireStatus,
   buildCallingSettingsPayload,
   writableCallingSettings,
+  hasCallingChanges,
 } from "./calling"
 import { verifyGatewayHmac } from "./calling-gateway"
 import { signRequest } from "../../services/call-gateway/src/auth"
@@ -346,5 +347,46 @@ test("callback HMAC matches gateway client bytes and binds body/path/method/time
       now
     ),
     null
+  )
+})
+
+test("only WhatsApp bodies with calls, account changes or permission replies reach calling", () => {
+  const body = (field: string, value: Record<string, unknown>) => ({
+    object: "whatsapp_business_account",
+    entry: [{ id: "waba", changes: [{ field, value }] }],
+  })
+  assert.equal(hasCallingChanges(body("calls", { calls: [] })), true)
+  assert.equal(hasCallingChanges(body("account_update", {})), true)
+  assert.equal(hasCallingChanges(body("account_settings_update", {})), true)
+  assert.equal(
+    hasCallingChanges(
+      body("messages", {
+        messages: [
+          { interactive: { call_permission_reply: { response: "accept" } } },
+        ],
+      })
+    ),
+    true
+  )
+  assert.equal(
+    hasCallingChanges(body("messages", { statuses: [{ id: "wamid" }] })),
+    false
+  )
+  assert.equal(
+    hasCallingChanges(
+      body("messages", { messages: [{ type: "text", text: { body: "hi" } }] })
+    ),
+    false
+  )
+  assert.equal(
+    hasCallingChanges(body("message_template_status_update", {})),
+    false
+  )
+  assert.equal(
+    hasCallingChanges({
+      object: "page",
+      entry: [{ changes: [{ field: "calls" }] }],
+    }),
+    false
   )
 })

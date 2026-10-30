@@ -6,7 +6,12 @@ import { internalMutation, type MutationCtx } from "../_generated/server"
 import type { Doc } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { array, object, string } from "../../lib/meta/parse"
-import { callTime, callWireStatus, CALL_TERMINAL } from "../../lib/meta/calling"
+import {
+  callTime,
+  callWireStatus,
+  CALL_TERMINAL,
+  CALLING_WEBHOOK_FIELDS,
+} from "../../lib/meta/calling"
 import {
   upsertChannelThread,
   recordWhatsAppUser,
@@ -490,15 +495,8 @@ export const project = internalMutation({
         const change = object(changeRaw),
           value = object(change.value),
           field = string(change.field)
-        if (
-          ![
-            "calls",
-            "messages",
-            "account_settings_update",
-            "account_update",
-          ].includes(field)
-        )
-          continue
+        // Ingest skips bodies without these: keep `hasCallingChanges` in step.
+        if (!CALLING_WEBHOOK_FIELDS.includes(field)) continue
         const phoneId =
           string(object(value.metadata).phone_number_id) ||
           string(value.phone_number_id) ||
