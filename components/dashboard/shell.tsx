@@ -88,7 +88,8 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Toaster } from "@/components/ui/toast"
+import { Toaster, toast } from "@/components/ui/toast"
+import { actionError } from "@/lib/action-error"
 import {
   DASHBOARD_NAV,
   CHANNEL_PAGES,
@@ -617,10 +618,30 @@ function DashboardChrome({ children }: { children: React.ReactNode }) {
   )
 }
 
+/** A Convex call that failed without its own error handling: shown as a
+    readable toast instead of failing silently. */
+function UnhandledErrors() {
+  React.useEffect(() => {
+    function onRejection(event: PromiseRejectionEvent) {
+      const reason: unknown = event.reason
+      const fromConvex =
+        (reason && typeof reason === "object" && "data" in reason) ||
+        (reason instanceof Error && reason.message.includes("[CONVEX "))
+      if (!fromConvex) return
+      event.preventDefault()
+      toast.add({ type: "error", title: actionError(reason) })
+    }
+    window.addEventListener("unhandledrejection", onRejection)
+    return () => window.removeEventListener("unhandledrejection", onRejection)
+  }, [])
+  return null
+}
+
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceProvider>
       <Toaster>
+        <UnhandledErrors />
         <ShortcutProvider>
           <DashboardChrome>{children}</DashboardChrome>
         </ShortcutProvider>
@@ -635,6 +656,7 @@ export function FullScreenShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceProvider>
       <Toaster>
+        <UnhandledErrors />
         <ShortcutProvider>
           <EditorShortcuts />
           {children}
