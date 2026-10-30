@@ -46,6 +46,9 @@ export function readPage(raw: unknown): Page | null {
 export const readPages = (raw: unknown) =>
   array(object(raw).data).flatMap((row) => readPage(row) ?? [])
 
+/** What a Page's linked Instagram account needs on top of the Page's. */
+export const INSTAGRAM_SCOPES = ["instagram_basic", "instagram_manage_messages"]
+
 /** Facebook Login's Page permissions differ from WhatsApp's token scopes. */
 export function pageTokenProblem(
   info: TokenInfo,
@@ -58,7 +61,7 @@ export function pageTokenProblem(
   const scopes = [
     "pages_messaging",
     "pages_manage_metadata",
-    ...(instagram ? ["instagram_basic", "instagram_manage_messages"] : []),
+    ...(instagram ? INSTAGRAM_SCOPES : []),
   ]
   const missing = scopes.filter((scope) => !info.scopes.includes(scope))
   if (missing.length)

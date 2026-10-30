@@ -59,6 +59,8 @@ export function asRun(row: Doc<"automationRuns">): AutomationRun {
     automationId: row.automationId,
     status: row.status,
     contactEmail: row.contactEmail,
+    contactName: row.contactName,
+    contactPhone: row.contactPhone,
     payload: row.payload,
     startedAt: row._creationTime,
     completedAt: row.completedAt ?? null,

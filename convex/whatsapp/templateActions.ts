@@ -8,6 +8,7 @@ import { callerValue, type Caller } from "../api/caller"
 import { decryptSecret } from "../secrets"
 import { friendly, graph, graphFailure, graphLocalOrigin } from "../meta/graph"
 import { publicFetch } from "../../lib/net/public-fetch"
+import { MetaError } from "../../lib/meta/errors"
 import { editableAtMeta } from "./rows"
 import {
   TEMPLATE_FIELDS,
@@ -254,6 +255,55 @@ async function submitTemplate(
   return null
 }
 
+/** Meta's refusal of a delete by a token whose system user can send on the
+    WABA but has no task on it (deletes check the WABA's assigned users).
+    Names the token's system user, the account and who is assigned now, as a
+    person with a similar name holding Full control is easy to mistake for
+    it. Each lookup is best effort; a failed one leaves its part generic. */
+async function deleteNeedsWabaAccess(
+  token: string,
+  wabaId: string,
+  version: string
+) {
+  const read = (path: string, query: Record<string, string>) =>
+    graph<Record<string, unknown>>({
+      token,
+      method: "GET",
+      path,
+      query,
+      version,
+    }).catch(() => ({}) as Record<string, unknown>)
+  const [me, waba] = await Promise.all([
+    read("me", { fields: "id,name" }),
+    read(wabaId, { fields: "name,owner_business_info" }),
+  ])
+  const owner = record(waba.owner_business_info).id
+  const assigned =
+    typeof owner === "string"
+      ? (await read(`${wabaId}/assigned_users`, { business: owner })).data
+      : undefined
+  const named = (name: unknown, id: unknown) =>
+    typeof name === "string" && typeof id === "string"
+      ? `"${name}" (ID ${id})`
+      : undefined
+  const user = named(me.name, me.id)
+  const account = named(waba.name, wabaId)
+  const holders = Array.isArray(assigned)
+    ? assigned
+        .map((entry) => record(entry).name)
+        .filter((name): name is string => typeof name === "string")
+    : undefined
+  return [
+    `Meta won't let OpenSend delete templates on ${account ? `WhatsApp account ${account}` : "this WhatsApp account"}: the connected token belongs to ${user ? `system user ${user}` : "a system user"}, which isn't assigned to it.`,
+    holders?.length
+      ? `Only ${holders.join(", ")} ${holders.length === 1 ? "is" : "are"} assigned now.`
+      : "",
+    `In Meta Business Settings, open Users → System users, pick ${user ?? "that user"}, Assign assets → WhatsApp accounts → ${account ?? "this account"} → Full control, then delete again.`,
+  ]
+    .filter(Boolean)
+    .join(" ")
+}
+
 async function deleteTemplate(
   ctx: ActionCtx,
   templateId: Id<"templates">,
@@ -267,15 +317,35 @@ async function deleteTemplate(
     const access = target.access
     await friendly(
       ctx,
-      async () =>
-        graph({
-          token: await decryptSecret(access.encryptedToken),
-          method: "DELETE",
-          path: `${target.wabaId}/message_templates`,
-          // With the id, only this language's template goes.
-          query: { name: target.name, hsm_id: target.metaTemplateId },
-          version: access.graphVersion,
-        }),
+      async () => {
+        const token = await decryptSecret(access.encryptedToken)
+        try {
+          return await graph({
+            token,
+            method: "DELETE",
+            path: `${target.wabaId}/message_templates`,
+            // With the id, only this language's template goes.
+            query: { name: target.name, hsm_id: target.metaTemplateId },
+            version: access.graphVersion,
+          })
+        } catch (error) {
+          if (
+            error instanceof MetaError &&
+            error.code === 100 &&
+            /need permission on either whatsapp business account/i.test(
+              error.message
+            )
+          )
+            throw new ConvexError(
+              await deleteNeedsWabaAccess(
+                token,
+                target.wabaId,
+                access.graphVersion
+              )
+            )
+          throw error
+        }
+      },
       access.connectionId
     )
   }
@@ -335,6 +405,19 @@ async function syncWaba(ctx: ActionCtx, wabaId: string) {
     }
     after = cursor
   }
+  // Past MAX_PAGES the listing is incomplete: what was read is kept and
+  // the sync recorded, but no template is marked deleted for being unseen.
+  console.warn(
+    `WhatsApp template sync for WABA ${wabaId} stopped after ${MAX_PAGES} pages (${count} templates); templates Meta no longer lists were not marked deleted.`
+  )
+  await ctx.runMutation(internal.whatsapp.templates.finishSync, {
+    organizationId,
+    wabaId,
+    syncedAt,
+    cursor: null,
+    seenMetaIds: [],
+    partial: true,
+  })
   return count
 }
 
@@ -355,7 +438,13 @@ export const remove = action({
 /** "Sync from Meta": imports every template of the team's WABAs. */
 export const sync = action({
   args: { organizationId: v.string() },
-  returns: v.object({ synced: v.number() }),
+  returns: v.object({
+    synced: v.number(),
+    /** WABAs whose sync failed while others synced. */
+    failed: v.optional(
+      v.array(v.object({ wabaId: v.string(), error: v.string() }))
+    ),
+  }),
   handler: async (ctx, { organizationId }) => {
     const wabaIds: string[] = await ctx.runQuery(
       internal.whatsapp.templates.teamWabaIds,
@@ -369,9 +458,20 @@ export const sync = action({
       organizationId,
       operation: "templateSync",
     })
+    // One failing WABA must not stop the others; it fails the whole sync
+    // only when every WABA failed.
     let synced = 0
-    for (const wabaId of wabaIds) synced += await syncWaba(ctx, wabaId)
-    return { synced }
+    let firstError: unknown
+    const failed: { wabaId: string; error: string }[] = []
+    for (const wabaId of wabaIds)
+      try {
+        synced += await syncWaba(ctx, wabaId)
+      } catch (error) {
+        firstError ??= error
+        failed.push({ wabaId, error: graphFailure(error) })
+      }
+    if (failed.length === wabaIds.length) throw firstError
+    return failed.length ? { synced, failed } : { synced }
   },
 })
 

@@ -88,6 +88,11 @@ const NAME = /^[a-z0-9_]+$/
 export const isTemplateName = (name: string) =>
   NAME.test(name) && name.length <= TEMPLATE_LIMITS.name
 
+/** A template name as it is typed: spaces become underscores and capitals
+    lowercase, so the name stays one Meta accepts. */
+export const typedTemplateName = (text: string) =>
+  text.toLowerCase().replace(/\s/g, "_")
+
 /** A template name Meta accepts, made from any text. */
 export function templateNameFrom(text: string) {
   const name = text

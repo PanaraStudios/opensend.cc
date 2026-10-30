@@ -10,6 +10,7 @@ import {
   WABA_ID,
   envelope,
   fakeGraph,
+  graphError,
   inboundFixture,
   signedWebhook,
   type GraphRoute,
@@ -464,6 +465,70 @@ describe("WhatsApp templates", () => {
     )
   })
 
+  test("one failing WABA does not stop the manual sync of the others", async () => {
+    const f = await setup()
+    await f.t.run(async (ctx) => {
+      const own = await ctx.db.query("whatsappBusinessAccounts").first()
+      await ctx.db.insert("whatsappBusinessAccounts", {
+        organizationId: f.team,
+        wabaId: "7777000077770000",
+        connectionId: own!.connectionId,
+      })
+    })
+    f.graph.use({
+      method: "GET",
+      path: "/7777000077770000/message_templates",
+      respond: () =>
+        Response.json(
+          { error: { message: "Temporary failure", code: 2 } },
+          { status: 503 }
+        ),
+    })
+    const result = await f.owner.action(api.whatsapp.templateActions.sync, {
+      organizationId: f.team,
+    })
+    expect(result.synced).toBe(2)
+    expect(result.failed).toEqual([
+      {
+        wabaId: "7777000077770000",
+        error: expect.stringMatching(/Temporary failure/),
+      },
+    ])
+    const waba = await f.t.run((ctx) =>
+      ctx.db
+        .query("whatsappBusinessAccounts")
+        .withIndex("by_wabaId", (q) => q.eq("wabaId", WABA_ID))
+        .unique()
+    )
+    expect(waba?.templatesSyncedAt).toEqual(expect.any(Number))
+  })
+
+  test("a listing cut off at the page limit records the sync without marking unseen templates deleted", async () => {
+    const f = await setup()
+    const id = await f.create()
+    await f.owner.action(api.whatsapp.templateActions.publish, { id })
+    later()
+    f.graph.use({
+      method: "GET",
+      path: `/${WABA_ID}/message_templates`,
+      respond: () => ({
+        data: [],
+        paging: { next: "https://graph.example/next", cursors: { after: "c" } },
+      }),
+    })
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const syncedAt = Date.now()
+    await f.owner.action(api.whatsapp.templateActions.sync, {
+      organizationId: f.team,
+    })
+    expect(f.graph.to(`/${WABA_ID}/message_templates`, "GET")).toHaveLength(60)
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/stopped after 60/))
+    expect((await f.row(id)).whatsapp?.metaStatus).not.toBe("DELETED")
+    expect(
+      await f.t.run((ctx) => ctx.db.query("whatsappBusinessAccounts").first())
+    ).toMatchObject({ templatesSyncedAt: syncedAt })
+  })
+
   test("an empty listing records the sync start and marks dropped templates deleted", async () => {
     const f = await setup()
     await f.owner.action(api.whatsapp.templateActions.sync, {
@@ -519,6 +584,73 @@ describe("WhatsApp templates", () => {
     expect(f.graph.to(`/${WABA_ID}/message_templates`, "DELETE")).toHaveLength(
       1
     )
+  })
+
+  test("a delete Meta refuses for missing WABA access says how to grant it", async () => {
+    const f = await setup()
+    const id = await f.create()
+    await f.owner.action(api.whatsapp.templateActions.publish, { id })
+    f.graph.use({
+      method: "DELETE",
+      path: `/${WABA_ID}/message_templates`,
+      respond: () =>
+        graphError(
+          "(#100) Need permission on either WhatsApp Business Account or owner/shared business.",
+          100
+        ),
+    })
+    await expect(
+      f.owner.action(api.whatsapp.templateActions.remove, { id })
+    ).rejects.toThrow(/Assign assets/)
+    // Kept here, since it still exists at Meta.
+    expect(await f.t.run((ctx) => ctx.db.get("templates", id))).not.toBeNull()
+  })
+
+  test("that refusal names the token's system user, the account and who is assigned", async () => {
+    const f = await setup()
+    const id = await f.create()
+    await f.owner.action(api.whatsapp.templateActions.publish, { id })
+    f.graph.use(
+      {
+        method: "DELETE",
+        path: `/${WABA_ID}/message_templates`,
+        respond: () =>
+          graphError(
+            "(#100) Need permission on either WhatsApp Business Account or owner/shared business.",
+            100
+          ),
+      },
+      {
+        method: "GET",
+        path: "/me",
+        respond: () => ({ id: "1415893407188257", name: "Sender" }),
+      },
+      {
+        method: "GET",
+        path: `/${WABA_ID}`,
+        respond: () => ({
+          id: WABA_ID,
+          name: "Support",
+          owner_business_info: { id: "317407769087229" },
+        }),
+      },
+      {
+        method: "GET",
+        path: `/${WABA_ID}/assigned_users`,
+        respond: (call) =>
+          call.query.business === "317407769087229"
+            ? { data: [{ id: "1", name: "Sender Admin", tasks: ["MANAGE"] }] }
+            : graphError("wrong business", 100),
+      }
+    )
+    const failure = f.owner.action(api.whatsapp.templateActions.remove, { id })
+    await expect(failure).rejects.toThrow(
+      `system user "Sender" (ID 1415893407188257)`
+    )
+    await expect(failure).rejects.toThrow(
+      `WhatsApp account "Support" (ID ${WABA_ID})`
+    )
+    await expect(failure).rejects.toThrow("Only Sender Admin is assigned now.")
   })
 
   test("names are unique per WABA and language, as Meta requires", async () => {
@@ -897,4 +1029,85 @@ test("the account picker identifies an unnamed WABA by its connected number inst
   expect(accounts).toMatchObject([
     { wabaId: WABA_ID, name: "Support · +15555550100" },
   ])
+})
+
+test("sync keeps Meta's exact names, even ones our slug would merge", async () => {
+  const f = await setup()
+  const meta = (id: string, name: string) => ({
+    id,
+    name,
+    language: "gu",
+    category: "MARKETING" as const,
+    status: "APPROVED" as const,
+    parameterFormat: "positional" as const,
+    components: [{ type: "BODY", text: "Hello" }],
+  })
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    organizationId: f.team,
+    wabaId: WABA_ID,
+    syncedAt: Date.now(),
+    templates: [
+      meta("9001", "ng_admission_2026"),
+      meta("9002", "ng_admission_2026_"),
+    ],
+  })
+  const names = await f.t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("templates")
+        .withIndex("by_organizationId", (q) => q.eq("organizationId", f.team))
+        .collect()
+    )
+      .filter((row) => row.whatsapp?.metaTemplateId?.startsWith("900"))
+      .map((row) => row.name)
+      .sort()
+  )
+  expect(names).toEqual(["ng_admission_2026", "ng_admission_2026_"])
+})
+
+test("sync corrects a slugged name on a row it matches by Meta id, and saving that exact name is no rename", async () => {
+  const f = await setup()
+  const meta = (name: string) => ({
+    id: "9101",
+    name,
+    language: "en_US",
+    category: "MARKETING" as const,
+    status: "APPROVED" as const,
+    parameterFormat: "positional" as const,
+    components: [{ type: "BODY", text: "Hello" }],
+  })
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    organizationId: f.team,
+    wabaId: WABA_ID,
+    syncedAt: Date.now(),
+    templates: [meta("promo__2026_")],
+  })
+  const row = await f.t.run(async (ctx) =>
+    (await ctx.db.query("templates").collect()).find(
+      (candidate) => candidate.whatsapp?.metaTemplateId === "9101"
+    )
+  )
+  // As an older install stored it: slugged.
+  await f.t.run((ctx) =>
+    ctx.db.patch("templates", row!._id, { name: "promo_2026" })
+  )
+  later()
+  await f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+    organizationId: f.team,
+    wabaId: WABA_ID,
+    syncedAt: Date.now(),
+    templates: [meta("promo__2026_")],
+  })
+  const fixed = await f.row(row!._id)
+  expect(fixed.name).toBe("promo__2026_")
+  expect(fixed.alias).toBe(row!.alias)
+  expect(fixed.searchText).toContain("promo__2026_")
+  // The editor saves the name it shows; the slug must not turn it into a
+  // rename Meta refuses.
+  await f.owner.mutation(api.templates.update, {
+    id: row!._id,
+    name: "promo__2026_",
+    content: componentsFromForm({ ...EMPTY_TEMPLATE_FORM, body: "Hi there" }),
+  })
+  expect((await f.row(row!._id)).name).toBe("promo__2026_")
 })

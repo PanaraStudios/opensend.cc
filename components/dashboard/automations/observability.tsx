@@ -68,6 +68,10 @@ const RUN_STATUS_ITEMS: readonly SelectOption[] = [
   ),
 ]
 
+/** Who a run is for: the email, else the name, else the phone. */
+const runContact = (run: AutomationRun) =>
+  run.contactEmail || run.contactName || run.contactPhone
+
 /** A label over a value, inside a card of the graph. */
 function CardFact({
   label,
@@ -269,7 +273,7 @@ export function Observability({ automation }: { automation: Automation }) {
                     onClick={() => setSelectedId(run.id)}
                   >
                     <TableCell className="font-medium">
-                      {run.contactEmail || "—"}
+                      {runContact(run) || "—"}
                     </TableCell>
                     <TableCell>
                       <AutomationRunStatusBadge status={run.status} />

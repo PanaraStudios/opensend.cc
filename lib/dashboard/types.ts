@@ -450,6 +450,8 @@ export type AutomationRun = {
   automationId: string
   status: AutomationRunStatus
   contactEmail?: string
+  contactName?: string
+  contactPhone?: string
   payload: Record<string, unknown>
   startedAt: number
   completedAt: number | null

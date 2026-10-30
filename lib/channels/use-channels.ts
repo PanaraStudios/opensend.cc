@@ -58,8 +58,9 @@ export function useChannelCommands() {
     }) => exchange({ ...input, organizationId: organizationId() }),
     connectPageManual: (input: { pageId: string; token: string }) =>
       pageManual({ ...input, organizationId: organizationId() }),
-    connectFacebookLogin: (code: string) =>
-      facebookLogin({ code, organizationId: organizationId() }),
+    /** Takes whichever Facebook Login returned: a user token or a code. */
+    connectFacebookLogin: (login: { code?: string; accessToken?: string }) =>
+      facebookLogin({ ...login, organizationId: organizationId() }),
     registerNumber: (accountId: string, pin: string) =>
       register({ accountId: accountId as Id<"channelAccounts">, pin }),
     syncing,

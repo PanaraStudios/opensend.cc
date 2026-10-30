@@ -109,6 +109,26 @@ export function templatePayload(value: unknown) {
     ...(components ? { components } : {}),
   }
 }
+/** The inbox's one-line preview of an outbound WhatsApp payload. A template
+    sent by name alone carries no text; one the team has stored previews its
+    rendered body instead (see createChannelMessage). */
+export function whatsappPreview(payload: ReturnType<typeof whatsappPayload>) {
+  const data = payload[payload.type] as Record<string, unknown>
+  const body = data.body as { text?: unknown } | undefined
+  return (
+    payload.type === "text"
+      ? String(data.body)
+      : payload.type === "template"
+        ? `[template: ${String(data.name)}]`
+        : typeof data.caption === "string"
+          ? data.caption
+          : // Buttons, lists and call permission requests carry body text.
+            typeof body?.text === "string" && body.text.trim()
+            ? body.text
+            : `[${payload.type}]`
+  ).slice(0, 1000)
+}
+
 /** Validate before enqueueing and build only Cloud API fields. */
 export function whatsappPayload(input: WhatsAppBody): Record<
   string,
@@ -402,20 +422,12 @@ export const channelStrategies: Record<MessagingChannel, ChannelStrategy> = {
           }
         : null,
     build: (body) => {
-      const payload = whatsappPayload(body as WhatsAppBody),
-        data = payload[payload.type] as Record<string, unknown>
+      const payload = whatsappPayload(body as WhatsAppBody)
       return {
         payload,
         to: payload.to ?? payload.recipient!,
         type: payload.type,
-        preview: (payload.type === "text"
-          ? String(data.body)
-          : payload.type === "template"
-            ? `[template: ${String(data.name)}]`
-            : typeof data.caption === "string"
-              ? data.caption
-              : `[${payload.type}]`
-        ).slice(0, 1000),
+        preview: whatsappPreview(payload),
       }
     },
     assertWindow: (payload, until, now) => {

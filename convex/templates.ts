@@ -152,7 +152,7 @@ function draftVariables(draft: Draft) {
     )
   return variables
 }
-const searchText = (name: string, alias: string) =>
+export const searchText = (name: string, alias: string) =>
   `${name} ${alias.replace(/[-_]+/g, " ")}`
 /** Empty text clears an optional envelope field. */
 const optionalText = (value: string | undefined) => value?.trim() || undefined
@@ -285,7 +285,9 @@ export async function insertTemplate(
 
 /** A WhatsApp template: its row, and its draft holding the components.
     `uniqueName` numbers a taken name instead of refusing it. A template
-    synced from Meta arrives published, with its Meta fields. */
+    synced from Meta arrives published, with its Meta fields and Meta's
+    exact name (`metaName`): sends address it by that name, and Meta can
+    hold names our slug would merge, like `a_2026` and `a_2026_`. */
 export async function insertWhatsAppTemplate(
   ctx: MutationCtx,
   organizationId: string,
@@ -294,14 +296,17 @@ export async function insertWhatsAppTemplate(
     content?: unknown
     whatsapp: WhatsAppSettings & Partial<WhatsAppTemplate>
     uniqueName?: boolean
+    metaName?: boolean
     status?: Doc<"templates">["status"]
   }
 ) {
   checkInput({ name: input.name, content: input.content })
   const target = input.whatsapp
-  const name = input.uniqueName
-    ? await freeTemplateName(ctx, organizationId, input.name, target)
-    : templateNameFrom(input.name)
+  const name = input.metaName
+    ? input.name
+    : input.uniqueName
+      ? await freeTemplateName(ctx, organizationId, input.name, target)
+      : templateNameFrom(input.name)
   if (!input.uniqueName)
     await assertNameFree(ctx, organizationId, { ...target, name })
   const facts = componentFacts(input.content ?? emptyComponents())
@@ -817,8 +822,12 @@ async function updateWhatsAppTemplate(
   const draft = await findDraft(ctx, template._id)
   if (!current || !draft) throw new ConvexError("Template not found")
   assertTemplateFields("whatsapp", input)
+  // The stored name may be Meta's exact one (`a__b`), which the slug would
+  // change: the same name again is no rename.
   const name =
-    input.name !== undefined ? templateNameFrom(input.name) : template.name
+    input.name !== undefined && input.name !== template.name
+      ? templateNameFrom(input.name)
+      : template.name
   const renamed = name !== template.name
   const settings = await whatsappSettings(
     ctx,

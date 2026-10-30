@@ -82,7 +82,7 @@ export async function graph<T = unknown>(input: {
       ? [input.token.split("|").slice(1).join("|")]
       : []),
     ...Object.entries(input.query ?? {}).flatMap(([name, value]) =>
-      /^(access_token|input_token|client_secret|code|appsecret_proof)$/i.test(
+      /^(access_token|input_token|fb_exchange_token|client_secret|code|appsecret_proof)$/i.test(
         name
       ) && typeof value === "string"
         ? [value]
@@ -90,7 +90,7 @@ export async function graph<T = unknown>(input: {
     ),
     ...(input.body && "form" in input.body
       ? Object.entries(input.body.form).flatMap(([name, value]) =>
-          /^(access_token|input_token|client_secret|code|verify_token|appsecret_proof)$/i.test(
+          /^(access_token|input_token|fb_exchange_token|client_secret|code|verify_token|appsecret_proof)$/i.test(
             name
           )
             ? [value]
@@ -191,6 +191,25 @@ export async function exchangeCode(
   })
   if (typeof result.access_token !== "string" || !result.access_token)
     throw new ConvexError(missingToken)
+  return result.access_token
+}
+/** Swaps a short-lived user token from Facebook Login for a long-lived one,
+    so Page tokens read with it do not expire. */
+export async function longLivedUserToken(app: App, token: string) {
+  const result = await graph<{ access_token?: unknown }>({
+    token: await appAccessToken(app),
+    method: "GET",
+    path: "oauth/access_token",
+    query: {
+      grant_type: "fb_exchange_token",
+      client_id: app.appId,
+      client_secret: await decryptSecret(app.encryptedAppSecret),
+      fb_exchange_token: token,
+    },
+    version: app.graphVersion,
+  })
+  if (typeof result.access_token !== "string" || !result.access_token)
+    throw new ConvexError("Meta returned no access token")
   return result.access_token
 }
 export const markTokenInvalid = (

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import {
   CircleAlertIcon,
   PlusIcon,
+  SendIcon,
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react"
@@ -29,9 +30,11 @@ import {
   FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { EditorTopBar } from "@/components/dashboard/editor-chrome"
+import { useTeamRole } from "@/components/auth/workspace"
 import {
   OptionSelect,
   useAutosaveDraft,
@@ -63,6 +66,7 @@ import {
   isTemplateName,
   templateProblems,
   templateVariables,
+  typedTemplateName,
   textParams,
   variableLabel,
   type ButtonType,
@@ -210,9 +214,14 @@ export function WhatsAppTemplateEditorScreen({
   const counts = (type: ButtonType) =>
     form.buttons.filter((button) => button.type === type).length
   const publishLabel = templatePublishLabel(item)
+  const { canWrite } = useTeamRole()
+  /* Meta takes a few seconds to answer; the ref holds off a second click
+     before the disabled button has rendered. */
+  const [submitting, setSubmitting] = React.useState(false)
+  const submittingRef = React.useRef(false)
 
   async function submit() {
-    if (!whatsapp) return
+    if (!whatsapp || submittingRef.current) return
     const found = templateProblems({
       name: templateName,
       language: whatsapp.language,
@@ -222,6 +231,8 @@ export function WhatsAppTemplateEditorScreen({
     })
     setProblems(found)
     if (found.length) return
+    submittingRef.current = true
+    setSubmitting(true)
     try {
       if (templateName !== item.name)
         await updateWhatsAppTemplate(item.id, { name: templateName })
@@ -229,6 +240,9 @@ export function WhatsAppTemplateEditorScreen({
       if (await autosave.flush()) await publish(item)
     } catch (error) {
       toast.add({ type: "error", title: actionError(error) })
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
     }
   }
 
@@ -255,16 +269,28 @@ export function WhatsAppTemplateEditorScreen({
           onDuplicated={(next) => router.push(`/templates/${next}`)}
           onDelete={onDelete}
         />
-        <Button
-          size="sm"
-          data-testid="editor-publish"
-          disabled={
-            !publishLabel || readOnly || !!nameError || !accounts?.length
-          }
-          onClick={() => void submit()}
-        >
-          {publishLabel ? "Submit for review" : "Submitted for review"}
-        </Button>
+        {publishLabel ? (
+          <Button
+            size="sm"
+            data-testid="editor-publish"
+            disabled={
+              !canWrite ||
+              readOnly ||
+              !!nameError ||
+              !accounts?.length ||
+              submitting
+            }
+            aria-busy={submitting}
+            onClick={() => void submit()}
+          >
+            {submitting ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <SendIcon data-icon="inline-start" />
+            )}
+            {submitting ? "Submitting…" : "Submit for review"}
+          </Button>
+        ) : null}
       </EditorTopBar>
 
       <div className="flex min-h-0 flex-1">
@@ -328,7 +354,9 @@ export function WhatsAppTemplateEditorScreen({
                       if (/^untitled_template(?:_\d+)?$/.test(templateName))
                         event.target.select()
                     }}
-                    onChange={(event) => setTemplateName(event.target.value)}
+                    onChange={(event) =>
+                      setTemplateName(typedTemplateName(event.target.value))
+                    }
                     onBlur={() => {
                       if (!nameError && templateName !== item.name)
                         commit({ name: templateName })

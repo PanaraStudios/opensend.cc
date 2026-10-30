@@ -84,7 +84,14 @@ test.each(["whatsapp", "messenger", "instagram"] as const)(
       await expect(
         f.outsider.client.query(internal.meta.connect.checkPages, {
           organizationId: f.outsider.team,
-          accounts: [{ channel, externalId: current.externalId }],
+          scopes: [],
+          accounts: [
+            {
+              channel,
+              externalId: current.externalId,
+              pageId: current.pageId!,
+            },
+          ],
         })
       ).rejects.toThrow("already connected to another team")
       const reconnected = await f.owner.client.action(

@@ -91,6 +91,10 @@ export const automationTables = {
     automationId: v.id("automations"),
     contactId: v.optional(v.id("contacts")),
     contactEmail: v.optional(v.string()),
+    /** The contact's name and phone when the run started, so phone-only
+        contacts show in the run list without reading the contact. */
+    contactName: v.optional(v.string()),
+    contactPhone: v.optional(v.string()),
     eventId: v.optional(v.id("events")),
     lastSignalEventId: v.optional(v.id("events")),
     payload: payloadValue,

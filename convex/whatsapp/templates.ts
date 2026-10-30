@@ -23,6 +23,7 @@ import {
   findPublished,
   insertWhatsAppTemplate,
   removeTemplate,
+  searchText,
 } from "../templates"
 import {
   resolvedTemplateValue,
@@ -380,6 +381,7 @@ export const upsertSynced = internalMutation({
       if (!row) {
         const id = await insertWhatsAppTemplate(ctx, organizationId, {
           name: meta.name,
+          metaName: true,
           content: components,
           whatsapp: { wabaId, language: meta.language, ...fields, syncedAt },
           status: "published",
@@ -389,6 +391,19 @@ export const upsertSynced = internalMutation({
         continue
       }
       if ((row.whatsapp?.syncedAt ?? 0) > syncedAt) continue
+      // Rows imported before sync kept Meta's exact names hold a slugged
+      // one (`a_2026` for `a_2026_`); sends and deletes address Meta by it.
+      // The alias stays, as API callers may use it.
+      if (
+        row.name !== meta.name &&
+        !(await namesakes(ctx, organizationId, meta.name, meta.language)).some(
+          (other) => other._id !== row._id && other.whatsapp?.wabaId === wabaId
+        )
+      )
+        await patchRow(ctx, "templates", row._id, {
+          name: meta.name,
+          searchText: searchText(meta.name, row.alias),
+        })
       const draft = await findDraft(ctx, row._id)
       const live = await findPublished(ctx, row._id)
       const pending =
@@ -447,7 +462,8 @@ const byMetaId = async (
   ).find((row) => row.organizationId === organizationId) ?? null
 
 /** After a complete sync: templates of the WABA Meta no longer lists are
-    marked deleted, a page at a time, then the WABA records the sync. */
+    marked deleted, a page at a time, then the WABA records the sync. A
+    `partial` listing (cut off at the page limit) only records the sync. */
 export const finishSync = internalMutation({
   args: {
     organizationId: v.string(),
@@ -455,6 +471,7 @@ export const finishSync = internalMutation({
     syncedAt: v.number(),
     cursor: v.union(v.string(), v.null()),
     seenMetaIds: v.array(v.string()),
+    partial: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -468,6 +485,12 @@ export const finishSync = internalMutation({
       (waba.templatesSyncStartedAt ?? 0) > args.syncedAt
     )
       return null
+    if (args.partial) {
+      await ctx.db.patch("whatsappBusinessAccounts", waba._id, {
+        templatesSyncedAt: Math.max(waba.templatesSyncedAt ?? 0, args.syncedAt),
+      })
+      return null
+    }
     const seen = new Set(args.seenMetaIds)
     const page = await ctx.db
       .query("templates")

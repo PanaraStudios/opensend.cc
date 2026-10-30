@@ -55,10 +55,12 @@ type FacebookSdk = {
     version: string
   }): void
   login(
-    callback: (response: { authResponse?: { code?: string } | null }) => void,
-    options: ReturnType<typeof facebookLoginOptions> & {
-      extras?: { setup: object }
-    }
+    callback: (response: {
+      authResponse?: { code?: string; accessToken?: string } | null
+    }) => void,
+    options:
+      | ReturnType<typeof facebookLoginOptions>
+      | ReturnType<typeof signupLoginOptions>
   ): void
 }
 declare global {
@@ -201,11 +203,12 @@ export function useMetaConnect({
     try {
       sdk.login((response) => {
         const code = response.authResponse?.code
-        if (!code) {
+        const accessToken = response.authResponse?.accessToken
+        if (!code && !accessToken) {
           setPending(false)
           return
         }
-        void connectFacebookLogin(code)
+        void connectFacebookLogin(accessToken ? { accessToken } : { code })
           .then(connectedPagesToast)
           .catch((error) => {
             toast.add({

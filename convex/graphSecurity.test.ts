@@ -56,3 +56,40 @@ test("Graph errors redact credentials in query and form fields and app-token com
     }
   }
 })
+
+test("Graph errors redact a user token sent for the long-lived exchange", async () => {
+  const userToken = "fixture short-lived user credential"
+  const formToken = "fixture form user credential"
+  vi.spyOn(net, "publicFetch").mockImplementation(async () =>
+    Response.json(
+      {
+        error: {
+          message: `${userToken} / ${formToken}`,
+          error_user_msg: encodeURIComponent(userToken),
+          code: 190,
+        },
+      },
+      { status: 400 }
+    )
+  )
+  for (const input of [
+    { query: { fb_exchange_token: userToken } },
+    { body: { form: { fb_exchange_token: formToken } } },
+  ])
+    try {
+      await graph({
+        token: "123|fixture app secret",
+        method: "GET",
+        path: "oauth/access_token",
+        version: "v25.0",
+        ...input,
+      })
+      throw new Error("Expected a Meta error")
+    } catch (error) {
+      expect(error).toBeInstanceOf(MetaError)
+      const shown = metaErrorReason(error as MetaError)
+      const sent = "query" in input ? userToken : formToken
+      expect(shown).not.toContain(sent)
+      expect(shown).not.toContain(encodeURIComponent(sent))
+    }
+})

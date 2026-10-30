@@ -66,3 +66,32 @@ test("legacy strings normalize without losing the static source", () => {
     ["firstName", "lastName", "email", "phone"]
   )
 })
+
+test("a property named like an Object.prototype member resolves to the fallback", () => {
+  assert.deepEqual(
+    resolveVariables(
+      {
+        a: { property: "constructor", fallback: "there" },
+        b: { property: "toString" },
+      },
+      { properties: {} }
+    ),
+    { a: "there", b: "" }
+  )
+})
+
+test("whitespace-only values fall back like empty ones", () => {
+  assert.deepEqual(
+    resolveVariables(
+      {
+        a: { contact: "firstName", fallback: "there" },
+        b: { property: "company", fallback: "your team" },
+        c: { property: "plan" },
+        d: { value: "  ", fallback: "static" },
+      },
+      { firstName: "  ", properties: { company: " \t", plan: " " } },
+      { plan: "Free" }
+    ),
+    { a: "there", b: "your team", c: "Free", d: "static" }
+  )
+})
