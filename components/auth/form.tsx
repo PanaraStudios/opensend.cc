@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Field, FieldLabel, FieldGroup } from "@/components/ui/field"
+import { loginErrorMessage } from "@/lib/auth-errors"
 export type AuthMode =
   | "login"
   | "signup"
@@ -269,9 +270,9 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           {error}
         </p>
       )}
-      {params.get("error") && (
+      {loginErrorMessage(params.get("error")) && (
         <p role="alert" className="text-sm text-destructive">
-          The link or sign-in attempt failed. Please try again.
+          {loginErrorMessage(params.get("error"))}
         </p>
       )}
       {message && (

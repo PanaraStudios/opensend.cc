@@ -2,7 +2,10 @@ import { afterEach, expect, test, vi } from "vitest"
 import { generateKeyPair, exportJWK, SignJWT } from "jose"
 import { symmetricEncrypt } from "better-auth/crypto"
 import { getOAuthState } from "better-auth/api"
+import { ConvexError } from "convex/values"
 import { loadProvider } from "./oidc"
+import { SSO_SIGNUP_REQUIRED_MESSAGE } from "./betterAuth/ssoPolicy"
+import { SSO_SIGNUP_REQUIRED } from "../lib/auth-errors"
 import { internal } from "./_generated/api"
 import type { ActionCtx } from "./_generated/server"
 import { fixture } from "./testHelpers/ses.fixture"
@@ -112,7 +115,7 @@ test("OIDC discovery, code exchange and JWKS all cross the pinned Node transport
     ) => f.t.mutation(ref, args),
     runAction,
   } as unknown as ActionCtx
-  const { provider } = await loadProvider(ctx, f.owner.team)
+  const { provider, failure } = await loadProvider(ctx, f.owner.team)
   expect(provider.discoveryUrl).toBeUndefined()
   expect(provider.tokenUrl).toBe(`${issuer}/token`)
   const tokens = await provider.getToken!({
@@ -141,6 +144,20 @@ test("OIDC discovery, code exchange and JWKS all cross the pinned Node transport
   expect(body.get("code_verifier")).toBe("verifier")
   expect(body.get("client_secret")).toBe("client-secret")
   expect(body.get("redirect_uri")).toBe("https://app.example/callback")
+  // Another refusal keeps the generic login error...
+  vi.mocked(ctx.runQuery).mockRejectedValueOnce(
+    new ConvexError("A team membership or invitation is required")
+  )
+  await expect(provider.getUserInfo!(tokens)).rejects.toThrow("membership")
+  expect(failure.code).toBeUndefined()
+  // ...while an unapproved new account gets a code the login page explains.
+  vi.mocked(ctx.runQuery).mockRejectedValueOnce(
+    new ConvexError(SSO_SIGNUP_REQUIRED_MESSAGE)
+  )
+  await expect(provider.getUserInfo!(tokens)).rejects.toThrow(
+    "email and password first"
+  )
+  expect(failure.code).toBe(SSO_SIGNUP_REQUIRED)
 })
 
 test("OIDC redirects fail closed and cannot silently invoke the library fetch", async () => {

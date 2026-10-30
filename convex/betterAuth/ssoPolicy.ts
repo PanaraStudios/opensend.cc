@@ -1,3 +1,8 @@
+/** Refusal from `sso.authorizeIdentity` when SSO may not create the account;
+    the app matches it to send the login page a readable error. */
+export const SSO_SIGNUP_REQUIRED_MESSAGE =
+  "Create your account with email and password first, then connect SSO"
+
 /** Lowercased domain part of an email address. */
 export function emailDomain(email: string) {
   return email.split("@").pop()?.trim().toLowerCase() ?? ""

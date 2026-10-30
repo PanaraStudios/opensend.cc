@@ -2,7 +2,7 @@ import { v, ConvexError } from "convex/values"
 import { query, mutation } from "./_generated/server"
 import { requireMember, sessionUser } from "./policy"
 import { invalidate } from "./oauth"
-import { mayProvision } from "./ssoPolicy"
+import { mayProvision, SSO_SIGNUP_REQUIRED_MESSAGE } from "./ssoPolicy"
 const configValue = v.object({
   organizationId: v.string(),
   issuer: v.string(),
@@ -214,9 +214,7 @@ export const authorizeIdentity = query({
     // Pre-hijack guard: a team admin's IdP can assert any verified email, so
     // it may create a new account only on an installation-approved domain.
     if (!user && !mayProvision(args.email, args.approvedDomains))
-      throw new ConvexError(
-        "Create your account with email and password first, then connect SSO"
-      )
+      throw new ConvexError(SSO_SIGNUP_REQUIRED_MESSAGE)
     const linked = await ctx.db
       .query("account")
       .withIndex("accountId_providerId", (q) =>
