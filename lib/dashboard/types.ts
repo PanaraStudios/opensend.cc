@@ -276,6 +276,9 @@ export type Broadcast = EmailDraft & {
   }
   whatsappStats?: WhatsAppBroadcastStats
   status: BroadcastStatus
+  /** Every recipient has been queued; a sending broadcast can no longer be
+      stopped. */
+  audienceDone?: boolean
   segmentId: string | null
   topicId: string | null
   createdAt: number

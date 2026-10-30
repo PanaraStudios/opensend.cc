@@ -330,7 +330,10 @@ export function BroadcastDetail() {
   if (editable) return null
 
   const broadcast = item
-  const { canSend, canCancel } = broadcastActions(broadcast.status)
+  const { canSend, canCancel } = broadcastActions(
+    broadcast.status,
+    broadcast.audienceDone
+  )
   const topic = topics.find((row) => row.id === broadcast.topicId)
   const audience = audienceLabel(broadcast.segmentId, segments)
 
@@ -344,9 +347,21 @@ export function BroadcastDetail() {
       .catch(reportError)
   }
 
+  const sending = broadcast.status === "queued"
   function cancelSend() {
     void cancelBroadcast(broadcast.id)
-      .then(() => toast.add({ type: "success", title: "Broadcast canceled" }))
+      .then(() =>
+        toast.add(
+          sending
+            ? {
+                type: "success",
+                title: "Broadcast stopped",
+                description:
+                  "Messages already queued still go out. Send again to reach the rest.",
+              }
+            : { type: "success", title: "Broadcast canceled" }
+        )
+      )
       .catch(reportError)
   }
 
@@ -373,7 +388,7 @@ export function BroadcastDetail() {
           <>
             {canCancel ? (
               <Button variant="outline" onClick={cancelSend}>
-                Cancel
+                {sending ? "Stop sending" : "Cancel"}
               </Button>
             ) : null}
             {canSend ? <Button onClick={sendNow}>Send now</Button> : null}

@@ -41,6 +41,7 @@ export function asBroadcast(
     segmentId: row.segmentId,
     topicId: row.topicId,
     status: row.status,
+    audienceDone: row.audienceDone,
     createdAt: row._creationTime,
     updatedAt: row.updatedAt,
     scheduledAt: row.scheduledAt ?? null,
