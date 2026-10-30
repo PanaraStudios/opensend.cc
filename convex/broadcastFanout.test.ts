@@ -396,7 +396,7 @@ test("review reads at most REVIEW_PAGES pages, then estimates the rest", async (
     topicId: null,
   })
   expect(email).toEqual({ count: (audience * 3) / 4, estimated: true })
-  // The sample is the oldest members, so an estimate of none (their first
+  // The sample is the earliest-added members, so an estimate of none (their first
   // pages are all unreachable, newer members are not) never blocks a send.
   const unreachable = await f.owner.client.mutation(api.segments.create, {
     organizationId: f.owner.team,
@@ -514,22 +514,22 @@ test("contacts sharing a phone in one step share one WhatsApp identity", async (
 
 test("an oversized step rolls back alone and fails the broadcast", async () => {
   const f = await setup({ audience: 5 })
-  const generation = await f.start()
-  // The step's caps are tighter than Convex's own limits, so exceeding them
-  // throws inside the caller, which can still write.
-  expect(STEP_LIMITS.databaseQueries).toBeLessThan(4096)
-  await f.t.run(async (ctx) => {
-    await expect(
-      ctx.runMutation(
-        internal.broadcastSend.pumpStep,
-        { id: f.id, generation },
-        { transactionLimits: { databaseQueries: 30 } }
-      )
-    ).rejects.toThrow()
-    await patchRow(ctx, "broadcasts", f.id, { error: "caller still writes" })
-  })
+  await f.start()
+  // Lower pump's step caps so the first step outgrows them. Without the
+  // caps the step would succeed here and the broadcast stay queued.
+  const caps = { ...STEP_LIMITS }
+  STEP_LIMITS.databaseQueries = 30
+  try {
+    expect(await f.step()).toBe(true)
+  } finally {
+    Object.assign(STEP_LIMITS, caps)
+  }
   expect(await f.recipients()).toHaveLength(0)
-  expect((await f.read()).error).toBe("caller still writes")
+  expect(await f.read()).toMatchObject({ status: "failed" })
+  expect(await f.pumps()).toEqual([])
+  // The real caps sit under Convex's own per-transaction limits.
+  expect(STEP_LIMITS.databaseQueries).toBeLessThan(4096)
+  expect(STEP_LIMITS.documentsWritten).toBeLessThan(16_000)
 })
 
 test("a chain whose step dies outright is failed by its watchdog", async () => {
