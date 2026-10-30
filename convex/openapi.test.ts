@@ -521,6 +521,8 @@ describe("OpenAPI contract", () => {
       "POST /oauth/introspect",
       "GET /receiving-files/*",
       "GET /email-files/*",
+      // Signed, short-lived dashboard export download link.
+      "GET /exports/download/*",
       "GET /channels/media/*",
       "GET /ses/health",
       "POST /ses/events",
