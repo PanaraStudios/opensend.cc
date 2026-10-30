@@ -81,3 +81,18 @@ test("compose.prod-s3.yaml never sets an optional S3 setting to an empty string"
   assert.doesNotMatch(text, /^\s+S3_ENDPOINT_URL:/m)
   assert.doesNotMatch(text, /^\s+AWS_S3_FORCE_PATH_STYLE:/m)
 })
+
+test("the SQLite-to-Postgres steps create POSTGRES_PASSWORD before starting Postgres", () => {
+  const doc = readFileSync(
+    new URL("../docs/self-hosting.md", import.meta.url),
+    "utf8"
+  )
+  const start = doc.indexOf("**Existing SQLite install.**")
+  assert.ok(start > 0)
+  const steps = doc.slice(start, doc.indexOf("```\n\n", start))
+  const password = steps.indexOf("POSTGRES_PASSWORD=$(openssl rand -hex 24)")
+  const up = steps.indexOf("up -d --wait postgres")
+  assert.ok(password > 0 && up > password, "password before the first up")
+  // Writes stop before the export, so it misses nothing.
+  assert.ok(steps.indexOf("stop app") < steps.indexOf("backend export"))
+})

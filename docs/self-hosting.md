@@ -633,12 +633,14 @@ Then run `pnpm setup`. It generates a hex `POSTGRES_PASSWORD` and stops with a l
 
 Sizing: the defaults suit a 4 vCPU / 16 GB host. Keep `PG_SHARED_BUFFERS` near 25% and `PG_EFFECTIVE_CACHE_SIZE` near 75% of `POSTGRES_MEMORY`. For a small staging host, try `POSTGRES_MEMORY=1g CONVEX_MEMORY=2g PG_SHARED_BUFFERS=256MB PG_EFFECTIVE_CACHE_SIZE=768MB`. Keep Postgres on the same host or low-latency network as Convex, leave 30% of the disk free for vacuum and WAL, and measure the database size after your first large import.
 
-**Existing SQLite install.** Adding the overlay starts an empty database. Export first (data and files), switch, then import into the fresh backend:
+**Existing SQLite install.** Adding the overlay starts an empty database. Stop writes, export (data and files), switch, then import into the fresh backend. The overlay refuses to start without `POSTGRES_PASSWORD`, which `pnpm setup` would only generate at the end, so create it first:
 
 ```sh
-pnpm backend export --include-file-storage --path ./to-postgres.zip
 docker compose --env-file .env.docker stop app
-# add compose.prod.yaml to COMPOSE_FILE
+pnpm backend export --include-file-storage --path ./to-postgres.zip
+# add compose.prod.yaml to COMPOSE_FILE in .env.docker, then:
+grep -q '^POSTGRES_PASSWORD=.' .env.docker ||
+  echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env.docker
 docker compose --env-file .env.docker up -d --wait postgres convex
 pnpm backend import --replace-all ./to-postgres.zip
 pnpm setup
