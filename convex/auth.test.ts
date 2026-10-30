@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test"
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import schema from "./betterAuth/schema"
 import { api } from "./betterAuth/_generated/api"
 const modules = import.meta.glob("./betterAuth/**/*.ts")
@@ -45,6 +45,58 @@ describe("registration policy", () => {
     await expect(
       t.mutation(api.policy.admitUser, { userId: "c", email: "c@example.test" })
     ).rejects.toThrow("invitation")
+  })
+  test("a stale unverified first account releases setup", async () => {
+    const t = setup()
+    const first = await user(t, "typo@example.test", false)
+    await t.mutation(api.policy.admitUser, {
+      userId: first.id,
+      email: "typo@example.test",
+    })
+    await expect(
+      t.mutation(api.policy.admitUser, { userId: "b", email: "b@example.test" })
+    ).rejects.toThrow("invitation")
+    const later = Date.now() + 25 * 60 * 60 * 1000
+    expect(
+      await t.query(api.policy.checkRegistration, {
+        email: "b@example.test",
+        now: later,
+      })
+    ).toBe(true)
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      vi.setSystemTime(later)
+      const next = await user(t, "real@example.test", false)
+      await t.mutation(api.policy.admitUser, {
+        userId: next.id,
+        email: "real@example.test",
+      })
+      const setup = await t.run((ctx) => ctx.db.query("bootstrap").collect())
+      expect(setup.map((s) => s.userId)).toEqual([next.id])
+      // The new claimant gets a full window of its own.
+      await expect(
+        t.mutation(api.policy.admitUser, {
+          userId: "c",
+          email: "c@example.test",
+        })
+      ).rejects.toThrow("invitation")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  test("a verified first account keeps setup", async () => {
+    const t = setup()
+    const first = await user(t, "admin@example.test")
+    await t.mutation(api.policy.admitUser, {
+      userId: first.id,
+      email: "admin@example.test",
+    })
+    expect(
+      await t.query(api.policy.checkRegistration, {
+        email: "b@example.test",
+        now: Date.now() + 48 * 60 * 60 * 1000,
+      })
+    ).toBe(false)
   })
   test("requires a pending unexpired invitation with matching email", async () => {
     const t = setup()
