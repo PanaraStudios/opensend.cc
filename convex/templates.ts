@@ -1043,6 +1043,10 @@ export async function publishTemplate(
     status: "published",
     updatedAt: now,
     publishedAt: now,
+    // The live copy no longer is what a sync wrote.
+    ...(template.whatsapp?.syncHash
+      ? { whatsapp: { ...template.whatsapp, syncHash: undefined } }
+      : {}),
   })
   return null
 }

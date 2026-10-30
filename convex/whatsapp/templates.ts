@@ -223,6 +223,8 @@ export const recordSubmission = internalMutation({
         ...(args.category ? { category: args.category } : {}),
         submittedAt: now,
         sampleFileId: args.sampleFileId,
+        // The live copy is now what was submitted, not what a sync wrote.
+        syncHash: undefined,
       },
     })
     await writePublished(ctx, template, components, publishedAt)
@@ -322,6 +324,25 @@ export const syncTarget = internalQuery({
   },
 })
 
+/** A 53-bit fingerprint (cyrb53) of a template's stored components. */
+export function componentsHash(components: unknown): string {
+  const text = JSON.stringify(components ?? null)
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    h1 = Math.imul(h1 ^ code, 2654435761)
+    h2 = Math.imul(h2 ^ code, 1597334677)
+  }
+  h1 =
+    Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^
+    Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 =
+    Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^
+    Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return `${text.length}-${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}`
+}
+
 const metaTemplateValue = v.object({
   id: v.string(),
   name: v.string(),
@@ -365,6 +386,7 @@ export const upsertSynced = internalMutation({
       })
     for (const meta of templates) {
       const components = storedComponents(meta.components)
+      const syncHash = componentsHash(components)
       const fields = {
         metaTemplateId: meta.id,
         metaStatus: meta.status,
@@ -383,7 +405,13 @@ export const upsertSynced = internalMutation({
           name: meta.name,
           metaName: true,
           content: components,
-          whatsapp: { wabaId, language: meta.language, ...fields, syncedAt },
+          whatsapp: {
+            wabaId,
+            language: meta.language,
+            ...fields,
+            syncedAt,
+            syncHash,
+          },
           status: "published",
         })
         const inserted = (await ctx.db.get("templates", id))!
@@ -404,6 +432,18 @@ export const upsertSynced = internalMutation({
           name: meta.name,
           searchText: searchText(meta.name, row.alias),
         })
+      const metadataChanged = Object.entries(fields).some(
+        ([key, value]) =>
+          row.whatsapp?.[key as keyof NonNullable<typeof row.whatsapp>] !==
+          value
+      )
+      const settled =
+        !metadataChanged &&
+        row.status === "published" &&
+        row.publishedAt !== undefined
+      // The live copy is still what an earlier sync wrote and Meta has the
+      // same components: skip reading the draft and live copy.
+      if (settled && row.whatsapp?.syncHash === syncHash) continue
       const draft = await findDraft(ctx, row._id)
       const live = await findPublished(ctx, row._id)
       const pending =
@@ -412,24 +452,20 @@ export const upsertSynced = internalMutation({
           JSON.stringify(live.components ?? null)
       const same =
         JSON.stringify(live?.components ?? null) === JSON.stringify(components)
-      const metadataChanged = Object.entries(fields).some(
-        ([key, value]) =>
-          row.whatsapp?.[key as keyof NonNullable<typeof row.whatsapp>] !==
-          value
-      )
-      if (
-        same &&
-        !metadataChanged &&
-        row.status === "published" &&
-        row.publishedAt !== undefined
-      )
+      if (same && settled) {
+        // Rows from before the fingerprint, or after a submission, get it.
+        if (row.whatsapp?.syncHash !== syncHash)
+          await patchRow(ctx, "templates", row._id, {
+            whatsapp: { ...row.whatsapp!, syncHash },
+          })
         continue
+      }
       const now = Math.max(Date.now(), row.updatedAt + 1)
       const publishedAt = same ? (row.publishedAt ?? now) : now
       await patchRow(ctx, "templates", row._id, {
         status: "published",
         publishedAt,
-        whatsapp: { ...row.whatsapp!, ...fields, syncedAt },
+        whatsapp: { ...row.whatsapp!, ...fields, syncedAt, syncHash },
         ...(pending || same
           ? {}
           : {
