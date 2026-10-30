@@ -1167,11 +1167,12 @@ export function BroadcastStatusBadge({
   delivering?: boolean
 }) {
   // Every message is out; only delivery receipts are still arriving.
-  const shown = status === "queued" && delivering ? "sent" : status
+  if (status === "queued" && delivering)
+    return <ToneBadge tone="success" label="Delivering" />
   return (
     <ToneBadge
-      tone={BROADCAST_STATUS_TONE[shown]}
-      label={broadcastStatusLabel(shown)}
+      tone={BROADCAST_STATUS_TONE[status]}
+      label={broadcastStatusLabel(status)}
     />
   )
 }

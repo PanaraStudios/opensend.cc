@@ -534,6 +534,34 @@ test("sent-without-receipt settles after 24h; a broadcast that reached anyone is
   expect((await f.read(id))?.status).toBe("sent")
 })
 
+test("list and detail read Sending until the send queue is empty, then Delivering", async () => {
+  const f = await setup()
+  await f.contacts([{ phone: "+15550000001" }, { phone: "+15550000002" }])
+  const id = await f.create()
+  await f.fanout(id)
+  const rows = await f.recipients(id)
+  const shown = async () => {
+    const list = await f.owner.client.query(api.broadcasts.list, {
+      organizationId: f.owner.team,
+      paginationOpts: { cursor: null, numItems: 20 },
+    })
+    const detail = await f.owner.client.query(api.broadcasts.get, {
+      organizationId: f.owner.team,
+      id,
+    })
+    const listed = list.page.find((row) => row._id === id)!
+    expect(listed.delivering).toBe(detail!.delivering)
+    return { status: listed.status, delivering: listed.delivering }
+  }
+  // Every recipient is queued, but both messages still wait to be sent.
+  expect((await f.read(id))?.audienceDone).toBe(true)
+  expect(await shown()).toEqual({ status: "queued", delivering: false })
+  await deliver(f, rows[0].messageId!)
+  expect(await shown()).toEqual({ status: "queued", delivering: false })
+  await deliver(f, rows[1].messageId!)
+  expect(await shown()).toEqual({ status: "queued", delivering: true })
+})
+
 test("a broadcast that reached nobody still settles as failed", async () => {
   const f = await setup()
   await f.contacts([{ phone: "+15550000001" }])

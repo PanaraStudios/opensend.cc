@@ -35,7 +35,6 @@ import { toast } from "@/components/ui/toast"
 import { RenameBroadcastDialog } from "@/components/dashboard/broadcasts/shared"
 import {
   BroadcastStatusBadge,
-  ToneBadge,
   RecipientOutcomeBadge,
   ConfirmDialog,
   DetailHeader,
@@ -53,7 +52,6 @@ import {
 import {
   audienceLabel,
   broadcastActions,
-  broadcastDelivering,
   broadcastAsTemplateInput,
   isBroadcastDraftLike,
   type BroadcastEventTab,
@@ -388,7 +386,7 @@ export function BroadcastDetail() {
 
   // Every message is out and the row waits on delivery receipts to settle
   // (convex/broadcastMetrics.ts).
-  const delivering = broadcastDelivering(broadcast)
+  const delivering = Boolean(broadcast.delivering)
   function cancelSend() {
     void cancelBroadcast(broadcast.id)
       .then(() => toast.add({ type: "success", title: "Broadcast canceled" }))
@@ -404,11 +402,10 @@ export function BroadcastDetail() {
         icon={MegaphoneIcon}
         badge={
           <span className="flex items-center gap-2">
-            {delivering ? (
-              <ToneBadge tone="success" label="Delivering" />
-            ) : (
-              <BroadcastStatusBadge status={broadcast.status} />
-            )}
+            <BroadcastStatusBadge
+              status={broadcast.status}
+              delivering={delivering}
+            />
             {/* A sent broadcast can still have recipients it never reached. */}
             {(broadcast.status === "sent" || delivering) &&
             broadcast.whatsappStats?.failed ? (
