@@ -40,6 +40,10 @@ export const whatsappTemplateValue = v.object({
   submittedAt: v.optional(v.number()),
   /** The last sync that changed this template. The WABA records every sync. */
   syncedAt: v.optional(v.number()),
+  /** A fingerprint of the components the last sync wrote to the live copy,
+      so a sync that finds them unchanged skips reading the draft and live
+      copy. Cleared whenever anything else writes the live copy. */
+  syncHash: v.optional(v.string()),
   /** Retained local sample, separate from Meta's review-only upload handle. */
   sampleFileId: v.optional(v.id("storedFiles")),
 })

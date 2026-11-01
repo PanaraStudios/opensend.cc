@@ -16,6 +16,7 @@ import {
   SENDER,
   WABA_ID,
   PHONE_ID,
+  envelope,
   fakeGraph,
   inboundFixture,
   incoming,
@@ -391,6 +392,262 @@ test("reply falls back to a retained template sample, uploads it on the sending 
   ).rejects.toMatchObject({
     data: expect.stringContaining("This template needs a header image."),
   })
+})
+
+/** A thread whose window is closed, with an approved template whose header
+    is a retained sample image, so each reply sends that file. */
+async function headerSampleThread(f: Fixture) {
+  const template = await approvedTemplate(f)
+  const fileId = await f.t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(
+      new Blob(["png"], { type: "image/png" })
+    )
+    const fileId = await ctx.db.insert("storedFiles", {
+      organizationId: f.team,
+      provider: "convex",
+      feature: "template",
+      state: "ready",
+      storageId,
+      size: 3,
+      contentType: "image/png",
+      filename: "sample.png",
+    })
+    await ctx.db.patch("templates", template._id, {
+      whatsapp: { ...template.whatsapp!, sampleFileId: fileId },
+    })
+    const published = (await ctx.db
+      .query("publishedTemplates")
+      .withIndex("by_templateId", (q) => q.eq("templateId", template._id))
+      .unique())!
+    await ctx.db.patch("publishedTemplates", published._id, {
+      components: [
+        {
+          type: "HEADER",
+          format: "IMAGE",
+          example: { header_handle: ["4::review-handle"] },
+        },
+        { type: "BODY", text: "An update" },
+      ],
+    })
+    return fileId
+  })
+  await project(f, incoming())
+  const id = await thread(f, "whatsapp")
+  await expire(f, id)
+  let uploads = 0
+  const graph = fakeGraph([
+    {
+      method: "POST",
+      path: `/${PHONE_ID}/media`,
+      respond: () => ({ id: `media-${++uploads}` }),
+    },
+    {
+      method: "POST",
+      path: `/${PHONE_ID}/messages`,
+      respond: () => ({ messages: [{ id: `wamid.${crypto.randomUUID()}` }] }),
+    },
+  ])
+  const send = async () => {
+    const sent = (await f.member.client.mutation(api.conversations.reply, {
+      id,
+      template: { id: template._id, variables: {} },
+    })) as Id<"channelMessages">
+    await f.t.action(internal.channels.deliver.deliver, {
+      id: sent,
+      generation: 0,
+    })
+    return (await f.t.run((ctx) => ctx.db.get("channelMessages", sent)))!
+  }
+  /** The header media id of each send to Meta, in order. */
+  const headerIds = () =>
+    graph.to(`/${PHONE_ID}/messages`).map(
+      (call) =>
+        (
+          call.body as {
+            template: {
+              components: { parameters: { image: { id: string } }[] }[]
+            }
+          }
+        ).template.components[0].parameters[0].image.id
+    )
+  const cache = () =>
+    f.t.run((ctx) => ctx.db.query("channelMediaCache").collect())
+  return { fileId, graph, send, headerIds, cache }
+}
+
+test("a header file uploads once per number and its media id is reused until shortly before Meta expires it", async () => {
+  const f = await setup()
+  const h = await headerSampleThread(f)
+  expect((await h.send()).status).toBe("sent")
+  expect((await h.send()).status).toBe("sent")
+  expect(h.graph.to(`/${PHONE_ID}/media`)).toHaveLength(1)
+  expect(h.headerIds()).toEqual(["media-1", "media-1"])
+  expect(await h.cache()).toMatchObject([
+    {
+      organizationId: f.team,
+      accountId: f.account,
+      fileId: h.fileId,
+      mediaId: "media-1",
+    },
+  ])
+  // Past 25 of Meta's 30 days the file uploads again; one row stays.
+  const [row] = await h.cache()
+  expect(row.expiresAt).toBeGreaterThan(Date.now() + 25 * 86400_000 - 60_000)
+  expect(row.expiresAt).toBeLessThanOrEqual(Date.now() + 25 * 86400_000)
+  await f.t.run((ctx) =>
+    ctx.db.patch("channelMediaCache", row._id, { expiresAt: Date.now() })
+  )
+  expect((await h.send()).status).toBe("sent")
+  expect(h.graph.to(`/${PHONE_ID}/media`)).toHaveLength(2)
+  expect(h.headerIds()).toEqual(["media-1", "media-1", "media-2"])
+  expect((await h.cache()).map((row) => row.mediaId)).toEqual(["media-2"])
+  // Expired rows are pruned; the stored file stays.
+  await f.t.run(async (ctx) => {
+    const [row] = await ctx.db.query("channelMediaCache").collect()
+    await ctx.db.patch("channelMediaCache", row._id, { expiresAt: Date.now() })
+  })
+  await f.t.mutation(internal.channels.mediaCache.prune, {})
+  expect(await h.cache()).toEqual([])
+  expect(
+    await f.t.run((ctx) => ctx.db.get("storedFiles", h.fileId))
+  ).not.toBeNull()
+})
+
+test("a reused media id Meta no longer knows uploads again once and resends; a failed status drops it", async () => {
+  const f = await setup()
+  const h = await headerSampleThread(f)
+  await h.send()
+  // Meta refuses the cached id once, as after a reconnect under another app.
+  let refused = 0
+  h.graph.use({
+    method: "POST",
+    path: `/${PHONE_ID}/messages`,
+    respond: (call) => {
+      if (!JSON.stringify(call.body).includes("media-1"))
+        return { messages: [{ id: "wamid.resent" }] }
+      refused++
+      return Response.json(
+        {
+          error: {
+            message: "(#100) Invalid parameter",
+            type: "OAuthException",
+            code: 100,
+            error_data: {
+              messaging_product: "whatsapp",
+              details: "Invalid media id",
+            },
+          },
+        },
+        { status: 400 }
+      )
+    },
+  })
+  const resent = await h.send()
+  expect(resent).toMatchObject({ status: "sent", externalId: "wamid.resent" })
+  expect(refused).toBe(1)
+  expect(h.graph.to(`/${PHONE_ID}/media`)).toHaveLength(2)
+  expect(h.headerIds()).toEqual(["media-1", "media-1", "media-2"])
+  expect((await h.cache()).map((row) => row.mediaId)).toEqual(["media-2"])
+  // A fresh upload Meta refuses as well is not tried a third time.
+  h.graph.use({
+    method: "POST",
+    path: `/${PHONE_ID}/messages`,
+    respond: () =>
+      Response.json(
+        {
+          error: {
+            message: "(#131053) Media upload error",
+            type: "OAuthException",
+            code: 131053,
+          },
+        },
+        { status: 400 }
+      ),
+  })
+  expect((await h.send()).status).toBe("failed")
+  expect(h.graph.to(`/${PHONE_ID}/media`)).toHaveLength(3)
+  expect(h.headerIds().slice(3)).toEqual(["media-2", "media-3"])
+  // Meta accepts sends and then fails them for their media in status
+  // webhooks: only the id a failed send used is dropped.
+  let accepted = 0
+  h.graph.use({
+    method: "POST",
+    path: `/${PHONE_ID}/messages`,
+    respond: () => ({ messages: [{ id: `wamid.accepted-${++accepted}` }] }),
+  })
+  const failedStatus = (wamid: string) =>
+    project(
+      f,
+      envelope({
+        metadata: { phone_number_id: PHONE_ID },
+        statuses: [
+          {
+            id: wamid,
+            status: "failed",
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            recipient_id: SENDER,
+            errors: [{ code: 131053, title: "Media upload error" }],
+          },
+        ],
+      })
+    )
+  const early = await h.send()
+  expect(early.externalId).toBe("wamid.accepted-1")
+  expect(h.headerIds().at(-1)).toBe("media-3")
+  const sentIds = () =>
+    f.t.run(
+      async (ctx) =>
+        (await ctx.db
+          .query("channelMessageContents")
+          .withIndex("by_messageId", (q) => q.eq("messageId", early._id))
+          .unique())!.sentMediaIds
+    )
+  expect(await sentIds()).toEqual(["media-3"])
+  // A newer upload lands before the early send's failure arrives: the
+  // late webhook leaves it alone.
+  const [current] = await h.cache()
+  await f.t.mutation(internal.channels.mediaCache.remember, {
+    organizationId: f.team,
+    accountId: f.account,
+    fileId: h.fileId,
+    storageId: current.storageId,
+    mediaId: "media-newer",
+  })
+  await failedStatus("wamid.accepted-1")
+  expect((await h.cache()).map((row) => row.mediaId)).toEqual(["media-newer"])
+  // A send that used the newer id and fails drops it; the next send
+  // uploads again.
+  expect((await h.send()).externalId).toBe("wamid.accepted-2")
+  expect(h.headerIds().at(-1)).toBe("media-newer")
+  await failedStatus("wamid.accepted-2")
+  expect(await h.cache()).toEqual([])
+  await h.send()
+  expect(h.headerIds().at(-1)).toBe("media-4")
+})
+
+test("disconnecting a number drops its reused media ids", async () => {
+  const f = await setup()
+  const h = await headerSampleThread(f)
+  await h.send()
+  expect(await h.cache()).toHaveLength(1)
+  const account = await f.t.run((ctx) =>
+    ctx.db.get("channelAccounts", f.account)
+  )
+  await f.owner.client.mutation(api.meta.connect.disconnect, {
+    connectionId: account!.connectionId,
+  })
+  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100))
+  expect(await h.cache()).toEqual([])
+  // A send that finishes after the disconnect keeps nothing.
+  await f.t.mutation(internal.channels.mediaCache.remember, {
+    organizationId: f.team,
+    accountId: f.account,
+    fileId: h.fileId,
+    storageId: (await f.t.run((ctx) => ctx.db.get("storedFiles", h.fileId)))!
+      .storageId!,
+    mediaId: "late",
+  })
+  expect(await h.cache()).toEqual([])
 })
 
 test("an inbound WhatsApp message opens an unread thread the inbox lists, filters, searches and counts", async () => {

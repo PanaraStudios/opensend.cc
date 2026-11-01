@@ -97,6 +97,13 @@ crons.interval(
 )
 
 crons.interval(
+  "reused channel media id expiry",
+  { hours: 6 },
+  internal.channels.mediaCache.prune,
+  {}
+)
+
+crons.interval(
   "anonymous usage statistics",
   { hours: 24 },
   internal.telemetry.dispatch,

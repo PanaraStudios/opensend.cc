@@ -833,11 +833,18 @@ export const disconnectBatch = internalMutation({
           )
           .paginate({ cursor: args.cursor, numItems: 100 })
     for (const account of accounts.page)
-      if (live(account))
+      if (live(account)) {
         await patchRow(ctx, "channelAccounts", account._id, {
           status: "disconnected",
           disconnectedAt: args.at,
         })
+        if (account.channel === "whatsapp")
+          await ctx.scheduler.runAfter(
+            0,
+            internal.channels.mediaCache.forgetAccount,
+            { accountId: account._id }
+          )
+      }
     const wabas = await ctx.db
       .query("whatsappBusinessAccounts")
       .withIndex("by_connectionId", (q) => q.eq("connectionId", connectionId))

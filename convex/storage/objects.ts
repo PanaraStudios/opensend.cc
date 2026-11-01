@@ -11,7 +11,7 @@ import type { FileReference } from "./files"
 import { readFile } from "./urls"
 export { readFile } from "./urls"
 import { normalizeIvrAudio } from "./ivrAudio"
-import { uploadMedia } from "../channels/mediaUpload"
+import { uploadStoredMedia, type MediaCacheUse } from "../channels/mediaUpload"
 
 export async function storeFile(
   ctx: ActionCtx,
@@ -317,22 +317,27 @@ export const importText = internalAction({
   },
 })
 
-/** Upload stored media to Meta on every send attempt, including template headers. */
+/** Swap stored media for Meta media ids, including template headers. Each
+    file uploads once per number and the id is reused while Meta keeps it;
+    `cache` records the reuse, or asks for fresh uploads. */
 export async function mediaLinks(
   ctx: ActionCtx,
   value: unknown,
   organizationId: string,
-  accountId?: Id<"channelAccounts">
+  accountId?: Id<"channelAccounts">,
+  cache?: MediaCacheUse
 ): Promise<unknown> {
   if (Array.isArray(value))
     return Promise.all(
-      value.map((item) => mediaLinks(ctx, item, organizationId, accountId))
+      value.map((item) =>
+        mediaLinks(ctx, item, organizationId, accountId, cache)
+      )
     )
   if (!value || typeof value !== "object") return value
   const node = value as Record<string, unknown>
   const result: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(node))
-    result[key] = await mediaLinks(ctx, item, organizationId, accountId)
+    result[key] = await mediaLinks(ctx, item, organizationId, accountId, cache)
   if (typeof node.id === "string") {
     // Unknown ids are Meta ids. Local ids are resolved without exposing other teams.
     const row = await ctx.runQuery(internal.storage.files.byString, {
@@ -346,14 +351,23 @@ export async function mediaLinks(
         accountId,
       })
       if (!target || !row.storageId) throw invalid("Media is unavailable")
-      result.id = await uploadMedia(ctx, {
-        caller: { organizationId, permission: "full_access", name: "storage" },
-        target,
-        storageId: row.storageId,
-        filename: row.filename ?? "attachment",
-        contentType: row.contentType,
-        record: false,
-      })
+      result.id = await uploadStoredMedia(
+        ctx,
+        {
+          caller: {
+            organizationId,
+            permission: "full_access",
+            name: "storage",
+          },
+          target,
+          fileId: row._id,
+          storageId: row.storageId,
+          filename: row.filename ?? "attachment",
+          contentType: row.contentType,
+          record: false,
+        },
+        cache
+      )
     }
   }
   return result

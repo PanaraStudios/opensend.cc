@@ -175,3 +175,25 @@ export function validateWhatsAppMediaReference(
   )
     throw new Error("audio.voice requires OGG OPUS mono media.")
 }
+
+/** 131053: Meta could not use the media of a message it accepted. */
+export const MEDIA_UNUSABLE_CODE = 131053
+
+/** A send Meta refused because a media id it once returned is gone (it
+    expired, or the number was reconnected under another app). Uploading
+    the file again fixes it. */
+export function isMediaIdGone(error: {
+  code?: number
+  message?: string
+  details?: string
+}) {
+  if (error.code === MEDIA_UNUSABLE_CODE) return true
+  // Only wording about the id itself: an unsupported type or a header that
+  // does not match the template fails the same way after a fresh upload.
+  return (
+    (error.code === 100 || error.code === 131009) &&
+    /\bmedia[ _]?id\b|\bmedia\b.*\b(does not exist|not found|expired)\b/i.test(
+      `${error.details ?? ""} ${error.message ?? ""}`
+    )
+  )
+}

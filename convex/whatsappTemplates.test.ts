@@ -1111,3 +1111,74 @@ test("sync corrects a slugged name on a row it matches by Meta id, and saving th
   })
   expect((await f.row(row!._id)).name).toBe("promo__2026_")
 })
+
+test("sync skips a template whose Meta content is unchanged, and fingerprints older rows once", async () => {
+  const f = await setup()
+  const meta = (text: string, status: "APPROVED" | "PAUSED" = "APPROVED") => ({
+    id: "9201",
+    name: "unchanged_template",
+    language: "en_US",
+    category: "UTILITY" as const,
+    status,
+    parameterFormat: "positional" as const,
+    components: [{ type: "BODY", text }],
+  })
+  const sync = (syncedAt: number, text: string, status?: "PAUSED") =>
+    f.t.mutation(internal.whatsapp.templates.upsertSynced, {
+      organizationId: f.team,
+      wabaId: WABA_ID,
+      syncedAt,
+      templates: [meta(text, status)],
+    })
+  const state = () =>
+    f.t.run(async (ctx) => {
+      const row = (await ctx.db.query("templates").collect()).find(
+        (r) => r.whatsapp?.metaTemplateId === "9201"
+      )!
+      const live = await ctx.db
+        .query("publishedTemplates")
+        .withIndex("by_templateId", (q) => q.eq("templateId", row._id))
+        .unique()
+      return { row, live }
+    })
+  // Marks the live copy, so a skipped template (its live copy unread) is
+  // told apart from one the sync compared and rewrote.
+  const mark = (id: Id<"publishedTemplates">) =>
+    f.t.run((ctx) =>
+      ctx.db.patch("publishedTemplates", id, {
+        components: [{ type: "BODY", text: "Marked" }],
+      })
+    )
+  const base = Date.now()
+  await sync(base + 1, "Hello")
+  const first = await state()
+  expect(first.row.whatsapp?.syncHash).toEqual(expect.any(String))
+  await mark(first.live!._id)
+  await sync(base + 2, "Hello")
+  const skipped = await state()
+  expect(skipped.live?.components).toEqual([{ type: "BODY", text: "Marked" }])
+  // Not patched: the row is exactly as the first sync left it.
+  expect(skipped.row).toEqual(first.row)
+  // A metadata change at Meta is still applied.
+  await sync(base + 3, "Hello", "PAUSED")
+  const paused = await state()
+  expect(paused.row.whatsapp?.metaStatus).toBe("PAUSED")
+  expect(paused.live?.components).toEqual([{ type: "BODY", text: "Hello" }])
+  // A row from before the fingerprint takes the full comparison once.
+  await f.t.run((ctx) =>
+    ctx.db.patch("templates", first.row._id, {
+      whatsapp: { ...paused.row.whatsapp!, syncHash: undefined },
+    })
+  )
+  await sync(base + 4, "Hello", "PAUSED")
+  const legacy = await state()
+  expect(legacy.row.whatsapp?.syncHash).toBe(first.row.whatsapp?.syncHash)
+  expect(legacy.row.updatedAt).toBe(paused.row.updatedAt)
+  // Changed content at Meta is picked up.
+  await sync(base + 5, "Hello again", "PAUSED")
+  const changed = await state()
+  expect(changed.live?.components).toEqual([
+    { type: "BODY", text: "Hello again" },
+  ])
+  expect(changed.row.whatsapp?.syncHash).not.toBe(first.row.whatsapp?.syncHash)
+})
