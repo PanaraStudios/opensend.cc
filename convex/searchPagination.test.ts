@@ -242,7 +242,9 @@ test("hydration reservations bound dense matches even when endCursor overrides n
   expect(loaded).toEqual(Array.from({ length: 100 }, (_, i) => `row${i}`))
 })
 
-test("120 distinct contact prefixes are complete, even after an empty page", async () => {
+// Contact search scans like this only until the indexContactSearch backfill
+// has run (contactSearch.test.ts covers the full-text path after it).
+test("contact scan fallback: 120 distinct contact prefixes are complete, even after an empty page", async () => {
   vi.useFakeTimers()
   const f = await fixture()
   const org = f.owner.team
@@ -336,7 +338,9 @@ test("120 distinct contact prefixes are complete, even after an empty page", asy
   ).toHaveLength(40)
 })
 
-test("search paginates beyond 1024 matching documents", async () => {
+// The scan fallback, before the indexContactSearch backfill; full-text search
+// stops after 1,024 results.
+test("contact scan fallback: search paginates beyond 1024 matching documents", async () => {
   const f = await fixture()
   await f.t.run(async (ctx) => {
     for (let i = 0; i < 1050; i++)

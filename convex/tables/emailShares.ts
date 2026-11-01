@@ -10,7 +10,6 @@ export const emailShareTables = {
     expiresAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_emailId", ["organizationId", "emailId"])
     .index("by_tokenHash", ["tokenHash"])
     .index("by_expiresAt", ["expiresAt"]),
 }

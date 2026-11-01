@@ -1,4 +1,5 @@
 import { normalizePhone } from "../lib/dashboard/phone"
+import { searchText } from "../lib/dashboard/contact-search"
 import { teamRow as findTeamRow } from "./lists"
 import { ConvexError } from "convex/values"
 import { internal } from "./_generated/api"
@@ -94,19 +95,6 @@ export function segmentInput(ids: Id<"segments">[]) {
     )
   return unique
 }
-
-const searchText = (
-  contact: Pick<Doc<"contacts">, "email" | "phone" | ContactName>
-) =>
-  [
-    contact.email,
-    contact.email?.replace(/[@._+-]+/g, " "),
-    contact.phone,
-    contact.phone?.slice(1),
-    contact.firstName,
-    contact.lastName,
-  ].join(" ")
-type ContactName = "firstName" | "lastName"
 
 /** Hydrate one primary identity per contact, with no client request per row. */
 export async function primaryContactIdentity(
