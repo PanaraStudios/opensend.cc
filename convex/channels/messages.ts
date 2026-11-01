@@ -1,4 +1,4 @@
-import { messageFiles } from "../storage/media"
+import { messageFiles, type StepMedia } from "../storage/media"
 import { isPageChannel } from "../../lib/channels"
 import { ConvexError, v, type Infer } from "convex/values"
 import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool"
@@ -24,6 +24,7 @@ import {
 import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
 import {
+  type KnownIdentity,
   upsertChannelThread,
   recordWhatsAppUser,
   recordWhatsAppPhone,
@@ -224,31 +225,34 @@ export async function createChannelMessage(
     apiKeyId?: Id<"apiKeys">
     broadcastId?: Id<"broadcasts">
     automationRunId?: Id<"automationRuns">
+    /** A broadcast step's lookups, done once for all of its recipients. */
+    prepared?: PreparedSend
   }
 ) {
-  if (await retirement(ctx, opts.organizationId))
+  const prepared = opts.prepared
+  // A broadcast step checked retirement and resolved the account itself.
+  if (!prepared && (await retirement(ctx, opts.organizationId)))
     throw invalid("This team is being retired.")
   const channel = input.channel
   const strategy = channelStrategies[channel]
-  const account = await resolveChannelAccount(
-    ctx,
-    opts.organizationId,
-    input.from,
-    channel
-  )
+  const account =
+    prepared?.account ??
+    (await resolveChannelAccount(ctx, opts.organizationId, input.from, channel))
   let body = input.body
   let templateId: Id<"templates"> | undefined
   let rendered: RenderedTemplate | undefined
-  let prepared: ReturnType<typeof channelStrategies.whatsapp.build>
+  let built: ReturnType<typeof channelStrategies.whatsapp.build>
   try {
     if (body.template !== undefined) {
       if (!isPageChannel(channel)) {
-        const resolved = await storedTemplate(
-          ctx,
-          opts.organizationId,
-          account.wabaId,
-          body.template
-        )
+        const resolved = prepared?.template
+          ? preparedTemplate(prepared.template, body.template)
+          : await storedTemplate(
+              ctx,
+              opts.organizationId,
+              account.wabaId,
+              body.template
+            )
         if (
           body.recipient &&
           !input.to &&
@@ -278,21 +282,21 @@ export async function createChannelMessage(
         }
       }
     }
-    prepared = channelStrategies[channel].build({ ...body, to: input.to })
+    built = channelStrategies[channel].build({ ...body, to: input.to })
   } catch (error) {
     throw invalid(
       error instanceof Error ? error.message : "Invalid channel message."
     )
   }
-  const { payload, to: recipient } = prepared
+  const { payload, to: recipient } = built
   if (
     opts.source === "broadcast" &&
     isPageChannel(channel) &&
     payload.tag !== undefined
   )
     throw invalid("Broadcasts never use message tags.")
-  const preview = rendered ? rendered.body.slice(0, 1000) : prepared.preview
-  const type = templateId ? "template" : prepared.type
+  const preview = rendered ? rendered.body.slice(0, 1000) : built.preview
+  const type = templateId ? "template" : built.type
   if (JSON.stringify(payload).length > 200_000)
     throw invalid("The message body is too large.")
   const tags = input.tags ?? []
@@ -309,7 +313,8 @@ export async function createChannelMessage(
     ctx,
     payload,
     opts.organizationId,
-    account._id
+    account._id,
+    prepared?.media
   )
   const { channelContactId, conversationId } = await upsertChannelThread(
     ctx,
@@ -322,6 +327,7 @@ export async function createChannelMessage(
       at: now,
       preview,
       direction: "outbound",
+      ...(prepared?.identity ? { known: prepared.identity } : {}),
     }
   )
   if (channel === "whatsapp" && type === "reaction") {
@@ -514,8 +520,87 @@ export async function createChannelMessage(
     type: "queued",
     at: now,
   })
-  await enqueue(ctx, message._id, 0, 0)
+  // A broadcast step queues its messages together once it knows how many
+  // it wrote (`releaseSends`).
+  if (prepared?.held) prepared.held.push(message._id)
+  else await enqueue(ctx, message._id, 0, 0)
   return message._id
+}
+
+/** What a broadcast step resolves once for all of its recipients: the
+    sending account (checked active), the WhatsApp template and the stored
+    header media; per recipient, the WhatsApp identity it just read. */
+export type PreparedSend = {
+  account: Doc<"channelAccounts">
+  template?: Awaited<ReturnType<typeof resolveWhatsAppTemplate>>
+  media?: StepMedia
+  identity?: KnownIdentity
+  /** Messages written but not yet queued for delivery; the step releases
+      them with `releaseSends`. */
+  held?: Id<"channelMessages">[]
+}
+
+/** A stored template's send value for one recipient's variables, as
+    `storedTemplate` builds it for a template given by id. */
+function preparedTemplate(
+  template: NonNullable<PreparedSend["template"]>,
+  value: unknown
+) {
+  const variables = object(object(value).variables) as Record<
+    string,
+    string | number
+  >
+  const components = template.sendComponents(variables)
+  return {
+    category: template.category,
+    value: { name: template.name, language: template.language, components },
+    rendered: renderTemplate(storedComponents(template.components), components),
+  }
+}
+
+/** Reserves `count` sends on the account's limiter at once (one limiter
+    write for a broadcast step instead of one per message at claim) and
+    returns when each may go, spread at the number's rate. Null when the
+    step needs the per-message limiter instead: more sends than the bucket
+    holds, or a Page whose media sends have their own, lower rate. */
+export async function reserveSends(
+  ctx: MutationCtx,
+  account: Doc<"channelAccounts">,
+  count: number
+): Promise<number[] | null> {
+  const { key, rate, mediaRate } =
+    channelStrategies[account.channel].rate(account)
+  if (count <= 0 || count > rate || mediaRate) return null
+  const limit = await limiter.limit(ctx, "channelSend", {
+    key,
+    count,
+    reserve: true,
+    config: { kind: "token bucket", rate, period: SECOND, capacity: rate },
+  })
+  const now = Date.now()
+  const last = now + Math.ceil(limit.retryAfter ?? 0)
+  return Array.from({ length: count }, (_, i) =>
+    Math.max(now, last - Math.floor(((count - 1 - i) * 1000) / rate))
+  )
+}
+
+/** Queues a step's held messages for delivery. One limiter reservation
+    covers exactly the messages the step wrote, and each carries its slot,
+    so claim skips the limiter. Returns when the last slot comes up. */
+export async function releaseSends(
+  ctx: MutationCtx,
+  account: Doc<"channelAccounts">,
+  ids: Id<"channelMessages">[]
+) {
+  const slots = await reserveSends(ctx, account, ids.length)
+  const now = Date.now()
+  for (const [i, id] of ids.entries()) {
+    const readyAt = slots?.[i]
+    if (readyAt !== undefined)
+      await ctx.db.patch("channelMessages", id, { rateReadyAt: readyAt })
+    await enqueue(ctx, id, 0, Math.max(0, (readyAt ?? now) - now))
+  }
+  return slots?.at(-1)
 }
 
 async function enqueue(

@@ -15,6 +15,7 @@ import {
   WABA_ID,
 } from "./testHelpers/meta.fixture"
 import { patchRow, deleteRow } from "./counts"
+import { MAX_STEP_RECIPIENTS } from "./broadcastSend"
 import { startRun } from "./automationRuntime"
 import { readGraph } from "./automationDefinition"
 import { automationGraph, parseAutomationGraph } from "./api/automationGraph"
@@ -332,7 +333,7 @@ test("broadcast pages enqueue once per phone contact, record all skip reasons an
       organizationId: f.owner.team,
       id,
     })
-  ).toEqual({ recipients: 2, skipped: 4, noPhone: 1 })
+  ).toEqual({ recipients: 2, skipped: 4, noPhone: 1, estimated: false })
   await f.fanout(id)
   const recipients = await f.recipients(id)
   expect(
@@ -945,7 +946,7 @@ test("WhatsApp graph validation, REST round-trip and enabling validate reference
   ).rejects.toBeDefined()
 })
 
-test("a large audience advances in bounded ten-contact batches", async () => {
+test("a large audience advances in bounded steps", async () => {
   const f = await setup()
   for (let offset = 0; offset < 101; offset += 25)
     await f.contacts(
@@ -954,7 +955,7 @@ test("a large audience advances in bounded ten-contact batches", async () => {
       }))
     )
   const id = await f.create()
-  expect(await f.fanout(id)).toBe(11)
+  expect(await f.fanout(id)).toBe(Math.ceil(101 / MAX_STEP_RECIPIENTS))
   expect(await f.recipients(id)).toHaveLength(101)
   expect((await f.stats(id)).recipients).toBe(101)
 })
@@ -996,7 +997,7 @@ test("a 10,000-contact imported audience never fans out in one mutation", async 
       generation: row.generation,
     })
   ).toBe(false)
-  expect(await f.recipients(id)).toHaveLength(10)
+  expect(await f.recipients(id)).toHaveLength(MAX_STEP_RECIPIENTS)
   const cursor = (await f.read(id))!.cursor
   expect(
     await f.t.mutation(internal.broadcastSend.batch, {
@@ -1004,7 +1005,7 @@ test("a 10,000-contact imported audience never fans out in one mutation", async 
       generation: row.generation,
     })
   ).toBe(false)
-  expect(await f.recipients(id)).toHaveLength(20)
+  expect(await f.recipients(id)).toHaveLength(2 * MAX_STEP_RECIPIENTS)
   expect((await f.read(id))!.cursor).not.toBe(cursor)
 })
 
@@ -1257,7 +1258,7 @@ test("review, broadcast sending and automation sending share missing-variable el
       organizationId: f.owner.team,
       id,
     })
-  ).toEqual({ recipients: 0, skipped: 1, noPhone: 0 })
+  ).toEqual({ recipients: 0, skipped: 1, noPhone: 0, estimated: false })
   await f.fanout(id)
   expect((await f.recipients(id))[0]).toMatchObject({
     skipReason: "missing_variables",

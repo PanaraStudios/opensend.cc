@@ -520,7 +520,48 @@ export async function recipientPage(
     topic,
     sending
   )
-  return { ...page, page: contacts }
+  return { ...page, page: contacts, scanned: page.page.length }
+}
+/** Pages a review walks before it estimates: 40 × 100 contacts. A large
+    audience is never walked whole from one action. */
+export const REVIEW_PAGES = 40
+export const REVIEW_PAGE_SIZE = 100
+/** The audience's size from the aggregates, without reading it: the
+    segment's member count, or the team's contacts. */
+export async function audienceSize(
+  ctx: QueryCtx,
+  row: Pick<Doc<"broadcasts">, "organizationId" | "segmentId">
+) {
+  return row.segmentId
+    ? counters.segmentMembers.total(ctx, row.segmentId)
+    : counters.contacts.total(ctx, row.organizationId)
+}
+export const size = internalQuery({
+  args: {
+    organizationId: v.string(),
+    segmentId: v.union(v.id("segments"), v.null()),
+  },
+  returns: v.union(v.number(), v.null()),
+  handler: async (ctx, args) => {
+    await requireTeam(ctx, args.organizationId)
+    await audience(ctx, { ...args, topicId: null })
+    return audienceSize(ctx, args)
+  },
+})
+/** Scales counts from the first `scanned` audience entries to the rest of
+    an audience of `total`: the counted part stays exact. */
+export function extrapolate<K extends string>(
+  counts: Record<K, number>,
+  scanned: number,
+  total: number | null
+): Record<K, number> {
+  if (total === null || scanned === 0 || total <= scanned) return counts
+  return Object.fromEntries(
+    Object.entries<number>(counts).map(([key, value]) => [
+      key,
+      value + Math.round((value / scanned) * (total - scanned)),
+    ])
+  ) as Record<K, number>
 }
 export const reviewPage = internalQuery({
   args: {
@@ -531,36 +572,64 @@ export const reviewPage = internalQuery({
   },
   returns: v.object({
     count: v.number(),
+    scanned: v.number(),
     done: v.boolean(),
     cursor: v.string(),
   }),
   handler: async (ctx, args) => {
     await requireTeam(ctx, args.organizationId)
-    const page = await recipientPage(ctx, args, args.cursor)
+    const page = await recipientPage(
+      ctx,
+      args,
+      args.cursor,
+      undefined,
+      REVIEW_PAGE_SIZE
+    )
     return {
       count: page.page.length,
+      scanned: page.scanned,
       done: page.isDone,
       cursor: page.continueCursor,
     }
   },
 })
+/** Who the email will reach. An audience larger than `REVIEW_PAGES` pages
+    is estimated (`estimated: true`): the pages read are counted exactly
+    and the rest scaled from them to the audience's size. */
 export const review = action({
   args: {
     organizationId: v.string(),
     segmentId: v.union(v.id("segments"), v.null()),
     topicId: v.union(v.id("topics"), v.null()),
   },
-  returns: v.number(),
-  handler: async (ctx, args): Promise<number> => {
+  returns: v.object({ count: v.number(), estimated: v.boolean() }),
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ count: number; estimated: boolean }> => {
     let cursor: string | null = null
     let count = 0
-    for (;;) {
-      const page: { count: number; done: boolean; cursor: string } =
-        await ctx.runQuery(internal.broadcasts.reviewPage, { ...args, cursor })
+    let scanned = 0
+    for (let pages = 0; pages < REVIEW_PAGES; pages++) {
+      const page: {
+        count: number
+        scanned: number
+        done: boolean
+        cursor: string
+      } = await ctx.runQuery(internal.broadcasts.reviewPage, {
+        ...args,
+        cursor,
+      })
       count += page.count
-      if (page.done) return count
+      scanned += page.scanned
+      if (page.done) return { count, estimated: false }
       cursor = page.cursor
     }
+    const total: number | null = await ctx.runQuery(internal.broadcasts.size, {
+      organizationId: args.organizationId,
+      segmentId: args.segmentId,
+    })
+    return { ...extrapolate({ count }, scanned, total), estimated: true }
   },
 })
 const historyFilters = v.object({

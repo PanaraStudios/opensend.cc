@@ -340,6 +340,9 @@ export async function recordBroadcastReport(
   await patchRow(ctx, "emailEvents", event._id, { broadcastReported: true })
 }
 
+/** Granularity of a broadcast's `lastMessageSentAt`. */
+export const SENT_MARK_MS = 60_000
+
 /** WhatsApp settles on delivery/read/failure. A sent message with no further
  * webhook settles after 24 hours; late read receipts still update its stats. */
 export async function broadcastMessageMetric(
@@ -374,10 +377,15 @@ export async function broadcastMessageMetric(
     await finishBroadcast(ctx, recipient.broadcastId)
   }
   if (message.sentAt !== undefined) {
+    // Rounded up to the minute: a send at the number's throughput rewrites
+    // the broadcast row (which every fan-out step and the detail page read)
+    // once a minute rather than per message, and the settle deadline it
+    // sets is never early.
+    const mark = Math.ceil(message.sentAt / SENT_MARK_MS) * SENT_MARK_MS
     const broadcast = await ctx.db.get("broadcasts", recipient.broadcastId)
-    if (broadcast && message.sentAt > (broadcast.lastMessageSentAt ?? 0))
+    if (broadcast && mark > (broadcast.lastMessageSentAt ?? 0))
       await patchRow(ctx, "broadcasts", broadcast._id, {
-        lastMessageSentAt: message.sentAt,
+        lastMessageSentAt: mark,
       })
   }
   await scheduleBroadcastSettle(ctx, recipient.broadcastId)

@@ -141,7 +141,7 @@ for (const channel of PAGE_CHANNELS) {
     const f = await setup(channel)
     expect(
       await f.owner.client.action(api.broadcastWhatsApp.review, f.scope)
-    ).toEqual({ recipients: 1, skipped: 2, noPhone: 0 })
+    ).toEqual({ recipients: 1, skipped: 2, noPhone: 0, estimated: false })
     const row = await f.fanout()
     const page = await f.recipients()
     expect(page.page).toHaveLength(3)
@@ -363,7 +363,7 @@ for (const channel of PAGE_CHANNELS) {
     )
     expect(
       await f.owner.client.action(api.broadcastWhatsApp.review, f.scope)
-    ).toEqual({ recipients: 0, skipped: 3, noPhone: 0 })
+    ).toEqual({ recipients: 0, skipped: 3, noPhone: 0, estimated: false })
     const duplicate = await f.owner.client.mutation(api.broadcasts.duplicate, {
       id: f.id,
     })

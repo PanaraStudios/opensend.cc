@@ -76,6 +76,7 @@ function reviewChecks({
   audience,
   recipients,
   recipientsFailed,
+  recipientsEstimated,
   sendAt,
 }: {
   item: Broadcast
@@ -87,6 +88,7 @@ function reviewChecks({
   audience: string
   recipients: number | null
   recipientsFailed: boolean
+  recipientsEstimated: boolean
   sendAt: number | null
 }): Check[] {
   const subject = item.subject.trim()
@@ -117,7 +119,7 @@ function reviewChecks({
       level: empty ? "error" : "ok",
       label: empty ? "Add content to continue" : "Content added",
     },
-    broadcastRecipientCheck(recipients, recipientsFailed),
+    broadcastRecipientCheck(recipients, recipientsFailed, recipientsEstimated),
     {
       id: "unsubscribe",
       level: unsubscribe ? "ok" : "warn",
@@ -376,6 +378,7 @@ function ReviewBody({
   const [audienceResult, setAudienceResult] = React.useState<{
     key: string
     count: number | null
+    estimated: boolean
     failed: boolean
   } | null>(null)
   const currentAudience =
@@ -388,12 +391,23 @@ function ReviewBody({
       segmentId: item.segmentId as Id<"segments"> | null,
       topicId: item.topicId as Id<"topics"> | null,
     })
-      .then((count) => {
-        if (live) setAudienceResult({ key: audienceKey, count, failed: false })
+      .then(({ count, estimated }) => {
+        if (live)
+          setAudienceResult({
+            key: audienceKey,
+            count,
+            estimated,
+            failed: false,
+          })
       })
       .catch((error) => {
         if (live) {
-          setAudienceResult({ key: audienceKey, count: null, failed: true })
+          setAudienceResult({
+            key: audienceKey,
+            count: null,
+            estimated: false,
+            failed: true,
+          })
           toast.add({ type: "error", title: actionError(error) })
         }
       })
@@ -411,6 +425,7 @@ function ReviewBody({
     audience: audienceLabel(item.segmentId, segments),
     recipients: currentAudience?.count ?? null,
     recipientsFailed: currentAudience?.failed ?? false,
+    recipientsEstimated: currentAudience?.estimated ?? false,
   })
   const blocked = checks.some(
     (check) => check.level === "error" || check.level === "loading"

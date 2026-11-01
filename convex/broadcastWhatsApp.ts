@@ -29,10 +29,16 @@ import {
   type QueryCtx,
 } from "./_generated/server"
 import { internal } from "./_generated/api"
-import type { Doc } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { requireTeam } from "./access"
-import { audience, recipientPage } from "./broadcasts"
+import {
+  audience,
+  extrapolate,
+  recipientPage,
+  REVIEW_PAGES,
+  REVIEW_PAGE_SIZE,
+} from "./broadcasts"
 import { findTopicChoice } from "./audience"
 import { effectiveTopicSubscription } from "../lib/dashboard/contacts"
 import {
@@ -43,8 +49,11 @@ import {
 } from "../lib/meta/variables"
 import {
   createChannelMessage,
+  releaseSends,
   resolveChannelAccount,
 } from "./channels/messages"
+import { retainStepMedia, stepMedia, type StepMedia } from "./storage/media"
+import { toWaId } from "../lib/dashboard/phone"
 import { findWhatsAppIdentity } from "./channels/identity"
 import { matchesSearch } from "./lists"
 import {
@@ -145,7 +154,9 @@ export async function recipientSkipReason(
   topic: Doc<"topics"> | null,
   template?: Infer<typeof resolvedTemplateValue>,
   variables: Record<string, VariableSource> = {},
-  requirePhone = true
+  requirePhone = true,
+  /** The contact's WhatsApp identity when the caller has read it. */
+  knownIdentity?: Doc<"channelContacts"> | null
 ): Promise<Infer<typeof skipReasonValue> | null> {
   if (!contact || contact.organizationId !== row.organizationId)
     return "contact_deleted"
@@ -160,11 +171,10 @@ export async function recipientSkipReason(
   )
     return "topic_opt_out"
   if (template?.category === "MARKETING") {
-    const identity = await findWhatsAppIdentity(
-      ctx,
-      row.organizationId,
-      contact.phone!
-    )
+    const identity =
+      knownIdentity !== undefined
+        ? knownIdentity
+        : await findWhatsAppIdentity(ctx, row.organizationId, contact.phone!)
     if (identity?.marketingOptOut) return "marketing_opt_out"
   }
   if (template) {
@@ -177,15 +187,18 @@ export async function recipientSkipReason(
   return null
 }
 
-/** Ten recipients per transaction; delivery's per-number limiter does the pacing. */
-export async function sendWhatsAppRecipient(
+type MessagingTarget =
+  | NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
+  | Awaited<ReturnType<typeof resolvePageBroadcast>>
+
+/** What one recipient will get: a skip reason, or the address to send to.
+    Null when the recipient was already written (a retried or redone step). */
+async function planRecipient(
   ctx: MutationCtx,
   row: Doc<"broadcasts">,
   contact: Doc<"contacts">,
   topic: Doc<"topics"> | null,
-  target:
-    | NonNullable<Awaited<ReturnType<typeof resolveWhatsAppSend>>>
-    | Awaited<ReturnType<typeof resolvePageBroadcast>>
+  target: MessagingTarget
 ) {
   const previous = await ctx.db
     .query("broadcastRecipients")
@@ -193,10 +206,23 @@ export async function sendWhatsAppRecipient(
       q.eq("broadcastId", row._id).eq("contactId", contact._id)
     )
     .unique()
-  if (previous) return
+  if (previous) return null
   const channel = rowChannel(row)
-  const configKey = BROADCAST_CAPABILITIES[channel].configKey!
-  const config = row[configKey]!
+  const config = row[BROADCAST_CAPABILITIES[channel].configKey!]!
+  // Read once: for the marketing opt-out here and for the send's thread.
+  const identity =
+    !isPageChannel(channel) &&
+    contact.phone &&
+    contact.organizationId === row.organizationId
+      ? {
+          externalId: toWaId(contact.phone),
+          identity: await findWhatsAppIdentity(
+            ctx,
+            row.organizationId,
+            contact.phone
+          ),
+        }
+      : undefined
   let reason = await recipientSkipReason(
     ctx,
     row,
@@ -204,7 +230,8 @@ export async function sendWhatsAppRecipient(
     topic,
     "template" in target ? target.template : undefined,
     config.variables,
-    !isPageChannel(channel)
+    !isPageChannel(channel),
+    identity?.identity
   )
   const pageRecipient =
     !reason && isPageChannel(channel)
@@ -217,6 +244,25 @@ export async function sendWhatsAppRecipient(
         )
       : null
   reason = reason ?? pageRecipient?.reason ?? null
+  return {
+    contact,
+    config,
+    identity,
+    reason,
+    to: pageRecipient?.to ?? contact.phone!,
+  }
+}
+
+/** Writes a planned recipient: its queued message (unless skipped) and its
+    recipient row, the idempotency key, in the same transaction. */
+async function commitRecipient(
+  ctx: MutationCtx,
+  row: Doc<"broadcasts">,
+  plan: NonNullable<Awaited<ReturnType<typeof planRecipient>>>,
+  target: MessagingTarget,
+  step?: { media: StepMedia; held: Id<"channelMessages">[] }
+) {
+  const { contact, config, reason } = plan
   const variables = resolveVariables(config.variables, contact)
   const messageId = reason
     ? undefined
@@ -225,7 +271,7 @@ export async function sendWhatsAppRecipient(
         {
           channel: target.account.channel,
           from: target.account._id,
-          to: pageRecipient?.to ?? contact.phone!,
+          to: plan.to,
           body: {
             type: "template",
             template: { id: config.templateId, variables },
@@ -235,6 +281,19 @@ export async function sendWhatsAppRecipient(
           organizationId: row.organizationId,
           source: "broadcast",
           broadcastId: row._id,
+          ...(step
+            ? {
+                prepared: {
+                  account: target.account,
+                  ...("template" in target
+                    ? { template: target.template }
+                    : {}),
+                  held: step.held,
+                  media: step.media,
+                  identity: plan.identity,
+                },
+              }
+            : {}),
         }
       )
   await insertRow(ctx, "broadcastRecipients", {
@@ -249,6 +308,47 @@ export async function sendWhatsAppRecipient(
     settled: !!reason,
     failed: false,
   })
+  return !!messageId
+}
+
+/** One recipient on its own, resolving everything per send. */
+export async function sendWhatsAppRecipient(
+  ctx: MutationCtx,
+  row: Doc<"broadcasts">,
+  contact: Doc<"contacts">,
+  topic: Doc<"topics"> | null,
+  target: MessagingTarget
+) {
+  const plan = await planRecipient(ctx, row, contact, topic, target)
+  return plan ? await commitRecipient(ctx, row, plan, target) : false
+}
+
+/** A broadcast step's recipients. The step resolved the account and
+    template once (`target`). Each recipient is planned and written in turn
+    (so it reads what earlier ones wrote, such as a new identity); their
+    messages are held, then queued together under one limiter reservation
+    for exactly the messages written. `more` says whether the transaction
+    has room for another recipient; the step redoes the rest of its page
+    next time. */
+export async function sendMessagingRecipients(
+  ctx: MutationCtx,
+  row: Doc<"broadcasts">,
+  contacts: Doc<"contacts">[],
+  topic: Doc<"topics"> | null,
+  target: MessagingTarget,
+  more: () => Promise<boolean>
+) {
+  const step = { media: stepMedia(), held: [] as Id<"channelMessages">[] }
+  let written = 0
+  for (const contact of contacts) {
+    const plan = await planRecipient(ctx, row, contact, topic, target)
+    if (plan) await commitRecipient(ctx, row, plan, target, step)
+    written++
+    if (written < contacts.length && !(await more())) break
+  }
+  await retainStepMedia(ctx, step.media)
+  const readyAt = await releaseSends(ctx, target.account, step.held)
+  return { written, queued: step.held.length, readyAt }
 }
 
 const scope = { organizationId: v.string(), id: v.id("broadcasts") }
@@ -297,7 +397,11 @@ export const reviewPage = internalQuery({
     context: v.optional(reviewContextValue),
     now: v.optional(v.number()),
   },
-  returns: estimateValue.extend({ done: v.boolean(), cursor: v.string() }),
+  returns: estimateValue.extend({
+    scanned: v.number(),
+    done: v.boolean(),
+    cursor: v.string(),
+  }),
   handler: async (ctx, { organizationId, id, cursor, context, now }) => {
     await requireTeam(ctx, organizationId)
     const row = context?.row ?? (await ctx.db.get("broadcasts", id))
@@ -325,7 +429,7 @@ export const reviewPage = internalQuery({
       row,
       cursor,
       undefined,
-      100,
+      REVIEW_PAGE_SIZE,
       false,
       topic
     )
@@ -362,30 +466,41 @@ export const reviewPage = internalQuery({
       recipients,
       skipped,
       noPhone,
+      scanned: page.scanned,
       done: page.isDone,
       cursor: page.continueCursor,
     }
   },
 })
+/** Who the broadcast will reach and skip. An audience larger than
+    `REVIEW_PAGES` pages is estimated (`estimated: true`): the pages read
+    are counted exactly and the rest scaled from them to its size. */
 export const review = action({
   args: scope,
-  returns: estimateValue,
+  returns: estimateValue.extend({ estimated: v.boolean() }),
   handler: async (
     ctx,
     args
-  ): Promise<{ recipients: number; skipped: number; noPhone: number }> => {
+  ): Promise<{
+    recipients: number
+    skipped: number
+    noPhone: number
+    estimated: boolean
+  }> => {
     const context: Infer<typeof reviewContextValue> = await ctx.runQuery(
       internal.broadcastWhatsApp.reviewContext,
       args
     )
     const now = Date.now()
     const result = { recipients: 0, skipped: 0, noPhone: 0 }
+    let scanned = 0
     let cursor: string | null = null
-    for (;;) {
+    for (let pages = 0; pages < REVIEW_PAGES; pages++) {
       const page: {
         recipients: number
         skipped: number
         noPhone: number
+        scanned: number
         done: boolean
         cursor: string
       } = await ctx.runQuery(internal.broadcastWhatsApp.reviewPage, {
@@ -397,8 +512,30 @@ export const review = action({
       result.recipients += page.recipients
       result.skipped += page.skipped
       result.noPhone += page.noPhone
-      if (page.done) return result
+      scanned += page.scanned
+      if (page.done) return { ...result, estimated: false }
       cursor = page.cursor
+    }
+    const total: number | null = await ctx.runQuery(internal.broadcasts.size, {
+      organizationId: args.organizationId,
+      segmentId: context.row.segmentId,
+    })
+    // Scale who is reached and who is reviewed, so the parts still add up.
+    const scaled = extrapolate(
+      {
+        recipients: result.recipients,
+        reviewed: result.recipients + result.skipped,
+        noPhone: result.noPhone,
+      },
+      scanned,
+      total
+    )
+    const skipped = scaled.reviewed - scaled.recipients
+    return {
+      recipients: scaled.recipients,
+      skipped,
+      noPhone: Math.min(scaled.noPhone, skipped),
+      estimated: true,
     }
   },
 })

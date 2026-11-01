@@ -24,6 +24,7 @@ export async function upsertChannelThread(
     username?: string
     identityKeyHash?: string
     refreshThread?: boolean
+    known?: KnownIdentity
   }
 ) {
   const { externalId, phone, profileName = "", at, direction } = input
@@ -40,18 +41,22 @@ export async function upsertChannelThread(
     input.userId && account.channel === "whatsapp"
       ? await findWhatsAppUserIdentity(ctx, account, input.userId)
       : null
-  const byExternal = await ctx.db
-    .query("channelContacts")
-    .withIndex(
-      "by_organizationId_and_channel_and_scopeId_and_externalId",
-      (q) =>
-        q
-          .eq("organizationId", account.organizationId)
-          .eq("channel", account.channel)
-          .eq("scopeId", scopeId)
-          .eq("externalId", phone ? toWaId(phone) : externalId)
-    )
-    .unique()
+  const key = phone ? toWaId(phone) : externalId
+  const byExternal =
+    input.known && scopeId === "whatsapp" && input.known.externalId === key
+      ? input.known.identity
+      : await ctx.db
+          .query("channelContacts")
+          .withIndex(
+            "by_organizationId_and_channel_and_scopeId_and_externalId",
+            (q) =>
+              q
+                .eq("organizationId", account.organizationId)
+                .eq("channel", account.channel)
+                .eq("scopeId", scopeId)
+                .eq("externalId", key)
+          )
+          .unique()
   let identity = phone ? (byExternal ?? byUser) : (byUser ?? byExternal)
   if (byExternal && byUser && byExternal._id !== byUser._id) {
     const target = phone ? byExternal : byUser
@@ -174,6 +179,13 @@ export async function upsertChannelThread(
     ),
   })
   return { contactId, channelContactId, conversationId }
+}
+
+/** A WhatsApp identity a caller already read in this transaction by wa_id
+    (`findWhatsAppIdentity`), or null when there is none. */
+export type KnownIdentity = {
+  externalId: string
+  identity: Doc<"channelContacts"> | null
 }
 
 type ThreadMessage = {
