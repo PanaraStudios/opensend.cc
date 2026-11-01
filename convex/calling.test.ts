@@ -800,6 +800,91 @@ test("dashboard enables calling from Meta defaults and toggles callback permissi
   expect(g.to(`/${PHONE_ID}/settings`, "POST")).toHaveLength(posts)
 })
 
+test("switching to Media gateway in the dashboard routes to agents; existing routes and API-accept numbers keep theirs", async () => {
+  const f = await setup()
+  vi.stubEnv("CALL_GATEWAY_URL", "https://gateway.test")
+  vi.stubEnv("CALL_GATEWAY_SECRET", "s".repeat(64))
+  fakeGraph([
+    {
+      path: `/${PHONE_ID}/settings`,
+      method: "GET",
+      respond: () => ({ calling: { status: "ENABLED" } }),
+    },
+  ])
+  const saved = () =>
+    f.t.run((ctx) =>
+      ctx.db
+        .query("callingSettings")
+        .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+        .unique()
+    )
+  const save = () =>
+    f.owner.client.action(api.calling.settings.dashboardUpdate, {
+      organizationId: f.owner.team,
+      from: f.account,
+      mode: "gateway",
+    })
+  const replace = (fields: { mode: "api" | "gateway"; routing?: unknown }) =>
+    f.t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("callingSettings")
+        .withIndex("by_accountId", (q) => q.eq("accountId", f.account))
+        .unique()
+      await ctx.db.patch("callingSettings", row!._id, {
+        mode: fields.mode,
+        routing: fields.routing as never,
+      })
+    })
+  // Switching a number to Media gateway routes it to agents.
+  await save()
+  expect(await saved()).toMatchObject({
+    mode: "gateway",
+    routing: { kind: "agents" },
+  })
+  const setupState = await f.owner.client.query(
+    api.calling.playgroundState.setup,
+    { organizationId: f.owner.team }
+  )
+  expect(setupState.numbers).toEqual([
+    expect.objectContaining({ mode: "gateway", routing: "agents" }),
+  ])
+  // A gateway number left unrouted for API accept stays unrouted on save.
+  await replace({ mode: "gateway", routing: undefined })
+  await save()
+  expect((await saved())?.routing).toBeUndefined()
+  // An IVR route survives a dashboard save.
+  const ivrId = await f.t.run((ctx) =>
+    ctx.db.insert("ivrs", {
+      organizationId: f.owner.team,
+      name: "Reception",
+      language: "en",
+      entryMenuId: "main",
+      menus: [
+        {
+          id: "main",
+          name: "Main",
+          prompt: { kind: "tts", text: "Hello" },
+          options: {},
+          noInputAction: { kind: "hangup" },
+          failureAction: { kind: "hangup" },
+          timeoutSeconds: 5,
+          retries: 1,
+          maxDigits: 1,
+        },
+      ],
+      webhookSecret: "unused",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  )
+  await replace({ mode: "api", routing: { kind: "ivr", ivrId } })
+  await save()
+  expect(await saved()).toMatchObject({
+    mode: "gateway",
+    routing: { kind: "ivr", ivrId },
+  })
+})
+
 test("settings errors reach the API and dashboard toast with every Meta reason field, never the token", async () => {
   const f = await setup()
   const details = "callback_permission_status must be ENABLED or DISABLED"

@@ -145,8 +145,11 @@ export class BrowserPhone {
     await this.user?.sendDTMF(tone)
   }
   async hangup() {
-    await this.user?.hangup()
-    this.stopTracks()
+    try {
+      await this.user?.hangup()
+    } finally {
+      this.stopTracks()
+    }
   }
   private stopTracks() {
     this.user?.localMediaStream?.getTracks().forEach((track) => track.stop())

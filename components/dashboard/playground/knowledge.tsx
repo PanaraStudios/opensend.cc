@@ -224,7 +224,7 @@ function BaseDialog({
           <Button type="button" variant="outline" onClick={close}>
             Cancel
           </Button>
-          <Button disabled={busy || !name.trim()}>
+          <Button type="submit" disabled={busy || !name.trim()}>
             {busy ? "Saving…" : row ? "Save" : "Create"}
           </Button>
         </DialogFooter>
@@ -430,7 +430,11 @@ export function KnowledgeDetail({ id }: { id: string }) {
             value={query}
             onChange={setQuery}
           />
-          <Button className="self-start" disabled={busy || !query.trim()}>
+          <Button
+            type="submit"
+            className="self-start"
+            disabled={busy || !query.trim()}
+          >
             {busy ? "Searching…" : "Search"}
           </Button>
         </form>
@@ -673,6 +677,7 @@ function DocumentForm({
             Cancel
           </Button>
           <Button
+            type="submit"
             disabled={
               busy ||
               uploading ||

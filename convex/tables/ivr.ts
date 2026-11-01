@@ -15,6 +15,16 @@ export const ivrTables = {
       filterFields: ["organizationId"],
     })
     .index("by_promptVoice_credentialId", ["promptVoice.credentialId"]),
+  /** One row per voice bot an IVR routes to, so deleting a bot checks its
+      IVR references with one indexed read. Kept by ivr/botReferences.ts. */
+  ivrBotReferences: defineTable({
+    organizationId: v.string(),
+    ivrId: v.id("ivrs"),
+    botId: v.id("voiceBots"),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_ivrId", ["ivrId"])
+    .index("by_botId", ["botId"]),
   ivrPromptRenders: defineTable({
     organizationId: v.string(),
     hash: v.string(),

@@ -36,6 +36,11 @@ async function settings(
     mode?: "gateway" | "api"
     routing?: Record<string, unknown>
     announcementFileId?: string
+    /** The dashboard has no route picker: switching a number to Media
+        gateway there routes calls to the team's agents unless a route is
+        already set. A gateway number left without a route on purpose (the
+        integrator accepts calls through the API) stays unrouted on save. */
+    dashboard?: boolean
   }
 ): Promise<{
   account_id: Id<"channelAccounts">
@@ -53,9 +58,17 @@ async function settings(
       args.routing !== undefined ||
       args.announcementFileId !== undefined,
   })
+  const requested: Record<string, unknown> | undefined =
+    args.routing ??
+    (args.dashboard &&
+    args.mode === "gateway" &&
+    target.settings?.mode !== "gateway" &&
+    !target.settings?.routing
+      ? { kind: "agents" }
+      : undefined)
   if (
     (args.mode === "gateway" ||
-      (args.routing !== undefined && args.routing.kind !== "api")) &&
+      (requested !== undefined && requested.kind !== "api")) &&
     (!process.env.CALL_GATEWAY_URL || !process.env.CALL_GATEWAY_SECRET)
   )
     throw apiError(
@@ -63,12 +76,12 @@ async function settings(
       "gateway_unavailable",
       "The calling gateway is not configured."
     )
-  const routing = args.routing
+  const routing = requested
     ? await ctx.runQuery(internal.voice.routing.validate, {
         organizationId: args.organizationId,
         caller: args.caller,
-        input: args.routing,
-        mode: args.routing.kind === "api" ? "api" : "gateway",
+        input: requested,
+        mode: requested.kind === "api" ? "api" : "gateway",
       })
     : undefined
   const at = Date.now(),
@@ -157,9 +170,9 @@ async function settings(
       accountId: target.account._id,
       settings: JSON.stringify(calling),
       mode:
-        args.routing?.kind === "api"
+        requested?.kind === "api"
           ? "api"
-          : args.routing !== undefined && args.routing.kind !== "api"
+          : requested !== undefined && requested.kind !== "api"
             ? "gateway"
             : args.mode,
       at,
@@ -175,9 +188,9 @@ async function settings(
       routing: routing ?? target.settings?.routing ?? null,
       account_id: target.account._id,
       handling_mode:
-        (args.routing?.kind === "api"
+        (requested?.kind === "api"
           ? "api"
-          : args.routing !== undefined && args.routing.kind !== "api"
+          : requested !== undefined && requested.kind !== "api"
             ? "gateway"
             : args.mode) ??
         target.settings?.mode ??
@@ -230,7 +243,7 @@ export const dashboardUpdate = action({
     announcementFileId: v.optional(v.string()),
   },
   returns: v.any(),
-  handler: settings,
+  handler: (ctx, args) => settings(ctx, { ...args, dashboard: true }),
 })
 export const permissions = internalAction({
   args: {

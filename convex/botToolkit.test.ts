@@ -179,6 +179,31 @@ test("knowledge search caps provider calls per team across dashboard and REST", 
   expect(reply.status).toBe(429)
   expect(embedding).toHaveBeenCalledTimes(20)
 })
+test("knowledge search explains a missing or rejected Gemini key instead of a server error", async () => {
+  const f = await setup()
+  const search = () =>
+    f.owner.client.action(api.knowledge.search.dashboardSearch, {
+      organizationId: f.organizationId,
+      knowledgeBaseIds: [f.baseId],
+      query: "Hours?",
+    })
+  vi.spyOn(embeddingNet, "publicFetch").mockImplementation(
+    async () => new Response("denied", { status: 403 })
+  )
+  await expect(search()).rejects.toMatchObject({
+    data: {
+      statusCode: 500,
+      message: expect.stringContaining("HTTP 403"),
+    },
+  })
+  await f.t.run((ctx) => ctx.db.delete("voiceProviders", f.credentialId))
+  await expect(search()).rejects.toMatchObject({
+    data: {
+      statusCode: 422,
+      message: expect.stringContaining("Add a Gemini provider key"),
+    },
+  })
+})
 test("knowledge ingestion uses team credentials, atomically replaces revisions and reports real failures", async () => {
   const f = await setup(),
     doc = await f.doc()

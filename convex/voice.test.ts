@@ -469,6 +469,37 @@ test("voice resource scopes, same-provider credential ownership, config validati
   ).toBe(422)
 })
 
+test("removing a voice provider deletes every cached ElevenLabs voice list", async () => {
+  const f = await fixture()
+  const credential = await (
+    await f.request("/voice-providers", "POST", {
+      provider: "gemini",
+      label: "Unused",
+      key: "secret-provider-key-5678",
+    })
+  ).json()
+  await f.t.run(async (ctx) => {
+    for (let i = 0; i < 12; i++)
+      await ctx.db.insert("elevenLabsVoiceCaches", {
+        organizationId: f.owner.team,
+        credentialId: credential.id,
+        refreshedAt: i,
+        voices: [],
+      })
+  })
+  expect(
+    (await f.request(`/voice-providers/${credential.id}`, "DELETE")).status
+  ).toBe(200)
+  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000))
+  const left = await f.t.run((ctx) =>
+    ctx.db
+      .query("elevenLabsVoiceCaches")
+      .withIndex("by_credentialId", (q) => q.eq("credentialId", credential.id))
+      .take(20)
+  )
+  expect(left).toEqual([])
+})
+
 test("hangup events revoke tool access before summaries finish, and non-bot voice events remain supported", async () => {
   const f = await fixture(),
     callId = await f.createCall()

@@ -289,7 +289,9 @@ function FieldDialog({
           <Button type="button" variant="outline" onClick={close}>
             Cancel
           </Button>
-          <Button disabled={busy}>{busy ? "Saving…" : "Done"}</Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Done"}
+          </Button>
         </DialogFooter>
       </form>
     </DialogContent>

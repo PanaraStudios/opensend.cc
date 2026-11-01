@@ -2,6 +2,7 @@ import { v } from "convex/values"
 import { internalQuery, internalMutation } from "../_generated/server"
 import { actor, authorizeToolkit, ownedToolkit } from "../botToolkitAccess"
 import { requireActiveTeam } from "../teamLifecycle"
+import { invalid } from "../api/caller"
 import { refreshStatus } from "./resources"
 import { knowledgeScope } from "../../lib/bot-toolkit"
 export const load = internalQuery({
@@ -105,7 +106,7 @@ export const authorizeSearch = internalQuery({
       )
       .first()
     if (!credential)
-      throw new Error(
+      throw invalid(
         "Add a Gemini provider key in AI providers to search knowledge"
       )
     return credential.encryptedKey

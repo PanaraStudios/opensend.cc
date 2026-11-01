@@ -5,7 +5,7 @@ import { action, internalAction, type ActionCtx } from "../_generated/server"
 import { internal } from "../_generated/api"
 import type { Id } from "../_generated/dataModel"
 import { actor } from "../botToolkitAccess"
-import { type Caller, invalid } from "../api/caller"
+import { type Caller, apiError, invalid } from "../api/caller"
 import { decryptSecret } from "../secrets"
 import { knowledgeScope } from "../../lib/bot-toolkit"
 export type KnowledgeMatch = {
@@ -58,7 +58,15 @@ export async function searchKnowledge(
     await decryptSecret(encryptedKey),
     args.query,
     "RETRIEVAL_QUERY"
-  )
+  ).catch((error: unknown) => {
+    // embedText's own messages name the status and never the key; anything
+    // else (network, parsing) stays generic.
+    const message =
+      error instanceof Error && error.message.startsWith("Gemini ")
+        ? error.message
+        : "Gemini embedding request failed; try again"
+    throw apiError(500, "application_error", message)
+  })
   const scopes = args.knowledgeBaseIds.map((id) =>
     knowledgeScope(args.organizationId, id)
   )

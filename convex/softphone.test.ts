@@ -415,6 +415,41 @@ test("outbound permission denial prevents gateway setup and creating a call", as
   )
   expect(graph.calls).toHaveLength(1)
 })
+test("a phone-number recipient is checked by wa_id (trimmed), a BSUID by recipient", async () => {
+  const f = await setup()
+  await f.t.run((ctx) =>
+    patchRow(ctx, "channelAccounts", f.account, { registeredAt: Date.now() })
+  )
+  const graph = fakeGraph([
+    {
+      path: `/${PHONE_ID}/call_permissions`,
+      respond: () => ({
+        permission: { status: "permanent" },
+        actions: [{ action_name: "start_call", can_perform_action: true }],
+      }),
+    },
+  ])
+  for (const recipient of [
+    "15551234567",
+    " 15551234567 ",
+    "US.13491208655302741918",
+  ])
+    expect(
+      await f.owner.client.action(api.calling.softphone.permission, {
+        organizationId: f.ownerArgs.organizationId,
+        accountId: f.account,
+        recipient,
+      })
+    ).toMatchObject({ canCall: true })
+  expect(
+    graph.to(`/${PHONE_ID}/call_permissions`).map((call) => call.query)
+  ).toEqual([
+    expect.objectContaining({ user_wa_id: "15551234567" }),
+    // Pasted numbers keep their padding; it is trimmed before classifying.
+    expect.objectContaining({ user_wa_id: "15551234567" }),
+    expect.objectContaining({ recipient: "US.13491208655302741918" }),
+  ])
+})
 test("permission requests reuse the message pipeline and preserve the BSUID identity", async () => {
   const f = await setup()
   await f.t.run((ctx) =>
