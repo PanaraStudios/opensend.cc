@@ -9,6 +9,7 @@ import {
   SEGMENT_INPUT_LIMIT,
 } from "./audience"
 import { fixture } from "./testHelpers/ses.fixture"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 /* A team has no segment limit: nothing reads all of its segments, or all
    of a contact's, in one transaction. These seed past the old 500 cap and
@@ -93,9 +94,10 @@ test("pickers suggest, search and resolve a selection beyond the first page", as
 }, 60_000)
 
 test("a contact joins more segments than one transaction writes, in steps, with one event", async () => {
-  const { org, owner, segments, drain, events, memberships } = await setup(
+  const { f, org, owner, segments, drain, events, memberships } = await setup(
     OLD_CAP + 100
   )
+  await listenToEvents(f.t, org, ["contact.created", "contact.updated"])
   const created = await owner.mutation(api.contacts.upsert, {
     organizationId: org,
     contacts: [{ email: "many@example.test" }, { email: "few@example.test" }],

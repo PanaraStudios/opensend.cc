@@ -22,6 +22,7 @@ import { writableCallingSettings } from "../lib/meta/calling"
 import { actionError } from "../lib/action-error"
 import { MetaError, parseGraphError } from "../lib/meta/errors"
 import { graphFailure } from "./meta/graph"
+import { listenToEvents } from "./testHelpers/eventListener"
 const BSUID = "US.13491208655302741918"
 const secret = "a".repeat(64)
 beforeEach(() => {
@@ -592,6 +593,7 @@ test("Meta recording and transcript fixtures fetch fresh URLs, verify SHA-256 an
     now = Math.floor(Date.now() / 1000),
     data = Buffer.from("recording bytes"),
     sha256 = createHash("sha256").update(data).digest("base64")
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.call.recording_ready"])
   fakeGraph([
     {
       path: "/media.recording",
@@ -1082,6 +1084,7 @@ test("gateway client signs exact method/path/body and refuses redirects; accept 
 test("an SDP answer arriving after a newer status is forwarded without regression, and Graph webhook races keep the client call id", async () => {
   const f = await setup(),
     now = Math.floor(Date.now() / 1000)
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.call.connected"])
   const id = await f.t.mutation(internal.calling.rows.create, {
     organizationId: f.owner.team,
     caller: f.caller,
@@ -1304,6 +1307,7 @@ test("gateway BIC passes the answer before routing, missed calls emit events and
   const f = await setup(),
     paths: string[] = [],
     now = Math.floor(Date.now() / 1000)
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.call.missed"])
   vi.stubEnv("CALL_GATEWAY_URL", "http://gateway.test")
   vi.stubEnv("CALL_GATEWAY_SECRET", secret)
   vi.stubGlobal(
@@ -1680,6 +1684,7 @@ async function botRouteFixture() {
 }
 test("CRM bot calls generate an offer, apply Meta's answer, route once and include purpose and variables in the signed bot session", async () => {
   const f = await botRouteFixture()
+  await listenToEvents(f.t, f.owner.team, ["call.outbound_connected"])
   const result = await f.request("/whatsapp/calls", "POST", {
     from: f.account,
     contact_id: f.contactId,
@@ -2130,6 +2135,10 @@ test("permission replies update the contact identity, ignore replay/stale denial
 
 test("managed IVR calls preserve their route override, record successive attempts and report rejection/no answer", async () => {
   const f = await botRouteFixture()
+  await listenToEvents(f.t, f.owner.team, [
+    "call.outbound_missed",
+    "call.outbound_rejected",
+  ])
   const ivr = await (
     await f.request("/ivrs", "POST", {
       name: "Lead follow-up",

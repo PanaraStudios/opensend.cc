@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { unsubscribeLinks } from "./unsubscribe"
+import { listenToEvents } from "./testHelpers/eventListener"
 import {
   readUnsubscribeToken,
   signUnsubscribeToken,
@@ -21,10 +22,12 @@ afterEach(() => {
 
 type Fixture = Awaited<ReturnType<typeof fixture>>
 
-async function setup() {
+/** `listen` subscribes a webhook to contact.updated, so `updates` sees them. */
+async function setup(listen = false) {
   const f = await fixture()
   const org = f.owner.team
   const owner = f.owner.client
+  if (listen) await listenToEvents(f.t, org, ["contact.updated"])
   const {
     createdIds: [contactId],
   } = await owner.mutation(api.contacts.upsert, {
@@ -201,7 +204,7 @@ describe("sender links", () => {
 
 describe("one-click unsubscribe", () => {
   test("POST unsubscribes from everything, once, with no redirect", async () => {
-    const { links, tokenOf, post, contact, updates } = await setup()
+    const { links, tokenOf, post, contact, updates } = await setup(true)
     const token = tokenOf((await links()).oneClickUrl)
     const before = await updates()
     const response = await post(token)
@@ -216,7 +219,7 @@ describe("one-click unsubscribe", () => {
 
   test("a topic link leaves only that topic", async () => {
     const { topic, links, tokenOf, post, contact, choice, updates } =
-      await setup()
+      await setup(true)
     const news = await topic("News")
     const token = tokenOf((await links(news)).oneClickUrl)
     const before = await updates()
@@ -299,7 +302,7 @@ describe("preference page", () => {
   })
 
   test("switches respect visibility and team, and emit contact.updated", async () => {
-    const { f, topic, links, tokenOf, choice, updates } = await setup()
+    const { f, topic, links, tokenOf, choice, updates } = await setup(true)
     const news = await topic("News")
     const billing = await topic("Billing", "private")
     const theirs = await f.outsider.client.mutation(api.topics.create, {
@@ -343,7 +346,7 @@ describe("preference page", () => {
   })
 
   test("unsubscribing from everything and back", async () => {
-    const { f, links, tokenOf, contact, updates } = await setup()
+    const { f, links, tokenOf, contact, updates } = await setup(true)
     const token = tokenOf((await links()).pageUrl)
     const before = await updates()
     await f.t.mutation(api.unsubscribe.setSubscribed, {

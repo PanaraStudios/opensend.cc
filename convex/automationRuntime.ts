@@ -18,6 +18,7 @@ import type { Doc, Id } from "./_generated/dataModel"
 import { internalMutation, type MutationCtx } from "./_generated/server"
 import { deleteRow, insertRow, patchRow } from "./counts"
 import { customEventName } from "./automationEvents"
+import { dispatchContact } from "./events"
 import {
   deleteContact,
   contactEventData,
@@ -883,26 +884,18 @@ export const dispatch = internalMutation({
       null
     if (name === null) return null
     const data = event.data
-    const contactId =
-      typeof data.contact_id === "string"
-        ? ctx.db.normalizeId("contacts", data.contact_id)
-        : event.type.startsWith("contact.") && typeof data.id === "string"
-          ? ctx.db.normalizeId("contacts", data.id)
-          : null
-    let contact = contactId ? await ctx.db.get("contacts", contactId) : null
-    if (contact && contact.organizationId !== event.organizationId) return null
+    const target = await dispatchContact(
+      ctx,
+      event.organizationId,
+      event.type,
+      data
+    )
+    if (!target) return null
+    const { contactId } = target
+    let { contact } = target
     // A known contact id remains authoritative after deletion. System events
     // can still run without a contact; neither lookup nor upsert may replace it.
     if (contactId && !contact && custom !== null) return null
-    if (!contactId && !contact && typeof data.email === "string")
-      contact = await ctx.db
-        .query("contacts")
-        .withIndex("by_organizationId_and_email", (q) =>
-          q
-            .eq("organizationId", event.organizationId)
-            .eq("email", data.email as string)
-        )
-        .unique()
     const payload =
       custom !== null ? (data.payload as Record<string, unknown>) : data
     if (phase === "wait") {

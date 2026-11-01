@@ -16,6 +16,7 @@ import {
 } from "./testHelpers/meta.fixture"
 import { insertRow, patchRow } from "./counts"
 import { WHATSAPP_WINDOW_CLOSED as WINDOW_CLOSED } from "../lib/meta/payloads"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -106,6 +107,7 @@ const statusBody = (wamid: string, status: string) =>
 
 test("workpool sends once with wamid and event; later delivered/read webhooks and duplicate sent do not regress", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.sent"])
   const graph = fakeGraph([
     {
       method: "POST",
@@ -290,6 +292,7 @@ test("from resolves phone id/account id, requires one live number, refuses inact
 for (const code of [130429, 131056, 131047, 131050, 190])
   test(`Graph ${code} follows retry/final/opt-out/token policy`, async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.owner.team, ["whatsapp.message.failed"])
     const graph = fakeGraph([
       {
         path: `/${PHONE_ID}/messages`,
@@ -437,8 +440,9 @@ test("ambiguous network crash is never resent; retired generations and late reco
   expect(graph.calls).toHaveLength(1)
 })
 test("status before send response is reconciled without regression or duplicate sent events", async () => {
-  const f = await setup(),
-    id = await send(f)
+  const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["whatsapp.message.sent"])
+  const id = await send(f)
   await f.t.mutation(internal.channels.messages.claim, { id, generation: 0 })
   await f.t.run((ctx) =>
     patchRow(ctx, "channelMessages", id, { externalId: "wamid.race" })

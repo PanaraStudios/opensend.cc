@@ -12,6 +12,7 @@ import {
   type VoiceBotResource,
 } from "../lib/dashboard/voice-bot-form"
 import type { VoiceBotConfig } from "../lib/voice-bots"
+import { listenToEvents } from "./testHelpers/eventListener"
 const secret = "a".repeat(64),
   hangup = { kind: "hangup" }
 beforeEach(() => {
@@ -495,8 +496,9 @@ test("a deleted IVR reads as null in the dashboard but stays a 404 in the API", 
 })
 
 test("signed start/next records submenu → voicemail, authenticates audio and rejects stale/replayed decisions", async () => {
-  const f = await setup(),
-    start = await f.start()
+  const f = await setup()
+  await listenToEvents(f.t, f.owner.team)
+  const start = await f.start()
   expect(start.status).toBe(200)
   const d = await start.json()
   expect(d.menu).toMatchObject({
@@ -739,6 +741,7 @@ test.each([
 
 test("remote termination completes an unfinished IVR once and forbids late decisions", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team)
   await f.start()
   await f.t.mutation(internal.calling.rows.finish, {
     id: f.callId,

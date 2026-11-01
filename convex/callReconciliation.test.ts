@@ -9,6 +9,7 @@ import type { Doc } from "./_generated/dataModel"
 import { minuteUsage } from "./voice/usage"
 import { LEGACY_INACTIVE_CALL_MS } from "./calling/activity"
 import { signRequest, HmacVerifier } from "../services/call-gateway/src/auth"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 const modules = import.meta.glob("./**/*.ts")
 const start = 1_800_000_000_000
@@ -273,6 +274,8 @@ test.each(["reconcile", "hangup"] as const)(
   "%s wins the terminal race once",
   async (first) => {
     const f = await fixture()
+    aggregateTest.register(f.t, "webhookCounts")
+    await listenToEvents(f.t, "reconciliation", ["whatsapp.call.completed"])
     vi.setSystemTime(start + 120_000)
     const hangup = () =>
       f.t.mutation(internal.calling.rows.endLocally, {

@@ -1,4 +1,4 @@
-import { hydratedChannelMessage } from "./payload"
+import { emitMessageEvent } from "./payload"
 import { RateLimiter } from "@convex-dev/rate-limiter"
 import { ConvexError, v } from "convex/values"
 import { channelStrategies } from "../../lib/meta/payloads"
@@ -14,7 +14,6 @@ import { channelAccountAccess } from "./messages"
 import { findMetaApp } from "../access"
 import { teamRow } from "../lists"
 import { patchRow } from "../counts"
-import { emitEvent } from "../events"
 import { callerValue, requireCaller, invalid, notFound } from "../api/caller"
 import { controlJob, messagingChannelValue } from "../tables/channels"
 
@@ -190,16 +189,17 @@ export async function logControlFailure(
 ) {
   const message = await ctx.db.get("channelMessages", messageId)
   if (!message) return
-  await emitEvent(
+  await emitMessageEvent(
     ctx,
     message.organizationId,
     `${message.channel}.message.${read ? "read_receipt_failed" : "typing_failed"}`,
-    {
-      ...(await hydratedChannelMessage(ctx, message, Date.now())),
+    message,
+    (payload) => ({
+      ...payload,
       id: messageId,
       conversation_id: message.conversationId,
       error,
-    }
+    })
   )
   await ctx.db.insert("channelMessageEvents", {
     messageId,
@@ -232,16 +232,18 @@ export const record = internalMutation({
         type: "read_receipt_sent",
         at,
       })
-      await emitEvent(
+      await emitMessageEvent(
         ctx,
         message.organizationId,
         `${message.channel}.message.read_receipt_sent`,
-        {
-          ...(await hydratedChannelMessage(ctx, message, at)),
+        message,
+        (payload) => ({
+          ...payload,
           id: messageId,
           conversation_id: message.conversationId,
           read_receipt_sent_at: new Date(at).toISOString(),
-        }
+        }),
+        at
       )
     }
     return null

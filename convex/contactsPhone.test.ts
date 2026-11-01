@@ -8,6 +8,7 @@ import {
   addImportError,
   enqueueImport,
 } from "./contactImports"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
@@ -83,6 +84,7 @@ test("dashboard creates normalized phone-only contacts, finds their digits and r
 
 test("REST phone-only contacts return nullable identities, properties, memberships and validation errors", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.organizationId, ["contact.created"])
   const created = await f.call("/contacts", "POST", {
     phone: "+44 (20) 7946-0958",
   })

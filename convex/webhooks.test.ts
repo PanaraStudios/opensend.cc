@@ -8,6 +8,7 @@ import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { fixture } from "./testHelpers/ses.fixture"
 import { counters } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { isPublicAddress, isPublicHostname } from "../lib/net/public-host"
 import { webhookSignature } from "../lib/webhooks/signing"
 
@@ -542,6 +543,11 @@ describe("replay", () => {
 describe("domain events", () => {
   test("are emitted when a domain is created, updated and deleted", async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.owner.team, [
+      "domain.created",
+      "domain.updated",
+      "domain.deleted",
+    ])
     await f.owner.client.mutation(api.domains.create, {
       organizationId: f.owner.team,
       name: "events.example.test",

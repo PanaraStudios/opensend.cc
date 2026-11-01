@@ -14,7 +14,7 @@ import type { Doc } from "../_generated/dataModel"
 import schema from "../schema"
 import { emailRows } from "../emails"
 import { channelRows } from "../channels/rows"
-import { hydratedChannelMessage } from "../channels/payload"
+import { hydratedChannelMessage, type PageLookups } from "../channels/payload"
 import { emailContact, emailMessageShape } from "../messageShape"
 import { teamRow } from "../lists"
 import { EMAIL_STATUSES } from "../tables/emails"
@@ -86,9 +86,14 @@ async function own(
 }
 const rowChannel = (row: Row): Channel =>
   "channel" in row ? row.channel : "email"
-const shape = (ctx: QueryCtx, row: Row, now: number) =>
+const shape = (
+  ctx: QueryCtx,
+  row: Row,
+  now: number,
+  lookups: PageLookups = new Map()
+) =>
   "channel" in row
-    ? hydratedChannelMessage(ctx, row, now)
+    ? hydratedChannelMessage(ctx, row, now, undefined, lookups)
     : emailMessageShape(ctx, row)
 
 /** Keep the original cursor keys while charging hydration to the page budget. */
@@ -96,7 +101,9 @@ class HydratedMessages extends QueryStream<Record<string, unknown>> {
   constructor(
     private rows: QueryStream<Row>,
     private ctx: QueryCtx,
-    private now: number
+    private now: number,
+    /** One page's identities, accounts and connections are read once. */
+    private lookups: PageLookups = new Map()
   ) {
     super()
   }
@@ -106,7 +113,9 @@ class HydratedMessages extends QueryStream<Record<string, unknown>> {
     for await (const [row, key, bytes] of this.rows.iterWithKeys(
       trackBandwidth
     )) {
-      const message = row ? await shape(this.ctx, row, this.now) : null
+      const message = row
+        ? await shape(this.ctx, row, this.now, this.lookups)
+        : null
       const hydratedBytes =
         message && trackBandwidth
           ? new TextEncoder().encode(JSON.stringify(message)).length
@@ -115,7 +124,12 @@ class HydratedMessages extends QueryStream<Record<string, unknown>> {
     }
   }
   narrow(bounds: IndexBounds) {
-    return new HydratedMessages(this.rows.narrow(bounds), this.ctx, this.now)
+    return new HydratedMessages(
+      this.rows.narrow(bounds),
+      this.ctx,
+      this.now,
+      this.lookups
+    )
   }
   getOrder() {
     return this.rows.getOrder()

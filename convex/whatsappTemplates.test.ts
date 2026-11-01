@@ -16,6 +16,7 @@ import {
   type GraphRoute,
 } from "./testHelpers/meta.fixture"
 import { resolveWhatsAppTemplate } from "./whatsapp/templates"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { EMPTY_TEMPLATE_FORM, componentsFromForm } from "../lib/meta/templates"
 
 beforeEach(() => {
@@ -328,6 +329,7 @@ describe("WhatsApp templates", () => {
 
   test("status webhooks approve, reject with Meta's reason, recategorize and rate", async () => {
     const f = await setup()
+    await listenToEvents(f.t, f.team, ["whatsapp.template.status_updated"])
     const id = await f.create()
     await f.owner.action(api.whatsapp.templateActions.publish, { id })
     await f.approve()

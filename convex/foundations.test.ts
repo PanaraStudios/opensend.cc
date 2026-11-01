@@ -4,7 +4,7 @@ import { convexTest } from "convex-test"
 import schema from "./schema"
 import authSchema from "./betterAuth/schema"
 import { components, internal } from "./_generated/api"
-import { emitEvent } from "./events"
+import { emitEventAlways } from "./events"
 import { renderEmail } from "./email/render"
 import { formatVariable } from "../lib/dashboard/email-variables"
 
@@ -15,7 +15,7 @@ describe("event outbox", () => {
   test("an event is stored with its team, type and data", async () => {
     const t = convexTest(schema, modules)
     const id = await t.run((ctx) =>
-      emitEvent(ctx, "team", "domain.created", { domain_id: "dom" })
+      emitEventAlways(ctx, "team", "domain.created", { domain_id: "dom" })
     )
     const row = await t.run((ctx) => ctx.db.get("events", id))
     expect(row).toMatchObject({

@@ -3,6 +3,7 @@ import workpoolTest from "@convex-dev/workpool/test"
 import { api, internal } from "../_generated/api"
 import { patchRow } from "../counts"
 import { storeTestCredentials } from "../testHelpers/ses.fixture"
+import { listenToEvents } from "../testHelpers/eventListener"
 import {
   inboundFixture,
   incoming,
@@ -35,9 +36,10 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function setup() {
+async function setup(listen: readonly string[] = []) {
   const graph = fakeGraph(pageGraphRoutes())
   const f = await inboundFixture()
+  if (listen.length) await listenToEvents(f.t, f.owner.team, listen)
   workpoolTest.register(f.t, "sendPool")
   workpoolTest.register(f.t, "webhookPool")
   await storeTestCredentials(f)
@@ -505,7 +507,11 @@ test("neutral media delegates to existing content validation and email attachmen
 })
 
 test("inbound Meta webhook payloads retain their content and add every common message field", async () => {
-  const f = await setup()
+  const f = await setup([
+    "whatsapp.message.received",
+    "messenger.message.received",
+    "instagram.message.received",
+  ])
   const events = await f.t.run((ctx) =>
     ctx.db
       .query("events")
@@ -587,6 +593,7 @@ test("email template aliases render the preview; webhooks share fields without t
 
 test("received email merges with sent channels, links its sender contact and adds webhook base fields", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["email.received"])
   const contactResult = await f.call("/contacts", "POST", {
     email: "inbound@example.test",
   })

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { patchRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { EXPORT_SOURCES } from "./exportSources"
 
 beforeEach(() => {
@@ -237,6 +238,7 @@ test("oversized parsed content is retained as a failed parse", async () => {
 })
 test("re-running a parser emits one received row and webhook", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["email.received"])
   const { id } = await parse(f, multipart)
   await f.t.action(internal.receivedParse.parse, { id })
   expect(
@@ -505,6 +507,7 @@ test("REST inlines images by default and validates html_format", async () => {
 })
 test("storage handoff schedules parsing and redundant handoffs discard their extra file", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["email.received"])
   const { id, rawId } = await store(f)
   await f.t.run((ctx) =>
     ctx.db.patch("inboundMessages", id, { storageId: undefined })

@@ -21,7 +21,6 @@ import {
   broadcastMessageMetric,
   broadcastRecipientProblem,
 } from "../broadcastMetrics"
-import { emitEvent } from "../events"
 import { tagValue } from "../tables/emails"
 import {
   type KnownIdentity,
@@ -29,7 +28,7 @@ import {
   recordWhatsAppUser,
   recordWhatsAppPhone,
 } from "./identity"
-import { hydratedChannelMessage } from "./payload"
+import { emitMessageEvent } from "./payload"
 import { enqueueMediaFetch } from "./mediaState"
 import {
   whatsappMessageMedia,
@@ -692,15 +691,11 @@ export async function acceptChannelMessage(
     at,
   })
   await broadcastMessageMetric(ctx, current)
-  await emitEvent(
+  await emitMessageEvent(
     ctx,
     message.organizationId,
     `${message.channel}.message.sent`,
-    await hydratedChannelMessage(
-      ctx,
-      { ...current, status: "sent" },
-      Date.now()
-    )
+    { ...current, status: "sent" }
   )
   return current
 }
@@ -730,11 +725,11 @@ async function fail(
     }),
   })
   await broadcastMessageMetric(ctx, current)
-  await emitEvent(
+  await emitMessageEvent(
     ctx,
     message.organizationId,
     `${message.channel}.message.failed`,
-    await hydratedChannelMessage(ctx, current, Date.now())
+    current
   )
 }
 export const claim = internalMutation({

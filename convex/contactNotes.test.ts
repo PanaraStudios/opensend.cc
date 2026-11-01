@@ -3,6 +3,7 @@ import { api, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { createNote } from "./contactNotes"
 import { TEAM_TABLES } from "./teamCleanup"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
@@ -28,6 +29,7 @@ async function setup() {
 }
 test("notes preserve text, authors and creation order across edits, with native pagination", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.owner.team, ["contact.note_created"])
   const first = await f.create("First\n<script>plain text</script>")
   vi.setSystemTime(Date.now() + 10)
   const second = await f.create("Second")

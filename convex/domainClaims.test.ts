@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { api, components, internal } from "./_generated/api"
 import { fixture } from "./testHelpers/ses.fixture"
 import { insertRow, patchRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import type { Id } from "./_generated/dataModel"
 
 const dns = vi.hoisted(() => ({ txt: vi.fn() }))
@@ -122,6 +123,9 @@ describe("domain claims", () => {
   })
   test("checks exact TXT content on the server, joining DNS chunks, and transfers through the existing workflow completions", async () => {
     const f = await setup()
+    const domainEvents = ["domain.created", "domain.updated", "domain.deleted"]
+    await listenToEvents(f.t, f.owner.team, domainEvents)
+    await listenToEvents(f.t, f.outsider.team, domainEvents)
     const claim = await f.create()
     dns.txt.mockResolvedValue([[claim.record.value.toUpperCase()]])
     expect(await f.verify(claim.domain_id)).toMatchObject({ status: "pending" })

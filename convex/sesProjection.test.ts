@@ -16,6 +16,7 @@ import {
 import { insertEmail, patchEmail } from "./emailRows"
 import { acceptEmail } from "./emails"
 import { insertRow, patchRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -36,6 +37,7 @@ async function setup() {
   workpoolTest.register(f.t, "sendPool")
   workpoolTest.register(f.t, "webhookPool")
   await storeTestCredentials(f)
+  await listenToEvents(f.t, f.owner.team)
   await f.t.run(async (ctx) => {
     await patchRow(ctx, "domains", f.domain, {
       status: "verified",
@@ -427,6 +429,7 @@ describe("SES projection", () => {
 
   test("account email never enters team metrics or webhooks", async () => {
     const f = await setup()
+    await listenToEvents(f.t, "installation")
     const id = await f.makeEmail({
       organizationId: "installation",
       source: "system",

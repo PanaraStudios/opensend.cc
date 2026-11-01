@@ -6,6 +6,7 @@ import type { Id } from "./_generated/dataModel"
 import { fixture, storeTestCredentials } from "./testHelpers/ses.fixture"
 import { insertEmailEvent } from "./emailRows"
 import { insertRow, patchRow } from "./counts"
+import { listenToEvents } from "./testHelpers/eventListener"
 import { recipientPage } from "./broadcasts"
 import { MAX_STEP_RECIPIENTS } from "./broadcastSend"
 import { broadcastActions } from "../lib/dashboard/broadcast"
@@ -501,6 +502,7 @@ test("a deleted audience between scheduling and fan-out fails the durable run", 
 })
 test("SES send keeps tenant tags and broadcast webhook data; unique metrics survive retention", async () => {
   const f = await setup()
+  await listenToEvents(f.t, f.org, ["email.sent"])
   const send = vi
     .spyOn(SESv2Client.prototype, "send")
     .mockResolvedValue({ MessageId: "broadcast-message" } as never)
