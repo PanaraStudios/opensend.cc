@@ -7,7 +7,7 @@ import {
   effectiveTopicSubscription,
   mergeContactFields,
   propertyKeyError,
-} from "./contacts"
+} from "@opensend/core/dashboard/contacts"
 import { rangeBounds } from "./email-range"
 
 describe("propertyKeyError", () => {

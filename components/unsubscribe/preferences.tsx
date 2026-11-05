@@ -4,11 +4,11 @@ import * as React from "react"
 import { notFound } from "next/navigation"
 import { useMutation, useQuery } from "convex/react"
 
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Toaster, toast } from "@/components/ui/toast"
 import { UnsubscribePageCard } from "@/components/unsubscribe/page-card"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 
 /** The page a recipient's unsubscribe link opens. Each switch saves at once. */
 export function UnsubscribePreferences({ token }: { token: string }) {

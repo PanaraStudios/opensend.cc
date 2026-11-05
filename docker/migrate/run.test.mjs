@@ -20,14 +20,14 @@ async function fixture(t) {
   for (const path of [
     "docker/migrate",
     "scripts",
-    "lib",
+    "packages/core/src",
     "node_modules/convex/bin",
   ])
     await mkdir(join(directory, path), { recursive: true })
   for (const path of [
     "docker/migrate/run.mjs",
     "scripts/convex-env.mjs",
-    "lib/telemetry.ts",
+    "packages/core/src/telemetry.ts",
   ])
     await copyFile(path, join(directory, path))
   await writeFile(

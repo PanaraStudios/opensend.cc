@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { asTemplate } from "./template-record"
-import type { Doc } from "../../convex/_generated/dataModel"
+import type { Doc } from "@opensend/backend/dataModel"
 
 const row = {
   _id: "template",

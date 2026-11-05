@@ -1,7 +1,7 @@
 "use client"
 import { useAction } from "convex/react"
 import { TerminalIcon } from "lucide-react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { AsyncForm, FormInput } from "@/components/auth/ui"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { FieldDescription, FieldGroup } from "@/components/ui/field"

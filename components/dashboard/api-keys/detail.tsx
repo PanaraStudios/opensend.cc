@@ -36,10 +36,10 @@ import {
   useDeleteRecord,
   useTeamList,
 } from "@/components/dashboard/primitives"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
-import { apiKeyDomainLabel } from "@/lib/dashboard/api-keys"
-import { pluralize } from "@/lib/dashboard/format"
+import { apiKeyDomainLabel } from "@opensend/core/dashboard/api-keys"
+import { pluralize } from "@opensend/core/dashboard/format"
 import { useDomain } from "@/lib/domains/use-domains"
 import { asLog } from "@/lib/logs/use-logs"
 

@@ -31,11 +31,11 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/toast"
 import { OptionSelect } from "@/components/dashboard/primitives"
-import { actionError } from "@/lib/action-error"
-import { canReply, replySender } from "@/lib/dashboard/conversations"
-import { defaultFromAddress } from "@/lib/dashboard/format"
+import { actionError } from "@opensend/core/action-error"
+import { canReply, replySender } from "@opensend/core/dashboard/conversations"
+import { defaultFromAddress } from "@opensend/core/dashboard/format"
 import { useDomainOptions } from "@/lib/domains/use-domains"
-import { senderDomainSearch } from "@/lib/dashboard/sender-options"
+import { senderDomainSearch } from "@opensend/core/dashboard/sender-options"
 import { useClock } from "@/lib/time/use-clock"
 import {
   useApprovedTemplates,
@@ -43,7 +43,7 @@ import {
   useTemplateInputs,
   type ConversationDetail,
 } from "@/lib/messages/use-messages"
-import type { Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import { AdvancedComposer } from "./advanced-composer"
 
 /** Text when the channel allows it; on WhatsApp after the window closes,

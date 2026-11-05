@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
-import { api } from "../../convex/_generated/api"
-import type { Doc, Id } from "../../convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import { backendRows, client } from "./ses-fixtures"
 import { WABA, PHONE_ID } from "./meta-fixtures"
 

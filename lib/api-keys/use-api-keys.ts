@@ -1,14 +1,14 @@
 "use client"
 import { useAction, useMutation } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import {
   useTeamRole,
   useWorkspace,
   requireTeamId,
 } from "@/components/auth/workspace"
-import type { ApiKey } from "@/lib/dashboard/types"
+import type { ApiKey } from "@opensend/core/dashboard/types"
 
 type ApiKeyRow = FunctionReturnType<typeof api.apiKeys.list>["page"][number]
 

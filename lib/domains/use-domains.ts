@@ -1,8 +1,8 @@
 "use client"
 import * as React from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import {
   useTeamRole,
   useWorkspace,
@@ -10,8 +10,8 @@ import {
   useTeamQuery,
 } from "@/components/auth/workspace"
 import { toast } from "@/components/ui/toast"
-import { domainCheckResult } from "@/lib/dashboard/domains"
-import type { Domain } from "@/lib/dashboard/types"
+import { domainCheckResult } from "@opensend/core/dashboard/domains"
+import type { Domain } from "@opensend/core/dashboard/types"
 
 export function asDomain(row: Doc<"domains">): Domain {
   return {

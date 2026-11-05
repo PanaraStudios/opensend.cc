@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { playgroundRedirectHref } from "@/lib/messages/links"
+import { playgroundRedirectHref } from "@opensend/core/messages/links"
 
 export default async function PlaygroundPage({
   searchParams,

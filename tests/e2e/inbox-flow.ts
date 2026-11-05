@@ -1,7 +1,7 @@
 import { connectWhatsApp, WABA, PHONE_ID } from "./meta-fixtures"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
-import type { Doc } from "../../convex/_generated/dataModel"
+import type { Doc } from "@opensend/backend/dataModel"
 import { createApiKey } from "./broadcast-received-flow"
 import {
   backendRows,

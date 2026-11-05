@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { POLICY_REVISION } from "@/convex/ses/contracts"
+import { POLICY_REVISION } from "@opensend/backend/ses/contracts"
 import {
   buildAwsSetupTemplate,
   buildAwsPolicy,

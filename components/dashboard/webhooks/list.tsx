@@ -30,8 +30,8 @@ import {
   WebhookMenu,
   WebhookStatusBadge,
 } from "@/components/dashboard/webhooks/shared"
-import { api } from "@/convex/_generated/api"
-import { webhookEventsLabel } from "@/lib/dashboard/webhooks"
+import { api } from "@opensend/backend/api"
+import { webhookEventsLabel } from "@opensend/core/dashboard/webhooks"
 import { asWebhook, useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 
 export function WebhooksView() {

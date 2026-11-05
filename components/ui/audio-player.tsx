@@ -15,7 +15,7 @@ import {
   fallbackAudioPeaks,
   formatMediaTime,
   nextPlaybackSpeed,
-} from "@/lib/media-player"
+} from "@opensend/core/media-player"
 import { useMediaPlayer } from "@/lib/use-media-player"
 import { cn } from "@/lib/utils"
 

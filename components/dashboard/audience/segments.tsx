@@ -1,5 +1,5 @@
 "use client"
-import { contactIdentity } from "@/lib/dashboard/contacts"
+import { contactIdentity } from "@opensend/core/dashboard/contacts"
 
 import * as React from "react"
 import Link from "next/link"
@@ -49,10 +49,10 @@ import {
 import { AudienceChrome } from "@/components/dashboard/audience/shared"
 import { EyeIcon, LayersIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatDate, pluralize } from "@/lib/dashboard/format"
+import { formatDate, pluralize } from "@opensend/core/dashboard/format"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
 import {
   asSegment,
@@ -61,7 +61,7 @@ import {
   useContactSearch,
   useSegmentList,
 } from "@/lib/audience/use-audience"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 
 function AddSegmentDialog({
   open,

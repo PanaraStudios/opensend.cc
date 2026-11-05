@@ -6,20 +6,20 @@ import {
   broadcastSendBlocked,
   broadcastSegmentItems,
   broadcastTopicItems,
-} from "@/lib/dashboard/broadcast"
+} from "@opensend/core/dashboard/broadcast"
 
 import {
   CHANNELS,
   BROADCAST_CAPABILITIES,
   type MessagingChannel,
-} from "@/lib/channels"
+} from "@opensend/core/channels"
 import { TemplateTestAction } from "@/components/dashboard/templates/test-send"
-import { resolveVariables } from "@/lib/meta/variables"
+import { resolveVariables } from "@opensend/core/meta/variables"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useAction } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import {
   useWorkspace,
   requireTeamId,
@@ -50,9 +50,9 @@ import {
 import { toast } from "@/components/ui/toast"
 import { useSegmentOptions, useTopicOptions } from "@/lib/audience/use-audience"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
-import type { Broadcast } from "@/lib/dashboard/types"
-import { actionError } from "@/lib/action-error"
-import { formatScheduleHint } from "@/lib/dashboard/schedule"
+import type { Broadcast } from "@opensend/core/dashboard/types"
+import { actionError } from "@opensend/core/action-error"
+import { formatScheduleHint } from "@opensend/core/dashboard/schedule"
 
 export function WhatsAppBroadcastEditor({ item }: { item: Broadcast }) {
   const channel = item.channel as MessagingChannel

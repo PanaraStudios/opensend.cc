@@ -18,12 +18,12 @@ import {
   useConversationCommands,
   type ConversationDetail,
 } from "@/lib/messages/use-messages"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import {
   composerInteractive,
   INTERACTIVE_ITEMS,
   type InteractiveKind,
-} from "@/lib/dashboard/conversation-composer"
+} from "@opensend/core/dashboard/conversation-composer"
 
 export function AdvancedComposer({
   detail,

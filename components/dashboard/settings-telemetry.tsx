@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { SettingsCard } from "@/components/dashboard/primitives"
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 
 const telemetryDocs =
   "https://github.com/PanaraStudios/opensend.cc/blob/v2/docs/telemetry.md"

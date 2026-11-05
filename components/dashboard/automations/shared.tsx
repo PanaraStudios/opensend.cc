@@ -36,12 +36,15 @@ import {
   TextFieldDialog,
   type SelectOption,
 } from "@/components/dashboard/primitives"
-import { automationStatusLabel } from "@/lib/dashboard/format"
-import type { AutomationTask } from "@/lib/dashboard/automation"
+import { automationStatusLabel } from "@opensend/core/dashboard/format"
+import type { AutomationTask } from "@opensend/core/dashboard/automation"
 import { AUTOMATION_TABS } from "@/lib/dashboard/nav"
 import { useAutomationCommands } from "@/lib/automations/use-automations"
-import { actionError } from "@/lib/action-error"
-import type { Automation, AutomationRunStep } from "@/lib/dashboard/types"
+import { actionError } from "@opensend/core/action-error"
+import type {
+  Automation,
+  AutomationRunStep,
+} from "@opensend/core/dashboard/types"
 
 export const AutomationIcon = WorkflowIcon
 export const EventIcon = ZapIcon

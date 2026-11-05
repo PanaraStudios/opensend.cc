@@ -41,7 +41,7 @@ import {
 } from "lucide-react"
 
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { docsHrefForRoute } from "@/lib/docs-links"
 import {
   AlertDialog,
@@ -151,7 +151,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { DateRangePicker } from "@/components/dashboard/date-range-picker"
-import type { SkipReason } from "@/lib/dashboard/types"
+import type { SkipReason } from "@opensend/core/dashboard/types"
 import { cn } from "@/lib/utils"
 import { useClock } from "@/lib/time/use-clock"
 import {
@@ -181,10 +181,13 @@ import {
   CHANNEL_MESSAGE_STATUS_TONE,
   CHANNEL_QUALITY_TONE,
   type BadgeTone,
-} from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/format"
 import { rangeLabel } from "@/lib/dashboard/email-range"
-import { exportSummary, type ExportFilterLine } from "@/lib/dashboard/exports"
-import { tokenizeJson, type JsonTokenKind } from "@/lib/dashboard/logs"
+import {
+  exportSummary,
+  type ExportFilterLine,
+} from "@opensend/core/dashboard/exports"
+import { tokenizeJson, type JsonTokenKind } from "@opensend/core/dashboard/logs"
 import { tabActive, type SectionTabs } from "@/lib/dashboard/nav"
 import {
   PAGE_SIZES,
@@ -194,7 +197,7 @@ import {
   pagedListState,
   pageLabel,
   type Pager,
-} from "@/lib/dashboard/pagination"
+} from "@opensend/core/dashboard/pagination"
 import type {
   AutomationRunStatus,
   AutomationStatus,
@@ -207,7 +210,7 @@ import type {
   ExportStatus,
   TemplateStatus,
   MetaTemplateStatus,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 /* ------------------------------------------------------------------ layout */
 

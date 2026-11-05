@@ -47,9 +47,9 @@ import {
   usePublishTemplate,
 } from "@/components/dashboard/templates/shared"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
-import { actionError } from "@/lib/action-error"
-import { templatePublishLabel } from "@/lib/dashboard/template"
-import type { EmailTemplate } from "@/lib/dashboard/types"
+import { actionError } from "@opensend/core/action-error"
+import { templatePublishLabel } from "@opensend/core/dashboard/template"
+import type { EmailTemplate } from "@opensend/core/dashboard/types"
 import {
   BUTTON_TYPES,
   HEADER_FORMATS,
@@ -74,7 +74,7 @@ import {
   type HeaderFormat,
   type TemplateCategory,
   type TemplateForm,
-} from "@/lib/meta/templates"
+} from "@opensend/core/meta/templates"
 import {
   useTemplateCommands,
   useWhatsAppAccounts,

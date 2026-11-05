@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 import { playgroundShots } from "./playground-shots"
 import { client } from "./ses-fixtures"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { createApiKey } from "./broadcast-received-flow"
 
 /** Reveal the one-time signing secret, close it, and confirm it leaves the page. */

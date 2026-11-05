@@ -32,7 +32,8 @@
         "types": "./dist/convex.d.cts",
         "default": "./dist/convex.cjs"
       }
-    }
+    },
+    "./src/*": "./src/*.ts"
   },
   "scripts": {
     "build": "tsdown src/index.ts src/convex.ts --format esm,cjs --dts",
@@ -72,6 +73,28 @@
     "yaml": "^2.8.1"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.mts",
+          "default": "./dist/index.mjs"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "./convex": {
+        "import": {
+          "types": "./dist/convex.d.mts",
+          "default": "./dist/convex.mjs"
+        },
+        "require": {
+          "types": "./dist/convex.d.cts",
+          "default": "./dist/convex.cjs"
+        }
+      }
+    }
   }
 }

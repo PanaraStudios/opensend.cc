@@ -1,11 +1,11 @@
 "use client"
 import { ConversationThread } from "@/components/dashboard/conversation/conversation-thread"
-import { object } from "@/lib/meta/parse"
+import { object } from "@opensend/core/meta/parse"
 import {
-  detailThreadMessage,
   messageEnvelope,
   messageParty,
-} from "@/lib/dashboard/message-detail"
+} from "@opensend/core/dashboard/message-detail"
+import { detailThreadMessage } from "@/lib/messages/detail"
 
 import * as React from "react"
 import Link from "next/link"
@@ -66,19 +66,19 @@ import {
   formatDateTime,
   sentenceCase,
   timelineEventLabel,
-} from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/format"
 import {
   tokenizeHtml,
   type HtmlTokenKind,
-} from "@/lib/dashboard/highlight-html"
-import { emailFailureMessage } from "@/lib/dashboard/email-failure"
-import { actionError } from "@/lib/action-error"
+} from "@opensend/core/dashboard/highlight-html"
+import { emailFailureMessage } from "@opensend/core/dashboard/email-failure"
+import { actionError } from "@opensend/core/action-error"
 import { useReceived } from "@/lib/received/use-received"
 import type {
   ChannelMessageStatus,
   EmailEvent,
   EmailStatus,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 import {
   useEmail,
   useEmailCommands,
@@ -87,7 +87,7 @@ import {
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 import { useChannelMessage } from "@/lib/messages/use-messages"
-import { threadHref } from "@/lib/messages/links"
+import { threadHref } from "@opensend/core/messages/links"
 import { NormalizedMessageContent } from "@/components/dashboard/conversation/message-content"
 import { channelIcon } from "@/components/dashboard/channels/shared"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"

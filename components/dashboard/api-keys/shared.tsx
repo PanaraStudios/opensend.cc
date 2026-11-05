@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import type { Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import { KeyRoundIcon, TriangleAlertIcon } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -36,14 +36,22 @@ import {
   ALL_DOMAINS_LABEL,
   ALL_PERMISSIONS,
   API_KEY_PERMISSIONS,
-} from "@/lib/dashboard/api-keys"
+} from "@opensend/core/dashboard/api-keys"
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
-import { maskToken, permissionLabel } from "@/lib/dashboard/format"
+import { actionError } from "@opensend/core/action-error"
+import { maskToken, permissionLabel } from "@opensend/core/dashboard/format"
 import { useDomain, useDomainOptions } from "@/lib/domains/use-domains"
-import type { ApiKey, ApiKeyPermission, Domain } from "@/lib/dashboard/types"
+import type {
+  ApiKey,
+  ApiKeyPermission,
+  Domain,
+} from "@opensend/core/dashboard/types"
 
-import { API_RESOURCES, scopeAllows, scopeLabel } from "@/lib/api-scopes"
+import {
+  API_RESOURCES,
+  scopeAllows,
+  scopeLabel,
+} from "@opensendcc/sdk/src/api-scopes"
 import {
   Table,
   TableHeader,

@@ -15,7 +15,7 @@ import type {
   FunctionArgs,
   FunctionReference,
 } from "convex/server"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { authClient, authResult } from "@/lib/auth/client"
 import { AsyncForm, FormInput } from "./ui"
 import { usePathname, useRouter } from "next/navigation"
@@ -26,9 +26,9 @@ import { AuthPageFrame } from "./page-frame"
 import { FieldGroup } from "@/components/ui/field"
 import { InstallationWizard } from "@/components/onboarding/wizard"
 import { isInstancePage } from "@/lib/dashboard/nav"
-import { workspaceInstallation } from "@/lib/dashboard/workspace-bootstrap"
-import type { MemberRole, Team } from "@/lib/dashboard/types"
-import { liveInvitations } from "@/lib/dashboard/invitations"
+import { workspaceInstallation } from "@opensend/core/dashboard/workspace-bootstrap"
+import type { MemberRole, Team } from "@opensend/core/dashboard/types"
+import { liveInvitations } from "@opensend/core/dashboard/invitations"
 import { useClock } from "@/lib/time/use-clock"
 
 export type Workspace = NonNullable<

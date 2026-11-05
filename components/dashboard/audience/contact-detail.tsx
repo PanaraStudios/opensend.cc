@@ -6,7 +6,7 @@ import {
   CallPermissionStatus,
 } from "@/components/dashboard/calling/call-with-bot"
 import { CallButton } from "@/components/dashboard/calling/call-button"
-import { contactIdentity } from "@/lib/dashboard/contacts"
+import { contactIdentity } from "@opensend/core/dashboard/contacts"
 import { useContactBroadcasts } from "@/lib/broadcasts/use-broadcasts"
 
 import * as React from "react"
@@ -59,10 +59,10 @@ import {
   useDeleteRecord,
 } from "@/components/dashboard/primitives"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { Skeleton } from "@/components/ui/skeleton"
-import { contactTopicStatus } from "@/lib/dashboard/contacts"
-import { formatDate, formatDateTime } from "@/lib/dashboard/format"
+import { contactTopicStatus } from "@opensend/core/dashboard/contacts"
+import { formatDate, formatDateTime } from "@opensend/core/dashboard/format"
 import { useReceivedList } from "@/lib/received/use-received"
 import {
   asContact,
@@ -74,16 +74,16 @@ import {
   useSegmentOptions,
   useTopics,
 } from "@/lib/audience/use-audience"
-import { OPTION_LIMIT } from "@/lib/dashboard/options"
-import { actionError } from "@/lib/action-error"
+import { OPTION_LIMIT } from "@opensend/core/dashboard/options"
+import { actionError } from "@opensend/core/action-error"
 import { useRecipientEmails } from "@/lib/emails/use-emails"
 import { useContactConversations } from "@/lib/messages/use-messages"
-import { messageHref } from "@/lib/messages/links"
-import { channelHandle } from "@/lib/meta/account-display"
-import { CHANNELS, rowChannel } from "@/lib/channels"
+import { messageHref } from "@opensend/core/messages/links"
+import { channelHandle } from "@opensend/core/meta/account-display"
+import { CHANNELS, rowChannel } from "@opensend/core/channels"
 import { channelIcon } from "@/components/dashboard/channels/shared"
 import { ConversationRow } from "@/components/dashboard/emails/shared"
-import type { Contact } from "@/lib/dashboard/types"
+import type { Contact } from "@opensend/core/dashboard/types"
 
 /** Reports a failed save; the stored value then shows again. */
 const reportError = (caught: unknown) =>

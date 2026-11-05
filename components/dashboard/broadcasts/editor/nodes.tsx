@@ -5,12 +5,12 @@ import { Link as EngineLink } from "@react-email/editor/extensions"
 import type { useEditorImage } from "@react-email/editor/plugins"
 import { mergeAttributes } from "@tiptap/core"
 
-import { formatVariable } from "@/lib/dashboard/email-variables"
+import { formatVariable } from "@opensend/core/dashboard/email-variables"
 import {
   youtubeThumbnailUrl,
   youtubeVideoId,
   youtubeWatchUrl,
-} from "@/lib/dashboard/youtube"
+} from "@opensend/core/dashboard/youtube"
 
 /* The blocks the engine does not ship. Each one says how it looks while
    editing (`renderHTML`) and what it becomes in the sent email

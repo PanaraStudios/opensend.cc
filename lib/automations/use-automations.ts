@@ -1,18 +1,18 @@
 "use client"
 import { useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import { useWorkspace, useTeamQuery } from "@/components/auth/workspace"
 import type {
   Automation,
   AutomationRun,
   AutomationRunStep,
   AutomationStep,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
-import { isChannelSendStep } from "../channels"
+import { isChannelSendStep } from "@opensend/core/channels"
 
-import { flattenSteps } from "@/lib/dashboard/automation"
+import { flattenSteps } from "@opensend/core/dashboard/automation"
 
 export function useStepContext(steps: AutomationStep[]) {
   const flat = flattenSteps(steps)

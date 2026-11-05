@@ -1,7 +1,7 @@
 "use client"
 import { useCallback, useId, useState } from "react"
-import { api } from "@/convex/_generated/api"
-import { pickerSelectedIds } from "@/lib/dashboard/options"
+import { api } from "@opensend/backend/api"
+import { pickerSelectedIds } from "@opensend/core/dashboard/options"
 import { useResourceOptions } from "@/components/dashboard/resource-picker"
 import {
   OptionSelect,

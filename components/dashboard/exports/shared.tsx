@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { DisabledTooltip } from "@/components/ui/tooltip"
 import { useTeamRole } from "@/components/auth/workspace"
 import { useDownloadExport } from "@/lib/exports/use-exports"
-import type { ExportJob } from "@/lib/dashboard/types"
+import type { ExportJob } from "@opensend/core/dashboard/types"
 
 /** Downloads a completed export. A CSV too large for one download comes as
     several files: the detail page shows a button per file, and the list's

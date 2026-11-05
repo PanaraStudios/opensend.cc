@@ -1,0 +1,131 @@
+"use node"
+import { v, type Infer } from "convex/values"
+import { internalAction, type ActionCtx } from "../_generated/server"
+import { internal } from "../_generated/api"
+import { callerValue, invalid, apiError } from "../api/caller"
+import { graph } from "../meta/graph"
+import { decryptSecret } from "../secrets"
+import { whatsappMediaMultipart } from "@opensend/core/meta/media"
+import { object, string } from "@opensend/core/meta/webhooks"
+import { MetaError } from "@opensend/core/meta/errors"
+import type { Id } from "../_generated/dataModel"
+
+const uploadInput = v.object({
+  caller: callerValue,
+  target: v.object({
+    accountId: v.id("channelAccounts"),
+    phoneNumberId: v.string(),
+    encryptedToken: v.string(),
+    version: v.string(),
+  }),
+  storageId: v.id("_storage"),
+  record: v.optional(v.boolean()),
+  filename: v.string(),
+  contentType: v.string(),
+})
+
+export async function uploadMedia(
+  ctx: ActionCtx,
+  args: Infer<typeof uploadInput>
+): Promise<string> {
+  const target = args.target
+  const file = await ctx.storage.get(args.storageId)
+  if (!file) throw invalid("Media file not found.")
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let result: unknown
+  try {
+    result = await graph({
+      method: "POST",
+      path: `${target.phoneNumberId}/media`,
+      version: target.version,
+      token: await decryptSecret(target.encryptedToken),
+      body: whatsappMediaMultipart(
+        bytes,
+        args.contentType,
+        args.filename,
+        `opensend_${crypto.randomUUID().replaceAll("-", "")}`
+      ),
+    })
+  } catch (error) {
+    if (!(error instanceof MetaError)) throw error
+    if (error.action === "token_invalid")
+      await ctx.runMutation(internal.channels.mediaUploads.tokenInvalid, {
+        caller: args.caller,
+        accountId: target.accountId,
+        error: error.message,
+      })
+    throw apiError(
+      error.action === "retry" || error.action === "retry_after" ? 503 : 422,
+      "meta_api_error",
+      error.message
+    )
+  }
+  const id = string(object(result).id)
+  if (!id)
+    throw apiError(502, "meta_api_error", "Meta did not return a media id.")
+  if (args.record !== false)
+    await ctx.runMutation(internal.channels.mediaUploads.complete, {
+      caller: args.caller,
+      accountId: target.accountId,
+      storageId: args.storageId,
+      mediaId: id,
+      filename: args.filename,
+      contentType: args.contentType,
+      size: bytes.byteLength,
+    })
+  return id
+}
+export const upload = internalAction({
+  args: uploadInput.fields,
+  returns: v.string(),
+  handler: uploadMedia,
+})
+
+/** What a send did with the number's earlier uploads. */
+export type MediaCacheUse = {
+  /** Upload again instead of reusing: Meta no longer knew a reused id. */
+  fresh?: boolean
+  /** Every Meta media id the send used for a stored file. */
+  mediaIds: string[]
+  /** The earlier uploads this send reused. */
+  reused: {
+    accountId: Id<"channelAccounts">
+    fileId: Id<"storedFiles">
+    storageId: Id<"_storage">
+    mediaId: string
+  }[]
+}
+
+/** Uploads a stored file to a number once, then reuses the media id while
+    Meta keeps it (template headers, attachments). */
+export async function uploadStoredMedia(
+  ctx: ActionCtx,
+  args: Infer<typeof uploadInput> & { fileId: Id<"storedFiles"> },
+  cache?: MediaCacheUse
+): Promise<string> {
+  const { fileId, ...input } = args
+  const key = {
+    accountId: input.target.accountId,
+    fileId,
+    storageId: input.storageId,
+  }
+  if (!cache?.fresh) {
+    const cached: string | null = await ctx.runQuery(
+      internal.channels.mediaCache.find,
+      { ...key, now: Date.now() }
+    )
+    if (cached) {
+      cache?.reused.push({ ...key, mediaId: cached })
+      cache?.mediaIds.push(cached)
+      return cached
+    }
+  }
+  const mediaId = await uploadMedia(ctx, input)
+  await ctx.runMutation(internal.channels.mediaCache.remember, {
+    ...key,
+    organizationId: input.caller.organizationId,
+    mediaId,
+  })
+  cache?.mediaIds.push(mediaId)
+  return mediaId
+}

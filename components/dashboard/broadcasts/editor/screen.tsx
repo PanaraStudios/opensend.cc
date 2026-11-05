@@ -27,9 +27,9 @@ import {
   type EmailEditorState,
   type SaveState,
 } from "@/components/dashboard/broadcasts/editor/use-editor"
-import { actionError } from "@/lib/action-error"
-import type { EmailEditorMode } from "@/lib/dashboard/broadcast"
-import type { EmailDraft } from "@/lib/dashboard/types"
+import { actionError } from "@opensend/core/action-error"
+import type { EmailEditorMode } from "@opensend/core/dashboard/broadcast"
+import type { EmailDraft } from "@opensend/core/dashboard/types"
 
 /* Full-screen editor: a top bar, the mode rail, the paper, and the inspector.
    It lives in its own route group so the dashboard sidebar stays out of the

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test"
 import { createHash, randomBytes } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { ConvexHttpClient } from "convex/browser"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 export async function selectOAuthTeam(page: Page, teamId: string) {
   await page.getByRole("combobox", { name: "Team", exact: true }).click()
   await page.getByTestId(`oauth-team-${teamId}`).click()
@@ -164,7 +164,9 @@ export async function oauthFlow(page: Page, teamId: string) {
     const rows = await grants.json()
     expect(rows.object).toBe("list")
     expect(
-      rows.data.some((g: { client_id: string }) => g.client_id === app.client_id)
+      rows.data.some(
+        (g: { client_id: string }) => g.client_id === app.client_id
+      )
     ).toBe(true)
     const introspect = await page.request.post(`${base}/oauth/introspect`, {
       headers,

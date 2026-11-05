@@ -48,11 +48,11 @@ import {
   broadcastAsTemplateInput,
   broadcastEditorHref,
   isBroadcastDraftLike,
-} from "@/lib/dashboard/broadcast"
-import { formatDateTime } from "@/lib/dashboard/format"
-import { api } from "@/convex/_generated/api"
+} from "@opensend/core/dashboard/broadcast"
+import { formatDateTime } from "@opensend/core/dashboard/format"
+import { api } from "@opensend/backend/api"
 import { Skeleton } from "@/components/ui/skeleton"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import {
   asBroadcast,
   useBroadcastCommands,
@@ -61,7 +61,7 @@ import type {
   Broadcast,
   BroadcastStatus,
   BroadcastChannel,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 import { useSegmentOptions } from "@/lib/audience/use-audience"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 

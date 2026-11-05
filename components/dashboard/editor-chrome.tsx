@@ -8,7 +8,7 @@ import { HouseIcon, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
 import { useDraftValue } from "@/components/dashboard/primitives"
-import { sentenceCase } from "@/lib/dashboard/format"
+import { sentenceCase } from "@opensend/core/dashboard/format"
 
 /* The frame of a full-screen editor: a top bar that leads back to the list
    and names the record, and a rail that switches what the screen shows. The

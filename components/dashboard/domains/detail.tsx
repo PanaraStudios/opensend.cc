@@ -3,8 +3,8 @@ import { DomainClaim } from "./claim"
 import * as React from "react"
 import { useParams } from "next/navigation"
 import { useQuery, useMutation, useAction } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Doc } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc } from "@opensend/backend/dataModel"
 import {
   BadgeCheckIcon,
   CircleAlertIcon,
@@ -90,9 +90,9 @@ import {
   validateDnsLabel,
   type DomainBanner,
   type DomainEventStep,
-} from "@/lib/dashboard/domains"
-import { formatDateTime } from "@/lib/dashboard/format"
-import { CHANNELS } from "@/lib/channels"
+} from "@opensend/core/dashboard/domains"
+import { formatDateTime } from "@opensend/core/dashboard/format"
+import { CHANNELS } from "@opensend/core/channels"
 import {
   ChannelDetailHeader,
   channelIcon,
@@ -102,8 +102,8 @@ import {
   useDomainCheck,
   useDomainCommands,
 } from "@/lib/domains/use-domains"
-import { actionError } from "@/lib/action-error"
-import type { Domain, TlsMode } from "@/lib/dashboard/types"
+import { actionError } from "@opensend/core/action-error"
+import type { Domain, TlsMode } from "@opensend/core/dashboard/types"
 const BANNER_ICON: Record<DomainBanner["tone"], LucideIcon> = {
   success: CircleCheckIcon,
   warning: ClockIcon,

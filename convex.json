@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/convex/schemas/convex.schema.json",
+  "functions": "packages/backend/convex/",
   "node": {
     "nodeVersion": "22"
   }

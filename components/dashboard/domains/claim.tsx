@@ -1,8 +1,8 @@
 "use client"
 import * as React from "react"
 import { useMutation, useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Doc } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc } from "@opensend/backend/dataModel"
 import { CircleCheckIcon } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -18,8 +18,8 @@ import {
 import { DnsRecordsTable, DomainSection } from "./shared"
 import { channelIcon } from "@/components/dashboard/channels/shared"
 import { useDomainCommands } from "@/lib/domains/use-domains"
-import { actionError } from "@/lib/action-error"
-import { formatDateTime } from "@/lib/dashboard/format"
+import { actionError } from "@opensend/core/action-error"
+import { formatDateTime } from "@opensend/core/dashboard/format"
 
 export function DomainClaim({ domain }: { domain: Doc<"domains"> }) {
   const claim = useQuery(api.domainClaims.get, {

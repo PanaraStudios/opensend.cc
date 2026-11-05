@@ -2,7 +2,7 @@
 import * as React from "react"
 import { useAction, useQuery } from "convex/react"
 import { KeyRoundIcon, PencilIcon, ShieldIcon } from "lucide-react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"

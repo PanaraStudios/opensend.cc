@@ -74,13 +74,13 @@ import {
   formatDateTime,
   isEmail,
   suppressionReasonLabel,
-} from "@/lib/dashboard/format"
-import { emailFailureMessage } from "@/lib/dashboard/email-failure"
-import { actionError } from "@/lib/action-error"
+} from "@opensend/core/dashboard/format"
+import { emailFailureMessage } from "@opensend/core/dashboard/email-failure"
+import { actionError } from "@opensend/core/action-error"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import { useReceivingDomain } from "@/lib/received/use-received"
 import { useClock } from "@/lib/time/use-clock"
-import type { SuppressionReason } from "@/lib/dashboard/types"
+import type { SuppressionReason } from "@opensend/core/dashboard/types"
 import { useEmailCommands, useSuppressionList } from "@/lib/emails/use-emails"
 import {
   useReceivingLog,

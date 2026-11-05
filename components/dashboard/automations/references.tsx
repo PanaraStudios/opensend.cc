@@ -2,7 +2,7 @@
 import * as React from "react"
 import { BracesIcon, XIcon } from "lucide-react"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { Badge } from "@/components/ui/badge"
 import {
   InputGroup,
@@ -18,12 +18,15 @@ import {
   resolveText,
   variableOptions,
   type VariableOption,
-} from "@/lib/automation-references"
-import { automationCatalogNames } from "@/lib/dashboard/event-catalog-options"
-import { fieldTypeLabel } from "@/lib/dashboard/format"
-import { SYSTEM_EVENT_CATALOG, type CatalogEvent } from "@/lib/event-catalog"
-import type { Automation } from "@/lib/dashboard/types"
-import type { VariableSource } from "@/lib/meta/variables"
+} from "@opensend/core/automation-references"
+import { automationCatalogNames } from "@opensend/core/dashboard/event-catalog-options"
+import { fieldTypeLabel } from "@opensend/core/dashboard/format"
+import {
+  SYSTEM_EVENT_CATALOG,
+  type CatalogEvent,
+} from "@opensend/core/event-catalog"
+import type { Automation } from "@opensend/core/dashboard/types"
+import type { VariableSource } from "@opensend/core/meta/variables"
 const VariableContext = React.createContext<VariableOption[]>([])
 export const useReferenceOptions = () => React.useContext(VariableContext)
 export function ReferenceFieldSelect({

@@ -35,11 +35,11 @@ import {
 } from "@/components/dashboard/primitives"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { asApiKey, useApiKeyCommands } from "@/lib/api-keys/use-api-keys"
-import { ALL_PERMISSIONS } from "@/lib/dashboard/api-keys"
+import { ALL_PERMISSIONS } from "@opensend/core/dashboard/api-keys"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
-import type { ApiKey, ApiKeyPermission } from "@/lib/dashboard/types"
+import type { ApiKey, ApiKeyPermission } from "@opensend/core/dashboard/types"
 
 export function ApiKeysView() {
   const { organizationId, createApiKey, updateApiKey, deleteApiKey } =

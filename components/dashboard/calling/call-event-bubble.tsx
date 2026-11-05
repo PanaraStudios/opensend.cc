@@ -1,6 +1,6 @@
 import { PhoneIcon, PhoneMissedIcon } from "lucide-react"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
-import { callEventLabel } from "@/lib/meta/softphone"
+import { callEventLabel } from "@opensend/core/meta/softphone"
 /** Standalone thread renderer; the conversation restyle can import this later. */
 export function CallEventBubble({
   status,

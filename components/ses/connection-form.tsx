@@ -2,7 +2,7 @@
 import * as React from "react"
 import { useAction } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { AsyncForm, FormInput } from "@/components/auth/ui"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -19,7 +19,7 @@ import {
   AwsAccessSetup,
   ImportAwsCredentials,
 } from "@/components/onboarding/aws-access-setup"
-import { REGIONS, type Region } from "@/lib/dashboard/types"
+import { REGIONS, type Region } from "@opensend/core/dashboard/types"
 import { AwsCredentialsHelp } from "./credentials-help"
 
 export type SesStatus = FunctionReturnType<typeof api.installation.status>

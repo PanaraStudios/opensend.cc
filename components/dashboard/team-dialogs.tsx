@@ -25,15 +25,19 @@ import {
   RadioCards,
   TypeToConfirmDialog,
 } from "@/components/dashboard/primitives"
-import { isEmail, normalizeEmail, pluralize } from "@/lib/dashboard/format"
+import {
+  isEmail,
+  normalizeEmail,
+  pluralize,
+} from "@opensend/core/dashboard/format"
 import { teamSafePath } from "@/lib/dashboard/nav"
 import { useTeamCommands, useWorkspace } from "@/components/auth/workspace"
 import { useDomainOptions } from "@/lib/domains/use-domains"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { MemberRole, Team } from "@/lib/dashboard/types"
+import { api } from "@opensend/backend/api"
+import type { MemberRole, Team } from "@opensend/core/dashboard/types"
 import { cn } from "@/lib/utils"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 
 const ROLE_OPTIONS = [
   {

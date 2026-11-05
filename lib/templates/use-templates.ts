@@ -1,18 +1,18 @@
 "use client"
 import * as React from "react"
 import { useAction, useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import {
   useWorkspace,
   requireTeamId,
   useTeamQuery,
 } from "@/components/auth/workspace"
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
-import type { TemplateInput } from "@/lib/dashboard/template"
-import type { EmailDraft, EmailTemplate } from "@/lib/dashboard/types"
-import { DEFAULT_TEMPLATE_NAME } from "@/lib/meta/templates"
+import { actionError } from "@opensend/core/action-error"
+import type { TemplateInput } from "@opensend/core/dashboard/template"
+import type { EmailDraft, EmailTemplate } from "@opensend/core/dashboard/types"
+import { DEFAULT_TEMPLATE_NAME } from "@opensend/core/meta/templates"
 
 /** What the WhatsApp editor saves. */
 export type WhatsAppPatch = Partial<{

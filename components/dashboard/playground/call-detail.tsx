@@ -1,8 +1,8 @@
 "use client"
 import { PhoneIcon } from "lucide-react"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import {
   DetailHeader,
   DetailSection,
@@ -13,11 +13,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AudioPlayer } from "@/components/ui/audio-player"
 import { BotDiagnostics } from "./bot-diagnostics"
 import { IvrPath } from "./tester"
-import { codeLabel } from "@/lib/dashboard/format"
+import { codeLabel } from "@opensend/core/dashboard/format"
 import {
   callOutcomeLabel,
   ivrActionLabel,
-} from "@/lib/dashboard/voice-playground"
+} from "@opensend/core/dashboard/voice-playground"
 export function PlaygroundCallDetail({ id }: { id: string }) {
   const call = useTeamQuery(api.calling.playgroundState.detail, {
     id: id as Id<"calls">,

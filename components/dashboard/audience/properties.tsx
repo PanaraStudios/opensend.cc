@@ -49,19 +49,22 @@ import {
   normalizePropertyKey,
   propertyKeyError,
   DEFAULT_CONTACT_PROPERTIES,
-} from "@/lib/dashboard/contacts"
-import { matchesNeedle, searchNeedle } from "@/lib/dashboard/search"
-import { formatDate } from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/contacts"
+import { matchesNeedle, searchNeedle } from "@opensend/core/dashboard/search"
+import { formatDate } from "@opensend/core/dashboard/format"
 import {
   asProperty,
   useAudienceCommands,
   useProperties,
 } from "@/lib/audience/use-audience"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { Skeleton } from "@/components/ui/skeleton"
-import { api } from "@/convex/_generated/api"
-import { fieldTypeLabel } from "@/lib/dashboard/format"
-import type { ContactProperty, PropertyType } from "@/lib/dashboard/types"
+import { api } from "@opensend/backend/api"
+import { fieldTypeLabel } from "@opensend/core/dashboard/format"
+import type {
+  ContactProperty,
+  PropertyType,
+} from "@opensend/core/dashboard/types"
 
 type PropertyRow = ContactProperty | (typeof DEFAULT_CONTACT_PROPERTIES)[number]
 const asPropertyRow = (row: Parameters<typeof asProperty>[0]): PropertyRow =>

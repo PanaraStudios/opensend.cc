@@ -4,7 +4,7 @@ import * as React from "react"
 import Script from "next/script"
 import { ArrowUpRightIcon } from "lucide-react"
 
-import { facebookLoginOptions } from "@/lib/meta/facebook-login"
+import { facebookLoginOptions } from "@opensend/core/meta/facebook-login"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -24,22 +24,25 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { OptionSelect } from "@/components/dashboard/primitives"
-import { MESSAGING_CHANNELS, type MessagingChannel } from "@/lib/channels"
+import {
+  MESSAGING_CHANNELS,
+  type MessagingChannel,
+} from "@opensend/core/channels"
 import {
   manualConnectUnavailable,
   metaConnectRoute,
   type MetaConnectConfig,
-} from "@/lib/meta/connect-availability"
+} from "@opensend/core/meta/connect-availability"
 import { toast } from "@/components/ui/toast"
-import { channelHandle } from "@/lib/meta/account-display"
-import { actionError } from "@/lib/action-error"
-import { CHANNEL_LABELS, pluralize } from "@/lib/dashboard/format"
+import { channelHandle } from "@opensend/core/meta/account-display"
+import { actionError } from "@opensend/core/action-error"
+import { CHANNEL_LABELS, pluralize } from "@opensend/core/dashboard/format"
 import {
   FACEBOOK_SDK_URL,
   isFacebookOrigin,
   readSignupMessage,
   signupLoginOptions,
-} from "@/lib/meta/embedded-signup"
+} from "@opensend/core/meta/embedded-signup"
 import {
   useChannelCommands,
   type ConnectedBusiness,

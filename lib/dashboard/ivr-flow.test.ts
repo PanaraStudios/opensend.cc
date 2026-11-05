@@ -2,8 +2,8 @@ import { strict as assert } from "node:assert"
 import { test } from "node:test"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { newIvr, newIvrMenu } from "./voice-playground"
-import type { IvrDefinition } from "../ivr"
+import { newIvr, newIvrMenu } from "@opensend/core/dashboard/voice-playground"
+import type { IvrDefinition } from "@opensend/core/ivr"
 import {
   ivrGraph,
   ivrEditableNodes,
@@ -22,7 +22,12 @@ import {
   type IvrFlowContext,
 } from "../../components/dashboard/playground/ivr-catalog"
 import { automationCatalog } from "../../components/dashboard/automations/catalog"
-import { STEP_GROUPS, STEP_LABELS, newStep, stepBranches } from "./automation"
+import {
+  STEP_GROUPS,
+  STEP_LABELS,
+  newStep,
+  stepBranches,
+} from "@opensend/core/dashboard/automation"
 import { FlowEditor } from "../../components/dashboard/flows/editor"
 
 function fixture(): IvrDefinition {

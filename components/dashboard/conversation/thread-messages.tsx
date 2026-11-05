@@ -31,18 +31,18 @@ import { MediaViewerProvider } from "@/components/ui/media-viewer"
 import { conversationMedia } from "@/lib/dashboard/conversation-media"
 import { MessageFiles } from "@/components/dashboard/emails/shared"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
-import { messageHref } from "@/lib/messages/links"
+import { messageHref } from "@opensend/core/messages/links"
 import { useThread, type ThreadMessage } from "@/lib/messages/use-messages"
-import { object, string } from "@/lib/meta/parse"
+import { object, string } from "@opensend/core/meta/parse"
 import {
   chatDay,
   sameMessageGroup,
   safeMessageUrl,
-} from "@/lib/dashboard/conversation-content"
-import { formatDateTime, sentenceCase } from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/conversation-content"
+import { formatDateTime, sentenceCase } from "@opensend/core/dashboard/format"
 import { useClock } from "@/lib/time/use-clock"
 import { cn } from "@/lib/utils"
-import type { Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import { NormalizedMessageContent, ReferralCard } from "./message-content"
 
 export function ThreadMessages({

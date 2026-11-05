@@ -3,7 +3,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAction, useQuery } from "convex/react"
 import { useWorkspace, useTeamRole } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -16,8 +16,8 @@ import { FieldDescription } from "@/components/ui/field"
 import { toast } from "@/components/ui/toast"
 import { PhoneOutgoingIcon } from "lucide-react"
 import { useClock } from "@/lib/time/use-clock"
-import { actionError } from "@/lib/action-error"
-import { callPermissionLabel } from "@/lib/dashboard/voice-playground"
+import { actionError } from "@opensend/core/action-error"
+import { callPermissionLabel } from "@opensend/core/dashboard/voice-playground"
 import { PlaceCallFields, type PlaceCallConfig } from "./place-call-fields"
 
 export function CallWithBot({ contactId }: { contactId: string }) {

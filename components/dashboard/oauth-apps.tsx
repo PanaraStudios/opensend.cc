@@ -2,9 +2,9 @@
 import { useState } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { BlocksIcon } from "lucide-react"
-import { api } from "@/convex/_generated/api"
-import { oauthScopes, type OAuthScope } from "@/lib/oauth/policy"
-import { formatDate } from "@/lib/dashboard/format"
+import { api } from "@opensend/backend/api"
+import { oauthScopes, type OAuthScope } from "@opensend/core/oauth/policy"
+import { formatDate } from "@opensend/core/dashboard/format"
 import {
   Table,
   TableBody,

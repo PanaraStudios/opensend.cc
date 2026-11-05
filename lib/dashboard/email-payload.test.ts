@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import type { Doc, Id } from "../../convex/_generated/dataModel"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import { asEmail } from "../emails/use-emails"
 test("email payloads use integer milliseconds and retain send failure diagnostics", () => {
   const row: Doc<"emails"> = {

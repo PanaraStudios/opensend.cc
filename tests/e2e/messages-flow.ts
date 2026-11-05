@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test"
-import type { Id } from "../../convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import { createApiKey } from "./broadcast-received-flow"
 import { client, seedBroadcastSender } from "./ses-fixtures"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { PHONE_ID } from "./meta-fixtures"
 
 /** Registered after Meta inbound setup, which opens this recipient's window. */

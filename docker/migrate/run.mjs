@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { createRequire } from "node:module"
 import { dirname, resolve } from "node:path"
 // The migrate image pins Node 22.18+, which reads this dependency-free TS helper.
-import { normalizeTelemetryVersion } from "../../lib/telemetry.ts"
+import { normalizeTelemetryVersion } from "../../packages/core/src/telemetry.ts"
 import { convexEnvEntries } from "../../scripts/convex-env.mjs"
 
 const require = createRequire(import.meta.url)

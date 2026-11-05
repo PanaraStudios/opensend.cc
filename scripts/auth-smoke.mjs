@@ -4,7 +4,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { ConvexHttpClient } from "convex/browser"
-import { api } from "../convex/_generated/api.js"
+import { api } from "../packages/backend/convex/_generated/api.js"
 if (process.env.OPENSEND_SMOKE !== "isolated-test-instance")
   throw new Error(
     "Set OPENSEND_SMOKE=isolated-test-instance; never run against real accounts"

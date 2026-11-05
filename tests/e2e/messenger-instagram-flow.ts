@@ -1,9 +1,9 @@
-import type { PageChannel } from "../../lib/channels"
+import type { PageChannel } from "@opensend/core/channels"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page, type APIResponse } from "@playwright/test"
-import type { Id } from "../../convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import { choose } from "./whatsapp-campaigns-flow"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { client } from "./ses-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
 const PAGE_ID = "555000100",

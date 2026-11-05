@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 import type { FunctionReturnType } from "convex/server"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { INSTANCE_PAGES } from "../../lib/dashboard/nav"
 import { createApiKey } from "./broadcast-received-flow"
 import { client, seedReceivedMessage } from "./ses-fixtures"

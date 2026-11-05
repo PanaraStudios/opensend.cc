@@ -15,16 +15,20 @@ import {
 } from "@/components/dashboard/primitives"
 import { toast } from "@/components/ui/toast"
 import { useDomainCommands } from "@/lib/domains/use-domains"
-import { REGIONS } from "@/lib/dashboard/types"
-import type { DnsProvider, DnsRecord, Domain } from "@/lib/dashboard/types"
+import { REGIONS } from "@opensend/core/dashboard/types"
+import type {
+  DnsProvider,
+  DnsRecord,
+  Domain,
+} from "@opensend/core/dashboard/types"
 import {
   dnsHost,
   domainZoneFile,
   providerLabel,
   providerUrl,
   regionFlag,
-} from "@/lib/dashboard/domains"
-import { regionLabel, statusLabel } from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/domains"
+import { regionLabel, statusLabel } from "@opensend/core/dashboard/format"
 import { cn } from "@/lib/utils"
 import { docsHrefForDnsRecord } from "@/lib/docs-links"
 import type { SelectOption } from "@/components/dashboard/primitives"

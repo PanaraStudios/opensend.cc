@@ -9,7 +9,8 @@ const read = (path) =>
    otherwise, while self-hosted Convex and the images use the pinned Node. */
 test("every runtime pins the same Node major", () => {
   const major = read(".nvmrc").trim().split(".")[0]
-  assert.equal(JSON.parse(read("convex.json")).node.nodeVersion, major)
+  for (const config of ["convex.json", "packages/backend/convex.json"])
+    assert.equal(JSON.parse(read(config)).node.nodeVersion, major, config)
   assert.match(
     read("nixpacks.toml"),
     new RegExp(`NIXPACKS_NODE_VERSION = "${major}"`)
@@ -33,6 +34,7 @@ test("the migrate image deploys with convex.json", () => {
     dockerfile.search(/^FROM \S+ AS migrate$/m),
     dockerfile.search(/^FROM \S+ AS build$/m)
   )
-  assert.match(migrate, /^COPY\b.*\sconvex\.json\s.*\.\/$/m)
+  // The image is the deployed @opensend/backend package, with its convex.json.
+  assert.match(migrate, /^COPY\b.*\s\S*convex\.json\s.*\.\/$/m)
   assert.doesNotMatch(read(".dockerignore"), /^convex\.json$/m)
 })

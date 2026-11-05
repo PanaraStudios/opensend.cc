@@ -1,7 +1,7 @@
 import { endOfDay, format, isSameDay, startOfDay, subDays } from "date-fns"
 import type { DateRange } from "react-day-picker"
 
-import { formatDate } from "./format"
+import { formatDate } from "@opensend/core/dashboard/format"
 
 export const RANGE_PRESETS = [
   { value: "today", label: "Today" },

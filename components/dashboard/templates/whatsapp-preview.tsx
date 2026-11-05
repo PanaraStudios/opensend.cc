@@ -15,7 +15,7 @@ import {
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Message, MessageContent } from "@/components/ui/message"
 import { Separator } from "@/components/ui/separator"
-import { type RenderedTemplate } from "@/lib/meta/templates"
+import { type RenderedTemplate } from "@opensend/core/meta/templates"
 import { cn } from "@/lib/utils"
 
 const HEADER_ICONS: Partial<

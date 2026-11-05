@@ -1,5 +1,5 @@
 "use client"
-import { authContinuation } from "@/lib/oauth/policy"
+import { authContinuation } from "@opensend/core/oauth/policy"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Field, FieldLabel, FieldGroup } from "@/components/ui/field"
-import { loginErrorMessage } from "@/lib/auth-errors"
+import { loginErrorMessage } from "@opensend/core/auth-errors"
 export type AuthMode =
   | "login"
   | "signup"

@@ -9,14 +9,14 @@ import { redoDepth, undoDepth } from "@tiptap/pm/history"
 import { useEditorState, type Editor } from "@tiptap/react"
 
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { useEmailEngine } from "@/components/dashboard/broadcasts/editor/engine"
 import {
   emailEditorMode,
   type EmailEditorMode,
-} from "@/lib/dashboard/broadcast"
-import { emailContentHtml } from "@/lib/dashboard/email-html"
-import type { EmailDraft } from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/broadcast"
+import { emailContentHtml } from "@opensend/core/dashboard/email-html"
+import type { EmailDraft } from "@opensend/core/dashboard/types"
 
 export type SaveState = "idle" | "saving" | "saved"
 

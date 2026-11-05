@@ -8,8 +8,8 @@ import {
   cursorNext,
   cursorPagerVisible,
   cursorPrevious,
-} from "@/lib/dashboard/pagination"
-import { api } from "@/convex/_generated/api"
+} from "@opensend/core/dashboard/pagination"
+import { api } from "@opensend/backend/api"
 import type { BotTool } from "@/packages/sdk/src/voice/toolkit-types"
 import {
   SectionChrome,
@@ -33,8 +33,11 @@ import {
 } from "@/components/ui/dialog"
 import { VoiceField, VoiceChoiceField } from "./ivr-fields"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
-import { actionError } from "@/lib/action-error"
-import { validateToolSchema, type ToolParameter } from "@/lib/bot-toolkit"
+import { actionError } from "@opensend/core/action-error"
+import {
+  validateToolSchema,
+  type ToolParameter,
+} from "@opensend/core/bot-toolkit"
 type ParameterRow = {
   name: string
   type: ToolParameter["type"]

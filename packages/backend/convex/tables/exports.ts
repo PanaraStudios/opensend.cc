@@ -1,0 +1,59 @@
+import { fileReference } from "./storage"
+import { defineTable } from "convex/server"
+import { v } from "convex/values"
+import { exportStatusValue } from "@opensend/core/validators/exports"
+
+export { exportStatusValue }
+
+/** One list filter as the export dialog confirmed it. */
+export const exportFilterLineValue = v.object({
+  label: v.string(),
+  value: v.string(),
+})
+
+/** One stored slice of an export's CSV: whole lines, the first part starting
+    with the header. The download streams the parts in order. */
+export const exportPartValue = v.object({
+  fileId: v.id("storedFiles"),
+  rows: v.number(),
+  bytes: v.number(),
+})
+
+/* Every write goes through convex/exportRows.ts. */
+export const exportTables = {
+  exports: defineTable({
+    organizationId: v.string(),
+    /** A key of `EXPORT_SOURCES` in convex/exportSources.ts. */
+    resource: v.string(),
+    status: exportStatusValue,
+    rows: v.number(),
+    error: v.optional(v.string()),
+    notificationEmailId: v.optional(v.id("emails")),
+    /** The single file of an export written before exports came in parts. */
+    ...fileReference,
+    /** The CSV in order, one stored file per part. */
+    parts: v.optional(v.array(exportPartValue)),
+    /** Header cells, fixed by the first part so later parts keep to it. */
+    header: v.optional(v.array(v.string())),
+    /** Where the next part continues in the source's pagination. */
+    cursor: v.optional(v.string()),
+    /** CSV bytes written so far, header included. */
+    bytes: v.optional(v.number()),
+    expiresAt: v.number(),
+    /** When the export was started or last stored a part; the watchdog
+        fails a "processing" export idle for too long. Absent on older rows. */
+    touchedAt: v.optional(v.number()),
+    /** The list filters the export was started with, as the source reads
+        them. */
+    filters: v.record(v.string(), v.string()),
+    /* Optional only for exports started before these were kept. */
+    /** `domains-1790557161016.csv`. */
+    fileName: v.optional(v.string()),
+    creatorEmail: v.optional(v.string()),
+    /** The filters as the dialog showed them; at most `SUMMARY_LINES`. */
+    summary: v.optional(v.array(exportFilterLineValue)),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_status_and_expiresAt", ["status", "expiresAt"])
+    .index("by_status_and_touchedAt", ["status", "touchedAt"]),
+}

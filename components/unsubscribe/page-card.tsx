@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Surface } from "@/components/dashboard/primitives"
-import type { UnsubscribePage } from "@/lib/unsubscribe/page"
+import type { UnsubscribePage } from "@opensend/core/unsubscribe/page"
 
 /** A recipient's own choices, when the page is live rather than a preview. */
 type Live = {

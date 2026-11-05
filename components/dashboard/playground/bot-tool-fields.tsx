@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { useMutation } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -16,9 +16,9 @@ import {
 } from "@/components/ui/dialog"
 import { ResourceChecks } from "@/components/dashboard/resource-picker"
 import { VoiceField, VoiceChoiceField } from "./ivr-fields"
-import { validateCollect, type CollectField } from "@/lib/bot-toolkit"
-import type { VoiceBotConfig } from "@/lib/voice-bots"
-import { actionError } from "@/lib/action-error"
+import { validateCollect, type CollectField } from "@opensend/core/bot-toolkit"
+import type { VoiceBotConfig } from "@opensend/core/voice-bots"
+import { actionError } from "@opensend/core/action-error"
 const TYPES = [
   { value: "text", label: "Text" },
   { value: "number", label: "Number" },

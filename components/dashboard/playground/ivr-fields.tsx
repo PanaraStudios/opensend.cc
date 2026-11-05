@@ -1,7 +1,7 @@
 "use client"
 import { createContext, useContext, useId } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SegmentedToggle } from "@/components/ui/segmented-toggle"
@@ -24,17 +24,17 @@ import {
   type IvrPrompt,
   type IvrMenu,
   type IvrBusinessHours,
-} from "@/lib/ivr"
+} from "@opensend/core/ivr"
 
 import {
   voiceItems,
   voiceLanguageLabel,
   promptStatusBadge,
-} from "@/lib/dashboard/voice-options"
-import type { VoiceProvider } from "@/lib/voice-bots"
+} from "@opensend/core/dashboard/voice-options"
+import type { VoiceProvider } from "@opensend/core/voice-bots"
 import { ElevenLabsVoiceField } from "./elevenlabs-voices"
 import { IvrSigningSecret } from "./ivr-secret"
-import type { ElevenLabsVoice } from "@/lib/elevenlabs-voices"
+import type { ElevenLabsVoice } from "@opensend/core/elevenlabs-voices"
 
 export type PromptRenderInfo = {
   kind: string

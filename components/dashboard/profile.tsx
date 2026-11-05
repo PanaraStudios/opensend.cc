@@ -15,9 +15,9 @@ import {
   PencilIcon,
   SettingsIcon,
 } from "lucide-react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { authClient, authResult } from "@/lib/auth/client"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import {
   useReceivedInvitations,
   useTeamCommands,
@@ -87,9 +87,9 @@ import {
   isEmail,
   normalizeEmail,
   roleLabel,
-} from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/format"
 import { SETTINGS_NAV_INDEX } from "@/lib/dashboard/nav"
-import type { Team } from "@/lib/dashboard/types"
+import type { Team } from "@opensend/core/dashboard/types"
 
 function EmailCard() {
   const { user: you } = useWorkspace()

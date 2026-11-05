@@ -2,8 +2,8 @@
 import * as React from "react"
 import { useMutation, useConvex, usePaginatedQuery } from "convex/react"
 import type { FunctionArgs, FunctionReturnType } from "convex/server"
-import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import {
   useWorkspace,
   requireTeamId,
@@ -13,15 +13,15 @@ import {
   useLoadedPagination,
   useTeamList,
 } from "@/components/dashboard/primitives"
-import { PAGE_SIZES } from "@/lib/dashboard/pagination"
-import type { ContactInput } from "@/lib/dashboard/contacts"
+import { PAGE_SIZES } from "@opensend/core/dashboard/pagination"
+import type { ContactInput } from "@opensend/core/dashboard/contacts"
 import type {
   Contact,
   ContactProperty,
   Segment,
   Topic,
   TopicSubscription,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 type ContactRow = FunctionReturnType<typeof api.contacts.list>["page"][number]
 type ContactDetailRow = NonNullable<FunctionReturnType<typeof api.contacts.get>>

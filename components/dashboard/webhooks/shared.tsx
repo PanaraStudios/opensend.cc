@@ -41,14 +41,14 @@ import {
   MoreMenu,
   type SelectOption,
 } from "@/components/dashboard/primitives"
-import { actionError } from "@/lib/action-error"
-import type { Webhook, WebhookEvent } from "@/lib/dashboard/types"
+import { actionError } from "@opensend/core/action-error"
+import type { Webhook, WebhookEvent } from "@opensend/core/dashboard/types"
 import {
   sortWebhookEvents,
   WEBHOOK_EVENT_GROUPS,
   webhookFormError,
   webhookEventLabel,
-} from "@/lib/dashboard/webhooks"
+} from "@opensend/core/dashboard/webhooks"
 import { useWebhookCommands } from "@/lib/webhooks/use-webhooks"
 import { cn } from "@/lib/utils"
 

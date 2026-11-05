@@ -1,14 +1,14 @@
 "use client"
 import * as React from "react"
 import { useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import {
   useWorkspace,
   requireTeamId,
   useTeamQuery,
 } from "@/components/auth/workspace"
-import type { AutomationEvent } from "@/lib/dashboard/types"
+import type { AutomationEvent } from "@opensend/core/dashboard/types"
 
 export function asAutomationEvent(
   row: Doc<"automationEvents">

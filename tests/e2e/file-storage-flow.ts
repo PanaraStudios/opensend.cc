@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto"
 import { test, expect, type Page } from "@playwright/test"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { client } from "./ses-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
 import { connectWhatsApp, PHONE_ID, WABA } from "./meta-fixtures"

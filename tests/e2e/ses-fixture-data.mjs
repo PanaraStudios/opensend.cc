@@ -9,7 +9,7 @@ export const syntheticSesConnection = Object.freeze({
   credentialRevision: 1,
 })
 
-// Same SES event envelope used by convex/sesProjection.test.ts. Inject it at
+// Same SES event envelope used by packages/backend/convex/sesProjection.test.ts. Inject it at
 // the existing admin-only ses/state:ingest boundary, after SNS verification.
 export function sesFixtureNotification({
   eventType,

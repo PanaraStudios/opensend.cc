@@ -1,8 +1,8 @@
 import { WABA, PHONE_ID as PHONE } from "./meta-fixtures"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
-import { api } from "../../convex/_generated/api"
-import type { Doc } from "../../convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc } from "@opensend/backend/dataModel"
 import { backendRows, client } from "./ses-fixtures"
 
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"

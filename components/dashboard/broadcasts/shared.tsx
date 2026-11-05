@@ -5,9 +5,9 @@ import {
   broadcastStatusDotClassName,
   type SelectOption,
 } from "@/components/dashboard/primitives"
-import { BROADCAST_STATUS_ORDER } from "@/lib/dashboard/broadcast"
-import { broadcastStatusLabel } from "@/lib/dashboard/format"
-import type { Segment } from "@/lib/dashboard/types"
+import { BROADCAST_STATUS_ORDER } from "@opensend/core/dashboard/broadcast"
+import { broadcastStatusLabel } from "@opensend/core/dashboard/format"
+import type { Segment } from "@opensend/core/dashboard/types"
 
 export const BROADCAST_STATUS_ITEMS: readonly SelectOption[] = [
   { value: "all", label: "All statuses" },

@@ -3,13 +3,13 @@ import * as React from "react"
 import { useAction } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 import { PauseIcon, PlayIcon } from "lucide-react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { useClock } from "@/lib/time/use-clock"
 import {
   percent,
   tenantStatusLabel,
   TENANT_STATUS_TONE,
-} from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/format"
 import { Badge } from "@/components/ui/badge"
 import { TableRow, TableCell } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"

@@ -1,8 +1,8 @@
 "use client"
 import { useAction } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
-import { validateUpload, type StorageUse } from "./policy"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
+import { validateUpload, type StorageUse } from "@opensend/core/storage/policy"
 import { transferUpload } from "./transfer"
 import { useWorkspace } from "@/components/auth/workspace"
 

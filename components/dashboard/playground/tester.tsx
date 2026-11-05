@@ -5,9 +5,9 @@ import Link from "next/link"
 import { PhoneIcon } from "lucide-react"
 import { useAction } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
-import type { IvrMenu, IvrAction } from "@/lib/ivr"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
+import type { IvrMenu, IvrAction } from "@opensend/core/ivr"
 import { BotDiagnostics } from "./bot-diagnostics"
 import { DtmfKeypad } from "@/components/dashboard/calling/dtmf-keypad"
 import { useSoftphone } from "@/components/dashboard/calling/softphone-provider"
@@ -20,8 +20,8 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip"
-import { actionError } from "@/lib/action-error"
-import { ivrActionLabel } from "@/lib/dashboard/voice-playground"
+import { actionError } from "@opensend/core/action-error"
+import { ivrActionLabel } from "@opensend/core/dashboard/voice-playground"
 export function IvrPath({
   path,
   menus = [],

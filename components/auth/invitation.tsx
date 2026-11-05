@@ -4,10 +4,10 @@ import Link from "next/link"
 import { ArrowRightIcon, CheckIcon, UserPlusIcon, XIcon } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useConvexAuth, useMutation, useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { buttonVariants } from "@/components/ui/button"
 import { AsyncForm } from "./ui"
-import { liveInvitations } from "@/lib/dashboard/invitations"
+import { liveInvitations } from "@opensend/core/dashboard/invitations"
 import { useClock } from "@/lib/time/use-clock"
 export function Invitation() {
   const params = useSearchParams()

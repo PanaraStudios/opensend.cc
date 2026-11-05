@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
-import { CHANNELS, CHANNEL_IDS } from "../channels"
+import { CHANNELS, CHANNEL_IDS } from "@opensend/core/channels"
 
 /** Where Settings opens. */
 export const SETTINGS_NAV_INDEX = "/settings/team"

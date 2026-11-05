@@ -15,7 +15,7 @@ import {
   isVideoNoteFrame,
   showVideoDurationBadge,
   videoPreviewSource,
-} from "./media-player"
+} from "@opensend/core/media-player"
 import { AudioPlayer } from "../components/ui/audio-player"
 import { VideoPlayer } from "../components/ui/video-player"
 

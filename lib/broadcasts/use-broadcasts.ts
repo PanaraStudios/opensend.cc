@@ -1,9 +1,9 @@
 "use client"
 import * as React from "react"
 import { useConvex, useMutation, usePaginatedQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import type { FunctionReturnType } from "convex/server"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import {
   useWorkspace,
   requireTeamId,
@@ -13,8 +13,8 @@ import {
   useTeamList,
   useLoadedPagination,
 } from "@/components/dashboard/primitives"
-import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
-import { emptyBroadcastStats } from "@/lib/dashboard/broadcast"
+import type { Broadcast, EmailDraft } from "@opensend/core/dashboard/types"
+import { emptyBroadcastStats } from "@opensend/core/dashboard/broadcast"
 export type BroadcastPatch = Partial<
   Omit<EmailDraft, "id"> &
     Pick<

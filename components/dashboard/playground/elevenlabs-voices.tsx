@@ -3,18 +3,18 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useAction } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { OptionSelect } from "@/components/dashboard/primitives"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import {
   defaultElevenLabsVoice,
   elevenLabsVoiceDetail,
   voiceCacheFresh,
   type ElevenLabsVoice,
-} from "@/lib/elevenlabs-voices"
+} from "@opensend/core/elevenlabs-voices"
 
 const noVoices: ElevenLabsVoice[] = []
 type Catalog = {

@@ -2,8 +2,8 @@
 import * as React from "react"
 import { useMutation, useQuery } from "convex/react"
 import { usePagedList, useTeamList } from "@/components/dashboard/primitives"
-import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import {
   useWorkspace,
   requireTeamId,
@@ -14,7 +14,7 @@ import type {
   SentEmail,
   Suppression,
   SuppressionReason,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 /** A sent email in the dashboard's shape. `to` joins every recipient; the
     body comes with the detail query; timelines page independently. */

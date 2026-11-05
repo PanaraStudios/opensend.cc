@@ -10,8 +10,8 @@ import {
   cursorNext,
   cursorPagerVisible,
   cursorPrevious,
-} from "@/lib/dashboard/pagination"
-import { api } from "@/convex/_generated/api"
+} from "@opensend/core/dashboard/pagination"
+import { api } from "@opensend/backend/api"
 import {
   SectionChrome,
   DetailHeader,
@@ -73,19 +73,19 @@ import {
 import {
   VOICE_LANGUAGE_ITEMS,
   promptStatusBadge,
-} from "@/lib/dashboard/voice-options"
-import { uniqueSlug } from "@/lib/dashboard/slug"
+} from "@opensend/core/dashboard/voice-options"
+import { uniqueSlug } from "@opensend/core/dashboard/slug"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
-import { actionError } from "@/lib/action-error"
-import { revealedIvrSigningSecretFromResult } from "@/lib/dashboard/ivr-secret"
+import { actionError } from "@opensend/core/action-error"
+import { revealedIvrSigningSecretFromResult } from "@opensend/core/dashboard/ivr-secret"
 import {
   newIvr,
   newIvrMenu,
   ivrFormPayload,
   ivrFormPatch,
   ivrReferencedBotIds,
-} from "@/lib/dashboard/voice-playground"
-import type { IvrDefinition, IvrMenu } from "@/lib/ivr"
+} from "@opensend/core/dashboard/voice-playground"
+import type { IvrDefinition, IvrMenu } from "@opensend/core/ivr"
 import {
   VoiceChoiceField,
   VoiceField,

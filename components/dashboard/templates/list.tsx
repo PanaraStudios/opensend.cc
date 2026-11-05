@@ -40,13 +40,16 @@ import {
   TemplateMenu,
   TemplateThumbnail,
 } from "@/components/dashboard/templates/shared"
-import { api } from "@/convex/_generated/api"
-import { actionError } from "@/lib/action-error"
-import { UNTITLED_TEMPLATE } from "@/lib/dashboard/template"
-import type { EmailTemplate, TemplateStatus } from "@/lib/dashboard/types"
+import { api } from "@opensend/backend/api"
+import { actionError } from "@opensend/core/action-error"
+import { UNTITLED_TEMPLATE } from "@opensend/core/dashboard/template"
+import type {
+  EmailTemplate,
+  TemplateStatus,
+} from "@opensend/core/dashboard/types"
 
 type TemplateChannel = NonNullable<EmailTemplate["channel"]>
-import { pluralize } from "@/lib/dashboard/format"
+import { pluralize } from "@opensend/core/dashboard/format"
 import {
   MESSAGE_CHANNEL_ITEMS,
   ChannelCell,

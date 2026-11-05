@@ -2,7 +2,7 @@
 import { AsyncForm, FormInput } from "@/components/auth/ui"
 import { authClient, authResult } from "@/lib/auth/client"
 import { useSearchParams } from "next/navigation"
-import { authContinuation } from "@/lib/oauth/policy"
+import { authContinuation } from "@opensend/core/oauth/policy"
 export default function Page() {
   const params = useSearchParams()
   return (

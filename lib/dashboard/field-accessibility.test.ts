@@ -774,8 +774,9 @@ test("shared settings and layout frames render one card surface", async () => {
 
 test("option selects resolve loaded channel defaults and preserve a manual choice on reload", async () => {
   const { useState } = await import("react")
-  const { defaultSendChannel } = await import("./send-channels")
-  const { CHANNELS, CHANNEL_IDS } = await import("../channels")
+  const { defaultSendChannel } =
+    await import("@opensend/core/dashboard/send-channels")
+  const { CHANNELS, CHANNEL_IDS } = await import("@opensend/core/channels")
   type Channel = (typeof CHANNEL_IDS)[number]
   for (const search of [undefined, { onChange: () => {} }]) {
     let loadSenders!: (channels: readonly Channel[] | undefined) => void

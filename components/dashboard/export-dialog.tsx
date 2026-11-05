@@ -12,8 +12,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { actionError } from "@/lib/action-error"
-import type { ExportFilterLine } from "@/lib/dashboard/exports"
+import { actionError } from "@opensend/core/action-error"
+import type { ExportFilterLine } from "@opensend/core/dashboard/exports"
 import { useStartExport } from "@/lib/exports/use-exports"
 
 /** Each confirmed filter as "Label: value". The export dialog and the

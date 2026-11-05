@@ -1,7 +1,7 @@
 import {
   messageTextParts,
   safeMessageUrl,
-} from "@/lib/dashboard/conversation-content"
+} from "@opensend/core/dashboard/conversation-content"
 export function FormattedText({ text }: { text: string }) {
   return (
     <span className="wrap-break-word whitespace-pre-wrap">

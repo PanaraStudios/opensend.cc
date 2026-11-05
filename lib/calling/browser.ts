@@ -1,6 +1,9 @@
 import type { SimpleUser } from "sip.js/lib/platform/web"
-import { browserIceServers, type IceConfiguration } from "./ice"
-import { isDtmf } from "../meta/softphone"
+import {
+  browserIceServers,
+  type IceConfiguration,
+} from "@opensend/core/calling/ice"
+import { isDtmf } from "@opensend/core/meta/softphone"
 export interface BrowserCredential {
   wssUrl: string
   extension: string

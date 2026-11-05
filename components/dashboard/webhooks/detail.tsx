@@ -33,15 +33,15 @@ import {
   WebhookMenu,
   WebhookStatusBadge,
 } from "@/components/dashboard/webhooks/shared"
-import { api } from "@/convex/_generated/api"
-import type { WebhookEvent } from "@/lib/dashboard/types"
+import { api } from "@opensend/backend/api"
+import type { WebhookEvent } from "@opensend/core/dashboard/types"
 import {
   WEBHOOK_EVENT_GROUPS,
   webhookEventSample,
   webhookEventLabel,
   sortWebhookEvents,
   webhookEventsLabel,
-} from "@/lib/dashboard/webhooks"
+} from "@opensend/core/dashboard/webhooks"
 import {
   asWebhook,
   asWebhookDelivery,

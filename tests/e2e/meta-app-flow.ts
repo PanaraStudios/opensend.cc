@@ -3,8 +3,8 @@ import { INSTANCE_PAGES } from "../../lib/dashboard/nav"
 import {
   INSTAGRAM_WEBHOOK_FIELDS,
   PAGE_WEBHOOK_FIELDS,
-} from "../../lib/meta/page-account"
-import { WHATSAPP_WEBHOOK_FIELDS } from "../../lib/meta/whatsapp-account"
+} from "@opensend/core/meta/page-account"
+import { WHATSAPP_WEBHOOK_FIELDS } from "@opensend/core/meta/whatsapp-account"
 
 type State = { owner: Page; member: Page }
 /** A request tests/e2e/fake-graph.mjs recorded. */

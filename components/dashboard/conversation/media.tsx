@@ -19,7 +19,7 @@ import {
   type MediaViewerItem,
 } from "@/components/ui/media-viewer"
 import { Skeleton } from "@/components/ui/skeleton"
-import { safeMessageUrl } from "@/lib/dashboard/conversation-content"
+import { safeMessageUrl } from "@opensend/core/dashboard/conversation-content"
 import { cn } from "@/lib/utils"
 import type { ThreadMessage } from "@/lib/messages/use-messages"
 

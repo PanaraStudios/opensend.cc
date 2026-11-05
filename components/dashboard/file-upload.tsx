@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { FileIcon, UploadIcon } from "lucide-react"
-import type { Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import {
   Attachment,
   AttachmentActions,
@@ -31,8 +31,8 @@ import {
   uploadAccept,
   uploadHint,
   type StorageUse,
-} from "@/lib/storage/policy"
-import { actionError } from "@/lib/action-error"
+} from "@opensend/core/storage/policy"
+import { actionError } from "@opensend/core/action-error"
 
 export function FileUploadField({
   label = "Upload file",

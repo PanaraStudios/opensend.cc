@@ -1,7 +1,7 @@
 import type { JSONContent } from "@tiptap/core"
 
 import type { EmailAlign } from "@/components/dashboard/broadcasts/editor/controls"
-import { UNSUBSCRIBE_VARIABLE } from "@/lib/dashboard/email-variables"
+import { UNSUBSCRIBE_VARIABLE } from "@opensend/core/dashboard/email-variables"
 
 /* Ready-made sections, in the spirit of react.email/components. Each one is
    an ordinary piece of the document, made of the same nodes a person would

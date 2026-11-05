@@ -1,13 +1,20 @@
 node_modules
+**/node_modules
 .next
 .git
 .env*
 .agents
 .codex
 coverage
-packages
-# SDK sources hold shared contracts (WhatsApp catalog, calling types) that the app
-# and Convex import directly; its specs stay out via **/*.spec.* below.
+# Workspace packages the app and the backend import. The SDK contributes only
+# its source contracts (WhatsApp catalog, calling types); specs and tests stay
+# out via **/*.spec.* and **/*.test.* below.
+packages/*
+!packages/backend
+!packages/core
+!packages/sdk
+packages/sdk/*
+!packages/sdk/package.json
 !packages/sdk/src
 *.tsbuildinfo
 .pnpm-store

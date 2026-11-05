@@ -1,5 +1,5 @@
-import type { Doc } from "@/convex/_generated/dataModel"
-import type { ApiLog } from "@/lib/dashboard/types"
+import type { Doc } from "@opensend/backend/dataModel"
+import type { ApiLog } from "@opensend/core/dashboard/types"
 
 export function asLog(row: Doc<"apiLogs">): ApiLog {
   return {

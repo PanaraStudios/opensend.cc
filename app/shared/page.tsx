@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { serverConvex } from "@/lib/auth/server"
 import { SharedEmailView } from "@/components/emails/shared-view"
 

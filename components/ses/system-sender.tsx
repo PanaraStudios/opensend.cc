@@ -3,16 +3,16 @@
 import * as React from "react"
 import { useMutation, useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { Button } from "@/components/ui/button"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/components/ui/toast"
 import { SettingsCard, SuggestInput } from "@/components/dashboard/primitives"
-import { actionError } from "@/lib/action-error"
-import { parseMailbox } from "@/lib/dashboard/email-send"
+import { actionError } from "@opensend/core/action-error"
+import { parseMailbox } from "@opensend/core/dashboard/email-send"
 
 export function SystemSender() {
   const sender = useQuery(api.systemEmail.settings)

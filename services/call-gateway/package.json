@@ -6,7 +6,8 @@
   "exports": {
     "./client": "./dist/client.js",
     "./auth": "./dist/auth.js",
-    "./contracts": "./dist/contracts.js"
+    "./contracts": "./dist/contracts.js",
+    "./src/*": "./src/*.ts"
   },
   "engines": {
     "node": ">=22.16.0"

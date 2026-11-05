@@ -4,7 +4,7 @@ import {
   type IvrAction,
   type IvrDefinition,
   type IvrMenu,
-} from "@/lib/ivr"
+} from "@opensend/core/ivr"
 import type { FlowBranch } from "../flows/catalog"
 
 export type IvrBranchAddress = { menuId: string; branch: string }

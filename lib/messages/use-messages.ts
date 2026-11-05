@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import { messageHref } from "./links"
+import { messageHref } from "@opensend/core/messages/links"
 import {
   useAction,
   useMutation,
@@ -8,22 +8,22 @@ import {
   useQuery,
 } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
-import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
-import type { ThreadMessage } from "@/convex/conversations"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
+import type { ThreadMessage } from "@opensend/backend/conversations"
 import {
   useTeamList,
   useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
-import { pagedListState, PAGE_SIZES } from "@/lib/dashboard/pagination"
+import { pagedListState, PAGE_SIZES } from "@opensend/core/dashboard/pagination"
 import { asEmail } from "@/lib/emails/use-emails"
 import { asReceived } from "@/lib/received/use-received"
 import type {
   Channel,
   ChannelMessageStatus,
   EmailStatus,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 /** One row of the Sending or Receiving log, on any channel. */
 export type LogRow = {

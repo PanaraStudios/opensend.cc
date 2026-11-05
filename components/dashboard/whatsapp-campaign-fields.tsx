@@ -1,11 +1,14 @@
 "use client"
 import { LocalTemplatePreview } from "./templates/shared"
-import { localTemplate, fillLocalTemplate } from "@/lib/meta/local-templates"
+import {
+  localTemplate,
+  fillLocalTemplate,
+} from "@opensend/core/meta/local-templates"
 import { FileUploadField } from "./file-upload"
 
 import * as React from "react"
-import { CHANNELS, type MessagingChannel } from "@/lib/channels"
-import { api } from "@/convex/_generated/api"
+import { CHANNELS, type MessagingChannel } from "@opensend/core/channels"
+import { api } from "@opensend/backend/api"
 import { useTeamQuery } from "@/components/auth/workspace"
 import { OptionSelect } from "@/components/dashboard/primitives"
 import {
@@ -24,14 +27,14 @@ import {
   storedComponents,
   renderedTemplateFromForm,
   templateMediaHeader,
-} from "@/lib/meta/templates"
+} from "@opensend/core/meta/templates"
 import {
   CONTACT_VARIABLE_FIELDS,
   normalizeVariableSource,
   resolveVariables,
   type VariableContact,
   type VariableSource,
-} from "@/lib/meta/variables"
+} from "@opensend/core/meta/variables"
 
 const VARIABLE_SOURCES = [
   { value: "contact", label: "Contact field" },
