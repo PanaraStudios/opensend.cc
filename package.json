@@ -24,7 +24,7 @@
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test lib/*.test.ts lib/dashboard/*.test.ts lib/aws/*.test.ts lib/meta/*.test.ts lib/storage/*.test.ts lib/net/*.test.ts docker/smtp/*.test.mjs docker/migrate/*.test.mjs docker/backup/*.test.mjs scripts/prod-env.test.mjs scripts/prod-backup.test.mjs scripts/node-version.test.mjs tests/e2e/*.test.mjs",
+    "test": "tsx --test lib/*.test.ts lib/dashboard/*.test.ts lib/aws/*.test.ts lib/meta/*.test.ts lib/storage/*.test.ts lib/net/*.test.ts lib/messages/*.test.ts docker/smtp/*.test.mjs docker/migrate/*.test.mjs docker/backup/*.test.mjs scripts/prod-env.test.mjs scripts/prod-backup.test.mjs scripts/node-version.test.mjs tests/e2e/*.test.mjs",
     "setup": "node scripts/setup.mjs",
     "test:auth": "vitest run --config vitest.auth.config.ts",
     "test:sdk": "turbo run test --filter=@opensendcc/sdk",

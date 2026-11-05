@@ -2,50 +2,27 @@ import { defineTable } from "convex/server"
 import { v } from "convex/values"
 import { channelValue } from "./channels"
 import {
-  PARAMETER_FORMATS,
-  TEMPLATE_CATEGORIES,
-  TEMPLATE_QUALITIES,
-  TEMPLATE_STATUSES,
-} from "../../lib/meta/templates"
+  templateStatusValue,
+  templateCategoryValue,
+  metaTemplateStatusValue,
+  templateQualityValue,
+  parameterFormatValue,
+  whatsappTemplateValue,
+} from "../../lib/validators/templates"
 
-export const templateStatusValue = v.union(
-  v.literal("draft"),
-  v.literal("published")
-)
+export {
+  templateStatusValue,
+  templateCategoryValue,
+  metaTemplateStatusValue,
+  templateQualityValue,
+  parameterFormatValue,
+  whatsappTemplateValue,
+}
+
 export const templateVariableValue = v.object({
   key: v.string(),
   type: v.optional(v.union(v.literal("string"), v.literal("number"))),
   fallback: v.optional(v.string()),
-})
-
-const literals = <T extends string>(values: readonly T[]) =>
-  v.union(...values.map((value) => v.literal(value)))
-export const templateCategoryValue = literals(TEMPLATE_CATEGORIES)
-export const metaTemplateStatusValue = literals(TEMPLATE_STATUSES)
-export const templateQualityValue = literals(TEMPLATE_QUALITIES)
-export const parameterFormatValue = literals(PARAMETER_FORMATS)
-/** A WhatsApp template's place at Meta. Its name is the row's `name`; its
-    components are the draft's `content`. Unique per WABA, name and
-    language, as Meta requires. */
-export const whatsappTemplateValue = v.object({
-  wabaId: v.string(),
-  language: v.string(),
-  category: templateCategoryValue,
-  parameterFormat: parameterFormatValue,
-  /** Set once Meta accepted the submission. */
-  metaTemplateId: v.optional(v.string()),
-  metaStatus: v.optional(metaTemplateStatusValue),
-  rejectedReason: v.optional(v.string()),
-  quality: v.optional(templateQualityValue),
-  submittedAt: v.optional(v.number()),
-  /** The last sync that changed this template. The WABA records every sync. */
-  syncedAt: v.optional(v.number()),
-  /** A fingerprint of the components the last sync wrote to the live copy,
-      so a sync that finds them unchanged skips reading the draft and live
-      copy. Cleared whenever anything else writes the live copy. */
-  syncHash: v.optional(v.string()),
-  /** Retained local sample, separate from Meta's review-only upload handle. */
-  sampleFileId: v.optional(v.id("storedFiles")),
 })
 
 export const resolvedTemplateValue = v.object({

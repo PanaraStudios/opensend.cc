@@ -12,7 +12,7 @@
 import { array, object, string, oneOf } from "./parse"
 import type { MessagingChannel, PageChannel } from "../channels"
 import { fromWaId, normalizePhone, toWaId } from "../dashboard/phone"
-import { CHANNEL_MESSAGE_TYPES } from "../../convex/tables/channels"
+import { CHANNEL_MESSAGE_TYPES } from "../validators/channels"
 export { array, object, string } from "./parse"
 export const timestamp = (
   value: unknown,

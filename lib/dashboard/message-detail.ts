@@ -1,7 +1,6 @@
 import { CHANNELS, type Channel } from "../channels"
 import { contactIdentity } from "./contacts"
 import { fromWaId } from "./phone"
-import type { ThreadMessage } from "../messages/use-messages"
 
 /** The same envelope labels for every message detail. */
 export function messageEnvelope(input: {
@@ -39,30 +38,4 @@ export function messageParty(input: {
       username: input.username,
     }
   ).label
-}
-
-/** Detail renders exactly this message, even when it is older than the thread page. */
-export function detailThreadMessage(found: {
-  message: {
-    _id: string
-    _creationTime: number
-    direction: "inbound" | "outbound"
-    status: string
-    preview: string
-  }
-  normalized: Record<string, unknown>
-  rendered?: ThreadMessage["rendered"]
-  media: ThreadMessage["media"]
-}): ThreadMessage {
-  return {
-    id: found.message._id,
-    kind: "channel",
-    direction: found.message.direction,
-    at: found.message._creationTime,
-    status: found.message.status,
-    text: found.rendered?.body ?? found.message.preview,
-    rendered: found.rendered,
-    normalized: found.normalized as ThreadMessage["normalized"],
-    media: found.media,
-  }
 }

@@ -1,11 +1,8 @@
 "use client"
 import { ConversationThread } from "@/components/dashboard/conversation/conversation-thread"
 import { object } from "@/lib/meta/parse"
-import {
-  detailThreadMessage,
-  messageEnvelope,
-  messageParty,
-} from "@/lib/dashboard/message-detail"
+import { messageEnvelope, messageParty } from "@/lib/dashboard/message-detail"
+import { detailThreadMessage } from "@/lib/messages/detail"
 
 import * as React from "react"
 import Link from "next/link"

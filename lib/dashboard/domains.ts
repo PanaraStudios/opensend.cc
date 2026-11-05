@@ -2,7 +2,7 @@ import {
   dmarcRecord as serverDmarcRecord,
   receivingRecord as serverReceivingRecord,
   trackingRecord as serverTrackingRecord,
-} from "../../convex/ses/records"
+} from "../dns-records"
 import { isDomainName, pluralize } from "./format"
 import type {
   DnsProvider,

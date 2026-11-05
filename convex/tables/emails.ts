@@ -1,29 +1,20 @@
 import { fileReference } from "./storage"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
+import {
+  EMAIL_STATUSES,
+  emailStatusValue,
+  SUPPRESSION_REASONS,
+  suppressionReasonValue,
+} from "../../lib/validators/emails"
 
-/** `EmailStatus` in lib/dashboard/types.ts; also Resend's `last_event`. */
-export const EMAIL_STATUSES = [
-  "queued",
-  "scheduled",
-  "sent",
-  "delivered",
-  "delivery_delayed",
-  "opened",
-  "clicked",
-  "bounced",
-  "complained",
-  "failed",
-  "canceled",
-  "suppressed",
-] as const
-export const emailStatusValue = v.union(
-  ...EMAIL_STATUSES.map((status) => v.literal(status))
-)
-export const SUPPRESSION_REASONS = ["bounced", "complained", "manual"] as const
-export const suppressionReasonValue = v.union(
-  ...SUPPRESSION_REASONS.map((reason) => v.literal(reason))
-)
+export {
+  EMAIL_STATUSES,
+  emailStatusValue,
+  SUPPRESSION_REASONS,
+  suppressionReasonValue,
+}
+
 export const emailSourceValue = v.union(
   v.literal("api"),
   v.literal("smtp"),

@@ -1,5 +1,5 @@
 import type { Infer } from "convex/values"
-import type { variableSource } from "../../convex/tables/variables"
+import type { variableSource } from "../validators/variables"
 
 /** Bare strings remain compatible with stored campaigns and SDK inputs. */
 export type VariableSource = Infer<typeof variableSource>

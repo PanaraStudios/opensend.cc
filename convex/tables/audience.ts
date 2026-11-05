@@ -1,22 +1,18 @@
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
+import {
+  topicDefaultValue,
+  topicVisibilityValue,
+  topicSubscriptionValue,
+  propertyTypeValue,
+} from "../../lib/validators/audience"
 
-export const topicDefaultValue = v.union(
-  v.literal("opt_in"),
-  v.literal("opt_out")
-)
-export const topicVisibilityValue = v.union(
-  v.literal("public"),
-  v.literal("private")
-)
-export const topicSubscriptionValue = v.union(
-  v.literal("subscribed"),
-  v.literal("unsubscribed")
-)
-export const propertyTypeValue = v.union(
-  v.literal("string"),
-  v.literal("number")
-)
+export {
+  topicDefaultValue,
+  topicVisibilityValue,
+  topicSubscriptionValue,
+  propertyTypeValue,
+}
 
 /* Segment membership and topic choices are child tables, not arrays on the
    contact: a segment can hold any number of contacts, and broadcasts resolve

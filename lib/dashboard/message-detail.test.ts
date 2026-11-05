@@ -1,10 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import {
-  detailThreadMessage,
-  messageEnvelope,
-  messageParty,
-} from "./message-detail"
+import { messageEnvelope, messageParty } from "./message-detail"
 import { CHANNEL_IDS } from "../channels"
 
 test("every channel uses the same sender and recipient labels", () => {
@@ -47,41 +43,6 @@ test("customer labels use names and handles without leaking scoped ids", () => {
     "ada@example.com"
   )
 })
-test("detail preview retains the selected message and rendered template", () => {
-  const normalized = { type: "template", content: { body: "Hello" } }
-  const rendered = { body: "Hello Ada", buttons: [] }
-  const message = detailThreadMessage({
-    message: {
-      _id: "old-message",
-      _creationTime: 123,
-      direction: "outbound",
-      status: "delivered",
-      preview: "Template",
-    },
-    normalized,
-    rendered,
-    media: [],
-  })
-  assert.equal(message.id, "old-message")
-  assert.equal(message.text, "Hello Ada")
-  assert.equal(message.normalized, normalized)
-  assert.equal(message.rendered, rendered)
-  assert.equal(
-    detailThreadMessage({
-      message: {
-        _id: "text",
-        _creationTime: 124,
-        direction: "inbound",
-        status: "received",
-        preview: "Hello",
-      },
-      normalized: {},
-      media: [],
-    }).text,
-    "Hello"
-  )
-})
-
 test("WhatsApp business-scoped recipients use a public profile instead of a fabricated phone", () => {
   assert.equal(
     messageParty({

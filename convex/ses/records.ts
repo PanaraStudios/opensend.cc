@@ -1,8 +1,14 @@
 import type { GetEmailIdentityResponse } from "@aws-sdk/client-sesv2"
-import type { Infer } from "convex/values"
 import type { Doc } from "../_generated/dataModel"
-import { recordValue } from "./contracts"
-export type DnsRecord = Infer<typeof recordValue>
+import type { DnsRecord } from "../../lib/validators/ses"
+import {
+  dmarcRecord,
+  receivingRecord,
+  trackingRecord,
+} from "../../lib/dns-records"
+
+export type { DnsRecord }
+export { dmarcRecord, receivingRecord, trackingRecord }
 /** The domain fields its DNS records are derived from. */
 export type RecordDomain = Pick<
   Doc<"domains">,
@@ -15,26 +21,6 @@ export type RecordDomain = Pick<
   | "clickTracking"
   | "trackingTarget"
 >
-// Recommended, never required: any existing policy stays authoritative.
-export const dmarcRecord = (name: string): DnsRecord => ({
-  id: "dmarc",
-  kind: "DMARC",
-  type: "TXT",
-  name: `_dmarc.${name}`,
-  value: "v=DMARC1; p=none;",
-  ttl: "300",
-  status: "pending",
-})
-export const receivingRecord = (name: string, region: string): DnsRecord => ({
-  id: "receiving-mx",
-  kind: "Receiving",
-  type: "MX",
-  name,
-  value: `inbound-smtp.${region}.amazonaws.com`,
-  priority: 10,
-  ttl: "300",
-  status: "pending",
-})
 /** Whether a domain's own status waits on this record. DMARC is advisory,
     and, as on Resend, tracking and receiving records carry their own status
     without holding a verified domain back from sending. */
@@ -48,15 +34,6 @@ export const trackingHost = (domain: RecordDomain) =>
   domain.trackingSubdomain && (domain.openTracking || domain.clickTracking)
     ? `${domain.trackingSubdomain}.${domain.name}`
     : null
-export const trackingRecord = (name: string, target: string): DnsRecord => ({
-  id: "tracking",
-  kind: "Tracking",
-  type: "CNAME",
-  name,
-  value: target,
-  ttl: "300",
-  status: "pending",
-})
 /** The records that never depend on AWS, so a domain shows them the moment it
     is added, before SES has issued its DKIM keys. */
 export function mailRecords(domain: RecordDomain): DnsRecord[] {

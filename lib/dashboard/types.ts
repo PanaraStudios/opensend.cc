@@ -3,37 +3,37 @@ import type { ContactChannelIdentity } from "./contacts"
 import type { VariableSource } from "../meta/variables"
 import type { JSONContent } from "@tiptap/core"
 import type { Infer } from "convex/values"
-import { regions } from "../../convex/ses/contracts"
+import { regions } from "../validators/ses"
 import type {
   propertyTypeValue,
   topicDefaultValue,
   topicSubscriptionValue,
   topicVisibilityValue,
-} from "../../convex/tables/audience"
+} from "../validators/audience"
 import type {
   broadcastStatusValue,
   broadcastChannel,
   broadcastStatsValue,
   whatsappStatsValue,
   skipReasonValue,
-} from "../../convex/tables/broadcasts"
+} from "../validators/broadcasts"
 import type {
   channelAccountStatusValue,
   channelMessageStatusValue,
   channelQualityValue,
   channelValue,
   messagingChannelValue,
-} from "../../convex/tables/channels"
+} from "../validators/channels"
 import type {
   emailStatusValue,
   suppressionReasonValue,
-} from "../../convex/tables/emails"
-import type { exportStatusValue } from "../../convex/tables/exports"
+} from "../validators/emails"
+import type { exportStatusValue } from "../validators/exports"
 import type {
   metaTemplateStatusValue,
   templateStatusValue,
   whatsappTemplateValue,
-} from "../../convex/tables/templates"
+} from "../validators/templates"
 
 export type Region = (typeof regions)[number]
 

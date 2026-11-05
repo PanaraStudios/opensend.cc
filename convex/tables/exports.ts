@@ -1,13 +1,10 @@
 import { fileReference } from "./storage"
 import { defineTable } from "convex/server"
 import { v } from "convex/values"
+import { exportStatusValue } from "../../lib/validators/exports"
 
-export const exportStatusValue = v.union(
-  v.literal("processing"),
-  v.literal("ready"),
-  v.literal("expired"),
-  v.literal("failed")
-)
+export { exportStatusValue }
+
 /** One list filter as the export dialog confirmed it. */
 export const exportFilterLineValue = v.object({
   label: v.string(),
