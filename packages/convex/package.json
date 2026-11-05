@@ -35,11 +35,12 @@
   "types": "./dist/client/index.d.ts",
   "module": "./dist/client/index.js",
   "scripts": {
-    "build": "pnpm run build:codegen && tsc -p tsconfig.build.json",
-    "build:codegen": "convex codegen --component-dir ./src/component",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc -p example/convex --noEmit",
-    "lint": "eslint ."
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "codegen": "convex codegen --component-dir ./src/component",
+    "prepublishOnly": "pnpm run codegen && pnpm run build"
   },
   "repository": {
     "type": "git",

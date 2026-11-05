@@ -27,7 +27,7 @@
     "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
     "prepublishOnly": "pnpm run build",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
-    "test": "pnpm --filter @opensendcc/sdk build && pnpm run build && vitest run --maxWorkers=2"
+    "test": "vitest run --maxWorkers=2"
   },
   "dependencies": {
     "@modelcontextprotocol/express": "2.0.0",

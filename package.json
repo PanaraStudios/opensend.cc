@@ -17,21 +17,22 @@
     "node": ">=20.9.0"
   },
   "scripts": {
+    "check": "turbo run lint typecheck build && turbo run test && turbo run test:auth",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
-    "typecheck": "tsc --noEmit && pnpm --filter @opensendcc/call-gateway typecheck",
+    "typecheck": "tsc --noEmit",
     "test": "tsx --test lib/*.test.ts lib/dashboard/*.test.ts lib/aws/*.test.ts lib/meta/*.test.ts lib/storage/*.test.ts lib/net/*.test.ts docker/smtp/*.test.mjs docker/migrate/*.test.mjs docker/backup/*.test.mjs scripts/prod-env.test.mjs scripts/prod-backup.test.mjs scripts/node-version.test.mjs tests/e2e/*.test.mjs",
     "setup": "node scripts/setup.mjs",
     "test:auth": "vitest run --config vitest.auth.config.ts",
-    "test:sdk": "pnpm --filter @opensendcc/sdk test",
+    "test:sdk": "turbo run test --filter=@opensendcc/sdk",
     "backend": "node scripts/backend.mjs",
     "aws:cleanup": "node scripts/aws-cleanup.mjs",
     "test:e2e": "node scripts/test-e2e.mjs",
     "test:install": "node scripts/test-install.mjs",
-    "test:mcp": "pnpm --filter @opensendcc/mcp test",
+    "test:mcp": "turbo run test --filter=@opensendcc/mcp",
     "test:voice-agent": "node scripts/test-voice-agent.mjs",
     "test:calling-harness": "sh scripts/test-calling-harness.sh",
     "test:voice-live": "node scripts/test-voice-live.mjs"
@@ -121,6 +122,7 @@
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
+    "turbo": "^2.11.10",
     "typescript": "^5",
     "vite": "6.4.1",
     "vitest": "3.2.4"

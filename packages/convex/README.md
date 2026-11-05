@@ -249,10 +249,12 @@ intentional differences; this is not a drop-in Resend API replacement.
 
 ```sh
 pnpm --filter @opensendcc/sdk build
-# Point codegen at an isolated Convex backend, never the product deployment:
+# Only after changing the component's schema or functions. Point codegen at an
+# isolated Convex backend, never the product deployment:
 CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210 \
 CONVEX_SELF_HOSTED_ADMIN_KEY=your_test_admin_key \
-  pnpm --filter @opensendcc/convex build
+  pnpm --filter @opensendcc/convex codegen
+pnpm --filter @opensendcc/convex build
 pnpm --filter @opensendcc/convex test
 pnpm --filter @opensendcc/convex typecheck
 pnpm --filter @opensendcc/convex lint
@@ -260,7 +262,8 @@ node scripts/test-convex-component.mjs
 ```
 
 Codegen uses `convex codegen --component-dir` and requires an existing deployment;
-it does not run `convex dev`. Generated bindings are committed. `./test` exports
+it does not run `convex dev`. Generated bindings are committed, so `build` only
+compiles; `prepublishOnly` runs codegen and then the build. `./test` exports
 `register(t, name = "opensend")` for convex-test; it registers the nested workpool
 and batch worker too. The package uses the official component template's
 source/test/config/type export layout.

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master, v2]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Turborepo runs each task in every workspace that defines it, in dependency
+  # order (packages build before the apps and tests that import them).
+  check:
+    name: ${{ matrix.name }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: lint, typecheck, build
+            run: pnpm turbo run lint typecheck build
+          - name: unit tests
+            run: pnpm turbo run test
+          - name: backend tests
+            run: pnpm turbo run test:auth
+          - name: self-host config
+            run: node scripts/test-install.mjs --config-only
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: ${{ matrix.run }}
+
+  # The self-host images are what install.sh and the compose files pull, so
+  # every change must still build them. Nothing is pushed from here; release.yml
+  # publishes on tags.
+  docker:
+    name: docker ${{ matrix.target }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [app, migrate]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: useblacksmith/setup-docker-builder@v2
+        with:
+          cache-key: opensend-${{ matrix.target }}
+      - uses: useblacksmith/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile
+          target: ${{ matrix.target }}
+          push: false
