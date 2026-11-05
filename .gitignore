@@ -57,3 +57,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 backups/
+
+# turborepo
+.turbo/

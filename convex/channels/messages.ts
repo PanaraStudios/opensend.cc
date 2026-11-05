@@ -596,7 +596,7 @@ export async function releaseSends(
   for (const [i, id] of ids.entries()) {
     const readyAt = slots?.[i]
     if (readyAt !== undefined)
-      await ctx.db.patch("channelMessages", id, { rateReadyAt: readyAt })
+      await patchRow(ctx, "channelMessages", id, { rateReadyAt: readyAt })
     await enqueue(ctx, id, 0, Math.max(0, (readyAt ?? now) - now))
   }
   return slots?.at(-1)
