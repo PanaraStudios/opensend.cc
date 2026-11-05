@@ -1,13 +1,13 @@
 "use client"
 import { UserIcon, ExternalLinkIcon } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { object, array, string } from "@/lib/meta/parse"
+import { object, array, string } from "@opensend/core/meta/parse"
 import {
   safeMessageUrl,
   messageContentPreview,
-} from "@/lib/dashboard/conversation-content"
-import { codeLabel } from "@/lib/dashboard/format"
-import { callPermissionReplyLabel } from "@/lib/dashboard/voice-playground"
+} from "@opensend/core/dashboard/conversation-content"
+import { codeLabel } from "@opensend/core/dashboard/format"
+import { callPermissionReplyLabel } from "@opensend/core/dashboard/voice-playground"
 import type { ThreadMessage } from "@/lib/messages/use-messages"
 import { AttachedButtons, BusinessCard, LocationCard } from "./business-card"
 import { ConversationMedia } from "./media"

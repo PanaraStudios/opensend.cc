@@ -1,7 +1,7 @@
-import type { Doc } from "../../convex/_generated/dataModel"
-import type { EmailTemplate } from "./types"
-import { isPageChannel } from "../channels"
-import { localTemplate } from "../meta/local-templates"
+import type { Doc } from "@opensend/backend/dataModel"
+import type { EmailTemplate } from "@opensend/core/dashboard/types"
+import { isPageChannel } from "@opensend/core/channels"
+import { localTemplate } from "@opensend/core/meta/local-templates"
 
 /** A template row, with its draft body where the caller has one. A
     WhatsApp draft's body is Meta's components. */

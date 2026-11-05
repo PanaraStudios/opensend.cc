@@ -45,17 +45,17 @@ import {
 } from "@/components/dashboard/channels/shared"
 import { useAddChannel } from "@/components/dashboard/channels/add-channel"
 import { DeleteDomainDialog } from "@/components/dashboard/domains/shared"
-import { api } from "@/convex/_generated/api"
-import { actionError } from "@/lib/action-error"
-import { CHANNELS, CHANNEL_IDS, type Channel } from "@/lib/channels"
+import { api } from "@opensend/backend/api"
+import { actionError } from "@opensend/core/action-error"
+import { CHANNELS, CHANNEL_IDS, type Channel } from "@opensend/core/channels"
 import {
   useChannelCommands,
   type ChannelAccount,
   type ConnectedBusiness,
 } from "@/lib/channels/use-channels"
-import { regionLabel } from "@/lib/dashboard/format"
-import type { Domain } from "@/lib/dashboard/types"
-import { channelHandle } from "@/lib/meta/account-display"
+import { regionLabel } from "@opensend/core/dashboard/format"
+import type { Domain } from "@opensend/core/dashboard/types"
+import { channelHandle } from "@opensend/core/meta/account-display"
 import { asDomain, useDomainCheck } from "@/lib/domains/use-domains"
 
 type ChannelRow =

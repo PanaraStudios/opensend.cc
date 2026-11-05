@@ -1,6 +1,6 @@
 "use client"
-import { stepBranches } from "@/lib/dashboard/automation"
-import { eventLabel } from "@/lib/event-catalog"
+import { stepBranches } from "@opensend/core/dashboard/automation"
+import { eventLabel } from "@opensend/core/event-catalog"
 
 import * as React from "react"
 import type { DateRange } from "react-day-picker"
@@ -40,12 +40,12 @@ import {
   stepTitle,
   TRIGGER_KEY,
   type StepMetrics,
-} from "@/lib/dashboard/automation"
+} from "@opensend/core/dashboard/automation"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { Skeleton } from "@/components/ui/skeleton"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { useClock } from "@/lib/time/use-clock"
 import { rangeBounds } from "@/lib/dashboard/email-range"
 import {
@@ -53,9 +53,9 @@ import {
   asRunStep,
   useAutomationCommands,
 } from "@/lib/automations/use-automations"
-import { sentenceCase } from "@/lib/dashboard/format"
+import { sentenceCase } from "@opensend/core/dashboard/format"
 import { useStepContext } from "@/lib/automations/use-automations"
-import type { Automation, AutomationRun } from "@/lib/dashboard/types"
+import type { Automation, AutomationRun } from "@opensend/core/dashboard/types"
 
 /* How the automation is doing: its runs and its numbers on the left, and on
    the right the same graph as the editor, read-only, carrying what happened

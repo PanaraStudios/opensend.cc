@@ -1,9 +1,12 @@
 "use client"
 import { PlaceCallFields } from "@/components/dashboard/calling/place-call-fields"
-import { readablePath, referenceErrors } from "@/lib/automation-references"
-import { automationCatalogNames } from "@/lib/dashboard/event-catalog-options"
+import {
+  readablePath,
+  referenceErrors,
+} from "@opensend/core/automation-references"
+import { automationCatalogNames } from "@opensend/core/dashboard/event-catalog-options"
 import { useResourceOptions } from "@/components/dashboard/resource-picker"
-import { catalogContactSchema, eventLabel } from "@/lib/event-catalog"
+import { catalogContactSchema, eventLabel } from "@opensend/core/event-catalog"
 import { FieldError } from "@/components/ui/field"
 import {
   ReferenceInput,
@@ -13,14 +16,14 @@ import {
   ReferenceVariableField,
   useEventCatalog,
 } from "./references"
-import { flattenSchema, catalogEvent } from "@/lib/event-catalog"
+import { flattenSchema, catalogEvent } from "@opensend/core/event-catalog"
 import { channelIcon } from "@/components/dashboard/channels/shared"
 import { InstanceChannelConfiguration } from "@/components/ses/email-configuration"
 
-import { channelForSendStep } from "@/lib/channels"
+import { channelForSendStep } from "@opensend/core/channels"
 
 import * as React from "react"
-import type { Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import Link from "next/link"
 import { PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 
@@ -53,13 +56,13 @@ import {
   ruleError,
   stepTasks,
   UPDATABLE_CONTACT_FIELDS,
-} from "@/lib/dashboard/automation"
-import { formatVariable } from "@/lib/dashboard/email-variables"
+} from "@opensend/core/dashboard/automation"
+import { formatVariable } from "@opensend/core/dashboard/email-variables"
 import { useStepContext } from "@/lib/automations/use-automations"
 import { useTemplate, asTemplate } from "@/lib/templates/use-templates"
 import { asSegment } from "@/lib/audience/use-audience"
 import { useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { useQuery } from "convex/react"
 import {
   AUTOMATION_RULE_OPERATORS,
@@ -68,7 +71,7 @@ import {
   type AutomationRule,
   type AutomationRuleOperator,
   type AutomationStep,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 /* The cards of the editor's graph. A card shows its settings when it is the
    selected one, and edits apply as they are made: the graph is the form. */

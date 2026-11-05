@@ -3,13 +3,13 @@ import { useState } from "react"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { ProviderKeySelect } from "./provider-keys"
 import { DetailSection, OptionSelect } from "@/components/dashboard/primitives"
-import { type IvrPromptVoice } from "@/lib/ivr-renderers"
+import { type IvrPromptVoice } from "@opensend/core/ivr-renderers"
 import { VoiceChoiceField, ProviderVoiceField } from "./ivr-fields"
 import {
   SARVAM_PROMPT_LANGUAGE_ITEMS,
   ttsLanguageItems,
-} from "@/lib/dashboard/voice-options"
-import { ELEVENLABS_FALLBACK_VOICE_ID } from "@/lib/elevenlabs-voices"
+} from "@opensend/core/dashboard/voice-options"
+import { ELEVENLABS_FALLBACK_VOICE_ID } from "@opensend/core/elevenlabs-voices"
 export function IvrPromptVoiceFields({
   value,
   onChange,

@@ -41,15 +41,15 @@ import {
 } from "@/components/dashboard/primitives"
 import { AudienceChrome } from "@/components/dashboard/audience/shared"
 import { PencilIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react"
-import { formatDate } from "@/lib/dashboard/format"
+import { formatDate } from "@opensend/core/dashboard/format"
 import { useAudienceCommands, useTopicList } from "@/lib/audience/use-audience"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { Skeleton } from "@/components/ui/skeleton"
 import type {
   Topic,
   TopicDefault,
   TopicVisibility,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 const DEFAULT_OPTIONS = [
   {

@@ -10,7 +10,7 @@ import {
   RelativeTime,
   Th,
 } from "@/components/dashboard/primitives"
-import type { ApiLog } from "@/lib/dashboard/types"
+import type { ApiLog } from "@opensend/core/dashboard/types"
 
 export const LogIcon = ScrollTextIcon
 

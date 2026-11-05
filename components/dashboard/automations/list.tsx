@@ -27,10 +27,10 @@ import {
   AutomationsChrome,
 } from "@/components/dashboard/automations/shared"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import {
   asListedAutomation,
   useAutomationCommands,

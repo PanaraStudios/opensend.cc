@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import { useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import {
   requireTeamId,
   useTeamRole,
@@ -38,10 +38,10 @@ import { useTemplate } from "@/lib/templates/use-templates"
 import {
   templateTestReady,
   templateTestRecipient,
-} from "@/lib/dashboard/template-test"
-import { actionError } from "@/lib/action-error"
-import type { EmailTemplate } from "@/lib/dashboard/types"
-import { CHANNELS } from "@/lib/channels"
+} from "@opensend/core/dashboard/template-test"
+import { actionError } from "@opensend/core/action-error"
+import type { EmailTemplate } from "@opensend/core/dashboard/types"
+import { CHANNELS } from "@opensend/core/channels"
 import { FileUploadField } from "@/components/dashboard/file-upload"
 
 /** One test action for Meta templates and template-based broadcasts. */

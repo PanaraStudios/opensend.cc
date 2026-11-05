@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation"
 import { useQuery } from "convex/react"
 import { ShieldIcon } from "lucide-react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { INSTANCE_PAGES } from "@/lib/dashboard/nav"
 import { PageHeader, EmptyState } from "@/components/dashboard/primitives"
 import { Skeleton } from "@/components/ui/skeleton"

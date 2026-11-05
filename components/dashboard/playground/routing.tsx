@@ -1,14 +1,14 @@
 "use client"
-import type { Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import { useState } from "react"
 import { useAction } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { ConfirmDialog } from "@/components/dashboard/primitives"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Skeleton } from "@/components/ui/skeleton"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 export function VoiceRouting({
   kind,
   id,

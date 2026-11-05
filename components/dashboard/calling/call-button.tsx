@@ -2,8 +2,8 @@
 import { useState } from "react"
 import { useAction } from "convex/react"
 import { useWorkspace } from "@/components/auth/workspace"
-import type { Id } from "@/convex/_generated/dataModel"
-import { api } from "@/convex/_generated/api"
+import type { Id } from "@opensend/backend/dataModel"
+import { api } from "@opensend/backend/api"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,

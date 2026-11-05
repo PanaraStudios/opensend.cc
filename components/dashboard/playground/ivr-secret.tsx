@@ -14,8 +14,8 @@ import { useWorkspace } from "@/components/auth/workspace"
 import { ViewApiKeyDialog } from "@/components/dashboard/api-keys/shared"
 import { ConfirmDialog } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
-import { api } from "@/convex/_generated/api"
-import { revealedIvrSigningSecretFromResult } from "@/lib/dashboard/ivr-secret"
+import { api } from "@opensend/backend/api"
+import { revealedIvrSigningSecretFromResult } from "@opensend/core/dashboard/ivr-secret"
 
 const IvrRecordContext = createContext<{
   id: string

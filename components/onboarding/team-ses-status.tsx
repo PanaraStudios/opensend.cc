@@ -5,11 +5,11 @@ import {
   useLoadedPagination,
 } from "@/components/dashboard/primitives"
 import { useMutation, useQuery, usePaginatedQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { regionLabel } from "@/lib/dashboard/format"
+import { regionLabel } from "@opensend/core/dashboard/format"
 
 export function TeamSesStatus({ organizationId }: { organizationId: string }) {
   const tenants = useQuery(api.tenants.list, { organizationId })

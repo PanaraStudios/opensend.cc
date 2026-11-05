@@ -1,12 +1,12 @@
 "use client"
 import { useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import {
   useWorkspace,
   requireTeamId,
   useTeamQuery,
 } from "@/components/auth/workspace"
-import type { UnsubscribePage } from "@/lib/unsubscribe/page"
+import type { UnsubscribePage } from "@opensend/core/unsubscribe/page"
 
 /** The team's unsubscribe page, or undefined while loading. */
 export function useUnsubscribePage() {

@@ -14,7 +14,7 @@ import {
 import { BubbleMenus } from "@/components/dashboard/broadcasts/editor/bubble-menus"
 import { InsertRail } from "@/components/dashboard/broadcasts/editor/palette"
 import { SlashMenu } from "@/components/dashboard/broadcasts/editor/slash-menu"
-import type { EmailVariable } from "@/lib/dashboard/email-variables"
+import type { EmailVariable } from "@opensend/core/dashboard/email-variables"
 
 /* The page, the paper on it, and the engine's document inside the paper. The
    theme's `body` and `container` groups style the first two, so the canvas

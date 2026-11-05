@@ -4,7 +4,7 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { ConvexReactClient, ConvexProviderWithAuth } from "convex/react"
 import { WorkspaceDataProvider } from "../../components/auth/workspace"
-import { workspaceInstallation } from "./workspace-bootstrap"
+import { workspaceInstallation } from "@opensend/core/dashboard/workspace-bootstrap"
 
 test("a parallel installation error waits for the account during session revocation", () => {
   const revoked = new Error("Sign in again")

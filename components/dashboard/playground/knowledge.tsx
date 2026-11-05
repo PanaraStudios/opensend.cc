@@ -5,13 +5,13 @@ import {
   cursorNext,
   cursorPrevious,
   type IdCursor,
-} from "@/lib/dashboard/pagination"
+} from "@opensend/core/dashboard/pagination"
 import Link from "next/link"
 import { useAction } from "convex/react"
 import { BookOpenIcon } from "lucide-react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import type {
   KnowledgeBase,
   KnowledgeDocument,
@@ -43,8 +43,8 @@ import {
 import { FileUploadField } from "@/components/dashboard/file-upload"
 import { VoiceField } from "./ivr-fields"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
-import { actionError } from "@/lib/action-error"
-import { formatUploadSize } from "@/lib/storage/policy"
+import { actionError } from "@opensend/core/action-error"
+import { formatUploadSize } from "@opensend/core/storage/policy"
 const statusLabel = {
   processing: "Processing",
   ready: "Ready",

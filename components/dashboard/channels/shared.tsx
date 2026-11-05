@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
-import { CHANNELS, CHANNEL_IDS, rowChannel } from "@/lib/channels"
+import { CHANNELS, CHANNEL_IDS, rowChannel } from "@opensend/core/channels"
 import {
   DetailHeader,
   DocsButton,
@@ -21,7 +21,7 @@ import {
   MoreMenu,
   copyToClipboard,
 } from "@/components/dashboard/primitives"
-import { channelLabel } from "@/lib/dashboard/format"
+import { channelLabel } from "@opensend/core/dashboard/format"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,12 +58,12 @@ import {
   TypeToConfirmDialog,
   type SelectOption,
 } from "@/components/dashboard/primitives"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import type {
   BroadcastChannel,
   Channel,
   MessagingChannel,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 import { useChannelCommands } from "@/lib/channels/use-channels"
 
 export const ChannelsIcon = RadioTowerIcon

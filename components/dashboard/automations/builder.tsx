@@ -1,12 +1,12 @@
 "use client"
-import { contactIdentity } from "@/lib/dashboard/contacts"
-import { eventLabel } from "@/lib/event-catalog"
+import { contactIdentity } from "@opensend/core/dashboard/contacts"
+import { eventLabel } from "@opensend/core/event-catalog"
 
 import * as React from "react"
 import Link from "next/link"
 import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
-import { isChannelSendStep } from "@/lib/channels"
-import type { Id } from "@/convex/_generated/dataModel"
+import { isChannelSendStep } from "@opensend/core/channels"
+import type { Id } from "@opensend/backend/dataModel"
 import { useParams } from "next/navigation"
 import { ChartLineIcon, FlaskConicalIcon, PencilIcon } from "lucide-react"
 
@@ -74,10 +74,10 @@ import {
   stepBranches,
   TRIGGER_KEY,
   type AutomationTask,
-} from "@/lib/dashboard/automation"
-import { api } from "@/convex/_generated/api"
+} from "@opensend/core/dashboard/automation"
+import { api } from "@opensend/backend/api"
 import { Skeleton } from "@/components/ui/skeleton"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { useWorkspace } from "@/components/auth/workspace"
 import { useQuery } from "convex/react"
 import { useAutomationEvent } from "@/lib/automation-events/use-automation-events"
@@ -89,7 +89,7 @@ import type {
   Automation,
   AutomationStep,
   AutomationStepType,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 /* Full-screen builder, in the same frame as the email editor: a top bar, a
    rail that switches between editing and observability, and the canvas. */

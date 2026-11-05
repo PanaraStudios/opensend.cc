@@ -1,6 +1,6 @@
 "use client"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 /** The public installation projection contains capabilities, never Meta secrets. */
 export function useInstanceChannels(enabled = true) {
   const status = useQuery(api.installation.status, enabled ? {} : "skip")

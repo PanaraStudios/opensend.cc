@@ -4,18 +4,21 @@ import {
   ivrActionLabel,
   callOutcomeLabel,
   callRouteLabel,
-} from "@/lib/dashboard/voice-playground"
-import { agentPresenceLabel, hasAgentRoute } from "@/lib/meta/softphone"
+} from "@opensend/core/dashboard/voice-playground"
+import {
+  agentPresenceLabel,
+  hasAgentRoute,
+} from "@opensend/core/meta/softphone"
 import {
   cursorListIsEmpty,
   cursorNext,
   cursorPagerVisible,
   cursorPrevious,
-} from "@/lib/dashboard/pagination"
-import { pickerSelectedIds } from "@/lib/dashboard/options"
+} from "@opensend/core/dashboard/pagination"
+import { pickerSelectedIds } from "@opensend/core/dashboard/options"
 import { useEffect, useState } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import {
   SectionChrome,
   ResourceTable,

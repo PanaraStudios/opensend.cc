@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { OptionSelect } from "@/components/dashboard/primitives"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 
 /** Preview owns its own stream and releases it when the panel closes. */
 export function MicrophonePicker({

@@ -20,7 +20,7 @@ import {
   useMetaConnect,
 } from "@/components/dashboard/channels/connect-meta"
 import { useTeamRole } from "@/components/auth/workspace"
-import { CHANNELS, type MessagingChannel } from "@/lib/channels"
+import { CHANNELS, type MessagingChannel } from "@opensend/core/channels"
 import {
   useMetaPublicConfig,
   type ConnectedBusiness,

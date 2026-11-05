@@ -1,7 +1,7 @@
 import type { ThreadMessage } from "../messages/use-messages"
 import type { MediaViewerItem } from "../../components/ui/media-viewer"
-import { array, object, string } from "../meta/parse"
-import { safeMessageUrl } from "./conversation-content"
+import { array, object, string } from "@opensend/core/meta/parse"
+import { safeMessageUrl } from "@opensend/core/dashboard/conversation-content"
 
 /** Gallery order follows the thread, including template headers/carousels. */
 export function conversationMedia(

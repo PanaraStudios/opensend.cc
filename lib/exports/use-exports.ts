@@ -6,14 +6,17 @@ import {
   type ConvexReactClient,
 } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { useTeamRole, useWorkspace } from "@/components/auth/workspace"
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
-import { exportOutcome, type ExportFilterLine } from "@/lib/dashboard/exports"
+import { actionError } from "@opensend/core/action-error"
+import {
+  exportOutcome,
+  type ExportFilterLine,
+} from "@opensend/core/dashboard/exports"
 import { useTeamList } from "@/components/dashboard/primitives"
-import type { ExportJob } from "@/lib/dashboard/types"
+import type { ExportJob } from "@opensend/core/dashboard/types"
 import { downloadBlob, downloadFromUrl } from "@/lib/dashboard/download"
 
 type ExportRow = NonNullable<FunctionReturnType<typeof api.exports.get>>

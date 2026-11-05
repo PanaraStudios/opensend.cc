@@ -52,17 +52,17 @@ import {
 } from "@/components/dashboard/team-dialogs"
 import { useMutation, useAction, usePaginatedQuery } from "convex/react"
 import { authClient, authResult } from "@/lib/auth/client"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import {
   useActiveTeam,
   useTeamCommands,
   useWorkspace,
 } from "@/components/auth/workspace"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { AVATAR_TYPES, readAvatar } from "@/lib/dashboard/avatar"
-import { formatDate, roleLabel } from "@/lib/dashboard/format"
+import { formatDate, roleLabel } from "@opensend/core/dashboard/format"
 import { SETTINGS_NAV } from "@/lib/dashboard/nav"
-import { slugify } from "@/lib/dashboard/slug"
+import { slugify } from "@opensend/core/dashboard/slug"
 import { useSmtp } from "@/lib/smtp/use-smtp"
 import { useTopics } from "@/lib/audience/use-audience"
 import {
@@ -70,8 +70,8 @@ import {
   useUnsubscribePage,
 } from "@/lib/unsubscribe/use-unsubscribe"
 import { UnsubscribePageCard } from "@/components/unsubscribe/page-card"
-import type { Team, TeamMember } from "@/lib/dashboard/types"
-import { invitationExpired } from "@/lib/dashboard/invitations"
+import type { Team, TeamMember } from "@opensend/core/dashboard/types"
+import { invitationExpired } from "@opensend/core/dashboard/invitations"
 import { useClock } from "@/lib/time/use-clock"
 
 const SMTP_PORT_ITEMS = [

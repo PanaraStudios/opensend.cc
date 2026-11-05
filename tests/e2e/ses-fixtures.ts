@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, type Page } from "@playwright/test"
 import { ConvexHttpClient } from "convex/browser"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { syntheticSesConnection } from "./ses-fixture-data.mjs"
 
 function assertTestOwnership() {

@@ -1,5 +1,5 @@
 import { pathMatches } from "./dashboard/nav"
-import { DOCS_URL } from "./site"
+import { DOCS_URL } from "@opensend/core/site"
 
 export const CALLING_DOCS_HREF =
   "https://github.com/PanaraStudios/opensend.cc/blob/v2/docs/browser-softphone.md"

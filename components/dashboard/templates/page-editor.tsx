@@ -20,11 +20,14 @@ import { SaveIndicator } from "@/components/dashboard/broadcasts/editor/screen"
 import type { SaveState } from "@/components/dashboard/broadcasts/editor/use-editor"
 import { useAutosaveDraft } from "@/components/dashboard/primitives"
 import { useTemplateCommands } from "@/lib/templates/use-templates"
-import { localTemplate, fillLocalTemplate } from "@/lib/meta/local-templates"
-import { templatePublishLabel } from "@/lib/dashboard/template"
-import { actionError } from "@/lib/action-error"
+import {
+  localTemplate,
+  fillLocalTemplate,
+} from "@opensend/core/meta/local-templates"
+import { templatePublishLabel } from "@opensend/core/dashboard/template"
+import { actionError } from "@opensend/core/action-error"
 import { toast } from "@/components/ui/toast"
-import type { EmailTemplate } from "@/lib/dashboard/types"
+import type { EmailTemplate } from "@opensend/core/dashboard/types"
 import {
   LocalTemplatePreview,
   TemplateBadge,
@@ -32,8 +35,8 @@ import {
   usePublishTemplate,
 } from "./shared"
 import { TemplateTestAction } from "./test-send"
-import { localTemplateVariables } from "@/lib/meta/local-templates"
-import { pageMessageTextLimit } from "@/lib/meta/payloads"
+import { localTemplateVariables } from "@opensend/core/meta/local-templates"
+import { pageMessageTextLimit } from "@opensend/core/meta/payloads"
 
 /** Local Meta templates share the email/WhatsApp editor's naming and actions. */
 export function PageTemplateEditorScreen({

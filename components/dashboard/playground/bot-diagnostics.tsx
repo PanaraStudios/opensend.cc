@@ -1,18 +1,18 @@
 "use client"
 import { useState } from "react"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { DetailSection, MetaStrip } from "@/components/dashboard/primitives"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { Doc } from "@/convex/_generated/dataModel"
+import type { Doc } from "@opensend/backend/dataModel"
 import {
   orderCallTranscript,
   voiceDiagnostic,
-} from "@/lib/dashboard/voice-bot-form"
-import { VOICE_TOOL_LABELS } from "@/lib/dashboard/voice-options"
-import { callOutcomeLabel } from "@/lib/dashboard/voice-playground"
+} from "@opensend/core/dashboard/voice-bot-form"
+import { VOICE_TOOL_LABELS } from "@opensend/core/dashboard/voice-options"
+import { callOutcomeLabel } from "@opensend/core/dashboard/voice-playground"
 type TranscriptRow = Omit<
   Doc<"callTranscripts">,
   "_id" | "_creationTime" | "organizationId"

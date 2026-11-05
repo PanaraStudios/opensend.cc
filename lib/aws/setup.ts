@@ -1,6 +1,9 @@
-import { parseCsv } from "@/lib/dashboard/csv"
-import { REGIONS, type Region } from "@/lib/dashboard/types"
-import { POLICY_REVISION, resourcePrefix } from "@/convex/ses/contracts"
+import { parseCsv } from "@opensend/core/dashboard/csv"
+import { REGIONS, type Region } from "@opensend/core/dashboard/types"
+import {
+  POLICY_REVISION,
+  resourcePrefix,
+} from "@opensend/backend/ses/contracts"
 
 export const IAM_USERS_URL = "https://console.aws.amazon.com/iam/home#/users"
 export const AWS_SETUP_FILENAME = "opensend-aws-access.json"

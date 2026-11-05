@@ -2,8 +2,8 @@
 import * as React from "react"
 import { useAction } from "convex/react"
 import { PhoneIcon } from "lucide-react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
 import {
   DetailSection,
@@ -26,17 +26,17 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { FileUploadField } from "@/components/dashboard/file-upload"
 import { CALLING_DOCS_HREF } from "@/lib/docs-links"
-import { writableCallingSettings } from "@/lib/meta/calling"
-import { callOutcomeLabel } from "@/lib/dashboard/voice-playground"
+import { writableCallingSettings } from "@opensend/core/meta/calling"
+import { callOutcomeLabel } from "@opensend/core/dashboard/voice-playground"
 import {
   cursorListIsEmpty,
   cursorNext,
   cursorPagerVisible,
   cursorPrevious,
-} from "@/lib/dashboard/pagination"
+} from "@opensend/core/dashboard/pagination"
 import type { CallingSettings } from "@/packages/sdk/src/whatsapp/calling/interfaces"
 const statusOptions = [
   { value: "ENABLED", label: "Enabled" },

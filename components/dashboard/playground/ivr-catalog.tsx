@@ -12,7 +12,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { FlowCatalog, FlowNodeProps } from "../flows/catalog"
-import type { IvrAction, IvrDefinition, IvrMenu } from "@/lib/ivr"
+import type { IvrAction, IvrDefinition, IvrMenu } from "@opensend/core/ivr"
 import { MenuFields, ActionField, VoiceChoiceField } from "./ivr-fields"
 import {
   ivrActionKey,

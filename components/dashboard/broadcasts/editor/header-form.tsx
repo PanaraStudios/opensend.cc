@@ -2,7 +2,7 @@
 import {
   broadcastSegmentItems,
   broadcastTopicItems,
-} from "@/lib/dashboard/broadcast"
+} from "@opensend/core/dashboard/broadcast"
 
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
@@ -29,22 +29,25 @@ import {
   type SelectSearch,
 } from "@/components/dashboard/primitives"
 import { useDomainByName, useDomainOptions } from "@/lib/domains/use-domains"
-import { emailFrom } from "@/lib/dashboard/broadcast"
+import { emailFrom } from "@opensend/core/dashboard/broadcast"
 import {
   formatScheduleHint,
   scheduleOptions,
   timeZoneLabel,
   type ScheduleOption,
-} from "@/lib/dashboard/schedule"
+} from "@opensend/core/dashboard/schedule"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
-import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
+import { actionError } from "@opensend/core/action-error"
+import type { Broadcast, EmailDraft } from "@opensend/core/dashboard/types"
 import { cn } from "@/lib/utils"
-import { parseMailbox, senderDomainOf } from "@/lib/dashboard/email-send"
-import { defaultFromAddress } from "@/lib/dashboard/format"
-import { senderDomainSearch } from "@/lib/dashboard/sender-options"
-import type { Id } from "@/convex/_generated/dataModel"
+import {
+  parseMailbox,
+  senderDomainOf,
+} from "@opensend/core/dashboard/email-send"
+import { defaultFromAddress } from "@opensend/core/dashboard/format"
+import { senderDomainSearch } from "@opensend/core/dashboard/sender-options"
+import type { Id } from "@opensend/backend/dataModel"
 
 /* This form sits on the email paper, so it keeps the paper's own palette in
    both app themes. Anything that floats above it (menus, popovers) is app

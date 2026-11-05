@@ -32,11 +32,11 @@ import {
   DEFAULT_RETURN_PATH,
   validateDnsLabel,
   validateDomainName,
-} from "@/lib/dashboard/domains"
-import { api } from "@/convex/_generated/api"
+} from "@opensend/core/dashboard/domains"
+import { api } from "@opensend/backend/api"
 import { useDomainCommands } from "@/lib/domains/use-domains"
-import { actionError } from "@/lib/action-error"
-import type { Region } from "@/lib/dashboard/types"
+import { actionError } from "@opensend/core/action-error"
+import type { Region } from "@opensend/core/dashboard/types"
 
 export function AddDomainDialog({
   open,

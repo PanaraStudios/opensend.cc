@@ -1,10 +1,10 @@
 "use client"
-import { formatNumber } from "@/lib/dashboard/format"
+import { formatNumber } from "@opensend/core/dashboard/format"
 
 import Link from "next/link"
 import { useQuery } from "convex/react"
 import { InfoIcon } from "lucide-react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { useWorkspace } from "@/components/auth/workspace"
 import { SettingsCard } from "@/components/dashboard/primitives"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"

@@ -2,7 +2,7 @@ import "server-only"
 import { convexBetterAuthNextJs } from "@convex-dev/better-auth/nextjs"
 import { ConvexHttpClient } from "convex/browser"
 import { redirect } from "next/navigation"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 function required(name: string) {
   const value = process.env[name]
   if (!value) throw new Error(`${name} must be configured. Run pnpm setup.`)

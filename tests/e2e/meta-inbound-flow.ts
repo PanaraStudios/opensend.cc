@@ -1,10 +1,10 @@
-import { messageHref } from "../../lib/messages/links"
+import { messageHref } from "@opensend/core/messages/links"
 import { connectWhatsApp, WABA, PHONE_ID, META_TOKEN } from "./meta-fixtures"
 import { createApiKey } from "./broadcast-received-flow"
 import { createHmac } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
-import type { Doc } from "../../convex/_generated/dataModel"
-import { api } from "../../convex/_generated/api"
+import type { Doc } from "@opensend/backend/dataModel"
+import { api } from "@opensend/backend/api"
 import { client, backendRows } from "./ses-fixtures"
 
 const APP_SECRET = "e2e0123456789abcdef0123456789abc"

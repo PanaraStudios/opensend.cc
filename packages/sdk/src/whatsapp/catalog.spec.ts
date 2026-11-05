@@ -10,7 +10,7 @@ import { validateWhatsAppBody } from "./validation"
 import { normalizeWhatsAppMessage } from "./normalize"
 const fixtures = JSON.parse(
   readFileSync(
-    new URL("../../../../lib/meta/whatsapp-fixtures.json", import.meta.url),
+    new URL("../../../core/src/meta/whatsapp-fixtures.json", import.meta.url),
     "utf8"
   )
 ) as {

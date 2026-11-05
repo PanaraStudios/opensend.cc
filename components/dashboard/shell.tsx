@@ -3,7 +3,7 @@ import {
   SoftphoneProvider,
   SoftphoneSidebarEntry,
 } from "@/components/dashboard/calling/softphone-provider"
-import { contactIdentity } from "@/lib/dashboard/contacts"
+import { contactIdentity } from "@opensend/core/dashboard/contacts"
 
 import * as React from "react"
 import {
@@ -18,12 +18,12 @@ import {
   ShortcutsDialog,
 } from "@/components/dashboard/shortcuts-dialog"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { WorkspaceProvider, useWorkspace } from "@/components/auth/workspace"
 import { authClient, authResult } from "@/lib/auth/client"
 import Link from "next/link"
 
-import { MARKETING_URL } from "@/lib/site"
+import { MARKETING_URL } from "@opensend/core/site"
 import { docsHrefForRoute } from "@/lib/docs-links"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -90,7 +90,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Toaster, toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import {
   DASHBOARD_NAV,
   CHANNEL_PAGES,
@@ -100,7 +100,7 @@ import {
   STANDALONE_PAGES,
   navItemActive,
 } from "@/lib/dashboard/nav"
-import { initials } from "@/lib/dashboard/format"
+import { initials } from "@opensend/core/dashboard/format"
 import { useTeamQuery } from "@/components/auth/workspace"
 
 const APPEARANCE_OPTIONS = [

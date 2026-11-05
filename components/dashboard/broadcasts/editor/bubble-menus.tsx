@@ -31,7 +31,7 @@ import {
   MarkToggles,
   TEXT_MARKS,
 } from "@/components/dashboard/broadcasts/editor/controls"
-import { normalizeHref } from "@/lib/dashboard/format"
+import { normalizeHref } from "@opensend/core/dashboard/format"
 import { cn } from "@/lib/utils"
 
 /* Floating toolbars. The engine decides when each one shows and where it

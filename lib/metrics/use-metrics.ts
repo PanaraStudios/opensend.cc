@@ -9,13 +9,13 @@ import {
   type FunctionReference,
   type FunctionReturnType,
 } from "convex/server"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { useWorkspace, useTeamQuery } from "@/components/auth/workspace"
-import { emptyEmailCounts, eventCount } from "@/lib/dashboard/metrics"
+import { emptyEmailCounts, eventCount } from "@opensend/core/dashboard/metrics"
 import { rangeBounds } from "@/lib/dashboard/email-range"
-import { rate } from "@/lib/dashboard/format"
-import type { EmailStatus } from "@/lib/dashboard/types"
+import { rate } from "@opensend/core/dashboard/format"
+import type { EmailStatus } from "@opensend/core/dashboard/types"
 
 export function useMetricsSpans(range: DateRange) {
   return React.useMemo(

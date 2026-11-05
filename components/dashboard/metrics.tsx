@@ -1,9 +1,9 @@
 "use client"
 
 import * as React from "react"
-import type { Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { useWorkspace } from "@/components/auth/workspace"
 import { CircleHelpIcon } from "lucide-react"
 import type { DateRange } from "react-day-picker"
@@ -60,8 +60,8 @@ import {
   percent,
   sentenceCase,
   type BadgeTone,
-} from "@/lib/dashboard/format"
-import { BOUNCE_RISK, COMPLAIN_RISK } from "@/lib/dashboard/metrics"
+} from "@opensend/core/dashboard/format"
+import { BOUNCE_RISK, COMPLAIN_RISK } from "@opensend/core/dashboard/metrics"
 import {
   useMetrics,
   useMetricsChunks,
@@ -74,8 +74,8 @@ import {
   CHANNELS,
   type Channel,
   type MessagingChannel,
-} from "@/lib/channels"
-import { channelRates, sumChannelCounts } from "@/lib/channel-metrics"
+} from "@opensend/core/channels"
+import { channelRates, sumChannelCounts } from "@opensend/core/channel-metrics"
 import { ChannelCell } from "@/components/dashboard/channels/shared"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { useClock } from "@/lib/time/use-clock"

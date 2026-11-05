@@ -1,6 +1,6 @@
 "use client"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { DetailField, SettingsCard } from "./primitives"
 
 export function FileStorageSettings() {

@@ -27,9 +27,9 @@ import {
   Th,
 } from "@/components/dashboard/primitives"
 import { LogIcon } from "@/components/dashboard/logs/shared"
-import { permissionLabel } from "@/lib/dashboard/format"
-import { api } from "@/convex/_generated/api"
-import { logSourceLabel, storedBody } from "@/lib/dashboard/logs"
+import { permissionLabel } from "@opensend/core/dashboard/format"
+import { api } from "@opensend/backend/api"
+import { logSourceLabel, storedBody } from "@opensend/core/dashboard/logs"
 import { useEmail } from "@/lib/emails/use-emails"
 import { asLog } from "@/lib/logs/use-logs"
 

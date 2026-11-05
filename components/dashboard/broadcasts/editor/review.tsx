@@ -2,9 +2,9 @@
 
 import * as React from "react"
 import { useAction, useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
-import { actionError } from "@/lib/action-error"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
+import { actionError } from "@opensend/core/action-error"
 import { useRouter } from "next/navigation"
 import {
   CircleCheckIcon,
@@ -36,15 +36,15 @@ import {
   audienceLabel,
   broadcastRecipientCheck,
   emailFrom,
-} from "@/lib/dashboard/broadcast"
-import { hasUnsubscribeLink } from "@/lib/dashboard/email-variables"
-import { isEmail } from "@/lib/dashboard/format"
-import { formatScheduleHint } from "@/lib/dashboard/schedule"
+} from "@opensend/core/dashboard/broadcast"
+import { hasUnsubscribeLink } from "@opensend/core/dashboard/email-variables"
+import { isEmail } from "@opensend/core/dashboard/format"
+import { formatScheduleHint } from "@opensend/core/dashboard/schedule"
 import { useBroadcastCommands } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainOptions } from "@/lib/domains/use-domains"
 import { useSegmentOptions } from "@/lib/audience/use-audience"
 import { useWorkspace, requireTeamId } from "@/components/auth/workspace"
-import type { Broadcast, EmailDraft } from "@/lib/dashboard/types"
+import type { Broadcast, EmailDraft } from "@opensend/core/dashboard/types"
 import { cn } from "@/lib/utils"
 
 type CheckLevel = "ok" | "warn" | "error" | "loading"

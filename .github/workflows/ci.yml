@@ -25,9 +25,9 @@ jobs:
           - name: lint, typecheck, build
             run: pnpm turbo run lint typecheck build
           - name: unit tests
-            run: pnpm turbo run test
+            run: pnpm turbo run test --filter=!@opensend/backend
           - name: backend tests
-            run: pnpm turbo run test:auth
+            run: pnpm turbo run test --filter=@opensend/backend
           - name: self-host config
             run: node scripts/test-install.mjs --config-only
     steps:

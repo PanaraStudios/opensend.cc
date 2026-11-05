@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
-import { api } from "../../convex/_generated/api"
-import type { Id } from "../../convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import {
   client,
   receivedFixture,

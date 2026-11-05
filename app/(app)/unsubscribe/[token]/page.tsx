@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { serverConvex } from "@/lib/auth/server"
 import { UnsubscribePreferences } from "@/components/unsubscribe/preferences"
 

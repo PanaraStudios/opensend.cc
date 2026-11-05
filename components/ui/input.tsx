@@ -3,7 +3,7 @@
 import * as React from "react"
 import { Input as InputPrimitive } from "@base-ui/react/input"
 import { cn } from "cn"
-import { credentialInputProps } from "@/lib/credential-input"
+import { credentialInputProps } from "@opensend/core/credential-input"
 import { useFieldLabel } from "@/components/ui/field"
 import {
   InputValidation,

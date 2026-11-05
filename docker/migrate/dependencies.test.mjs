@@ -73,9 +73,30 @@ function sourceFiles(directory) {
   })
 }
 
+// Workspace packages the backend imports by name, mapped to their source.
+const WORKSPACE = {
+  "@opensend/core/": "packages/core/src/",
+  "@opensendcc/sdk/src/": "packages/sdk/src/",
+  "@opensendcc/call-gateway/src/": "services/call-gateway/src/",
+}
+const OWNERS = [
+  "packages/backend",
+  "packages/core",
+  "packages/sdk",
+  "services/call-gateway",
+]
+
+function owner(filename) {
+  const path = filename.slice(root.length)
+  const found = OWNERS.find((dir) => path.startsWith(dir + "/"))
+  assert.ok(found, `${path} is outside the backend's workspace packages`)
+  return found
+}
+
 function localModule(filename, specifier) {
-  const path = specifier.startsWith("@/")
-    ? resolve(root, specifier.slice(2))
+  const prefix = Object.keys(WORKSPACE).find((p) => specifier.startsWith(p))
+  const path = prefix
+    ? join(root, WORKSPACE[prefix], specifier.slice(prefix.length))
     : resolve(dirname(filename), specifier)
   const stem = path.replace(/\.[cm]?js$/, "")
   const candidates = [
@@ -91,49 +112,75 @@ function localModule(filename, specifier) {
   return found
 }
 
-test("migrate dependencies cover the Convex runtime graph and match root versions", () => {
+const packageName = (specifier) =>
+  specifier
+    .split("/")
+    .slice(0, specifier.startsWith("@") ? 2 : 1)
+    .join("/")
+
+test("each package the Convex bundle reaches declares what it imports", () => {
+  // The migrate image deploys @opensend/backend with `pnpm deploy --prod`, so
+  // every npm package a function reaches must be a dependency of the package
+  // whose file imports it, at the version the web app uses.
   // zod is a pinned peer: without it the image resolves the zod peer of
   // convex-helpers and better-auth differently from the root install.
-  const required = new Set(["convex", "zod"])
-  const pending = sourceFiles(join(root, "convex"))
+  const required = Object.fromEntries(OWNERS.map((dir) => [dir, new Set()]))
+  required["packages/backend"].add("convex").add("zod")
+  const pending = sourceFiles(join(root, "packages/backend/convex"))
   const visited = new Set()
   while (pending.length) {
     const filename = pending.pop()
     if (visited.has(filename) || filename.endsWith(".json")) continue
     visited.add(filename)
+    const from = owner(filename)
     for (const specifier of runtimeImports(
       readFileSync(filename, "utf8"),
       filename
     )) {
       if (isBuiltin(specifier)) continue
-      if (specifier.startsWith(".") || specifier.startsWith("@/"))
+      assert.ok(
+        !specifier.startsWith("@/"),
+        `${filename} imports the web app (${specifier})`
+      )
+      const workspace = Object.keys(WORKSPACE).find((p) =>
+        specifier.startsWith(p)
+      )
+      if (workspace) required[from].add(packageName(specifier))
+      if (specifier.startsWith(".") || workspace)
         pending.push(localModule(filename, specifier))
-      else
-        required.add(
-          specifier
-            .split("/")
-            .slice(0, specifier.startsWith("@") ? 2 : 1)
-            .join("/")
-        )
+      else required[from].add(packageName(specifier))
     }
   }
-  if (existsSync(join(root, "convex.json"))) {
-    const external = readJson("convex.json").node?.externalPackages ?? []
-    assert.ok(
-      !external.includes("*"),
-      "List external Node packages explicitly so they can be audited"
-    )
-    for (const name of external) required.add(name)
-  }
-  const dependencies = readJson("docker/migrate/package.json").dependencies
-  assert.deepEqual(Object.keys(dependencies).sort(), [...required].sort())
+  const backendConfig = "packages/backend/convex.json"
+  const external = readJson(backendConfig).node?.externalPackages ?? []
+  assert.ok(
+    !external.includes("*"),
+    "List external Node packages explicitly so they can be audited"
+  )
+  for (const name of external) required["packages/backend"].add(name)
+  assert.deepEqual(
+    readJson(backendConfig).node,
+    readJson("convex.json").node,
+    "Both convex.json files must give Convex the same Node settings"
+  )
+
   const rootDependencies = readJson("package.json").dependencies
-  for (const [name, version] of Object.entries(dependencies))
-    assert.equal(
-      version,
-      rootDependencies[name],
-      `${name} must match the root version`
-    )
+  for (const dir of OWNERS) {
+    const declared = readJson(join(dir, "package.json")).dependencies ?? {}
+    const needed = [...required[dir]].sort()
+    if (dir === "packages/backend")
+      assert.deepEqual(Object.keys(declared).sort(), needed)
+    else
+      for (const name of needed)
+        assert.ok(name in declared, `${dir} must declare ${name}`)
+    for (const name of needed)
+      if (!declared[name].startsWith("workspace:"))
+        assert.equal(
+          declared[name],
+          rootDependencies[name],
+          `${dir}: ${name} must match the root version`
+        )
+  }
 })
 
 test("the workspace override pins convex-helpers to the root version", () => {

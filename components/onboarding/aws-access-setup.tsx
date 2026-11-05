@@ -37,7 +37,7 @@ import {
   parseAwsCredentialsCsv,
   validIamUserName,
 } from "@/lib/aws/setup"
-import type { Region } from "@/lib/dashboard/types"
+import type { Region } from "@opensend/core/dashboard/types"
 export function AwsAccessSetup({
   installationId,
   regions,

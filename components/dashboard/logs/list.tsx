@@ -25,15 +25,15 @@ import {
   LogRow,
 } from "@/components/dashboard/logs/shared"
 import { useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { defaultEmailRange } from "@/lib/dashboard/email-range"
 import {
   LOG_SOURCES,
   LOG_STATUS_CLASSES,
   logSourceLabel,
   type LogStatusClass,
-} from "@/lib/dashboard/logs"
-import type { LogSource } from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/logs"
+import type { LogSource } from "@opensend/core/dashboard/types"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
 import { asLog } from "@/lib/logs/use-logs"
 

@@ -37,9 +37,12 @@ import {
   DisconnectBusinessDialog,
   RegisterNumberDialog,
 } from "@/components/dashboard/channels/shared"
-import { channelHandle } from "@/lib/meta/account-display"
-import { CHANNELS } from "@/lib/channels"
-import { formatDateTime, messagingLimitLabel } from "@/lib/dashboard/format"
+import { channelHandle } from "@opensend/core/meta/account-display"
+import { CHANNELS } from "@opensend/core/channels"
+import {
+  formatDateTime,
+  messagingLimitLabel,
+} from "@opensend/core/dashboard/format"
 import {
   useChannelAccount,
   useChannelCommands,

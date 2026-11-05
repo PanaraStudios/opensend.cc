@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import type { LucideIcon } from "lucide-react"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 export function FormInput({
   name,
   label,

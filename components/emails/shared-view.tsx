@@ -3,7 +3,7 @@
 import * as React from "react"
 import { ClockIcon, MailIcon } from "lucide-react"
 import type { FunctionReturnType } from "convex/server"
-import type { api } from "@/convex/_generated/api"
+import type { api } from "@opensend/backend/api"
 import { EmptyState } from "@/components/dashboard/primitives"
 import { EmailPreviewFrame } from "@/components/dashboard/broadcasts/editor/preview"
 

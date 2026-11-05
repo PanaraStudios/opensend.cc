@@ -167,12 +167,14 @@ try {
     throw new Error("Cannot list tracked product sources")
   for (const file of tracked.stdout.split("\0").filter(Boolean)) {
     if (
-      !/^(convex\/|lib\/|services\/call-gateway\/src\/|packages\/sdk\/src\/|package.json$|tsconfig.json$)/.test(
+      !/^(packages\/backend\/convex\/|services\/call-gateway\/src\/|packages\/sdk\/src\/|package.json$|tsconfig.json$)/.test(
         file
       )
     )
       continue
-    const target = join(staging, file)
+    // The backend's functions are staged as the project's convex/ folder;
+    // @opensend/core and the SDK resolve through the linked node_modules.
+    const target = join(staging, file.replace(/^packages\/backend\//, ""))
     mkdirSync(dirname(target), { recursive: true })
     cpSync(resolve(file), target)
   }

@@ -11,8 +11,8 @@ import {
   cursorNext,
   cursorPagerVisible,
   cursorPrevious,
-} from "@/lib/dashboard/pagination"
-import { api } from "@/convex/_generated/api"
+} from "@opensend/core/dashboard/pagination"
+import { api } from "@opensend/backend/api"
 import {
   SectionChrome,
   DetailHeader,
@@ -53,25 +53,25 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "@/components/ui/toast"
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import {
   updateVoiceBotLanguage,
   updateVoiceBotVoice,
   voiceBotDefaults,
   type VoiceBotText,
-} from "@/lib/voice-bot-defaults"
+} from "@opensend/core/voice-bot-defaults"
 import {
   newVoiceBot,
   voiceBotFormPayload,
   type VoiceBotResource,
-} from "@/lib/dashboard/voice-bot-form"
+} from "@opensend/core/dashboard/voice-bot-form"
 import {
   VOICE_STAGE_MODELS,
   GEMINI_LIVE_MODELS,
   type VoiceBotConfig,
   type VoiceProvider,
   type VoiceStage,
-} from "@/lib/voice-bots"
+} from "@opensend/core/voice-bots"
 import { VoiceChoiceField, ProviderVoiceField, VoiceField } from "./ivr-fields"
 import {
   ResourceSelect,
@@ -88,13 +88,13 @@ import {
   voiceLanguageLabel,
   ttsLanguageItems,
   sttLanguageItems,
-} from "@/lib/dashboard/voice-options"
+} from "@opensend/core/dashboard/voice-options"
 import { useIsMobile } from "@/hooks/use-mobile"
 import {
   defaultElevenLabsVoice,
   ELEVENLABS_FALLBACK_VOICE_ID,
   type ElevenLabsVoice,
-} from "@/lib/elevenlabs-voices"
+} from "@opensend/core/elevenlabs-voices"
 import { useElevenLabsVoices } from "./elevenlabs-voices"
 
 const engineLabel = (engine: string) =>

@@ -5,7 +5,7 @@ import {
   cursorNext,
   cursorPagerVisible,
   cursorPrevious,
-} from "@/lib/dashboard/pagination"
+} from "@opensend/core/dashboard/pagination"
 import {
   KeyRoundIcon,
   SparklesIcon,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react"
 import { useAction } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import {
   DetailSection,
   ResourceTable,
@@ -42,11 +42,11 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { actionError } from "@/lib/action-error"
-import type { VoiceProviderResource } from "@/lib/dashboard/voice-bot-form"
+import { actionError } from "@opensend/core/action-error"
+import type { VoiceProviderResource } from "@opensend/core/dashboard/voice-bot-form"
 import { ResourceSelect } from "@/components/dashboard/resource-picker"
-import { VOICE_PROVIDER_LABELS } from "@/lib/dashboard/voice-options"
-import type { VoiceProvider } from "@/lib/voice-bots"
+import { VOICE_PROVIDER_LABELS } from "@opensend/core/dashboard/voice-options"
+import type { VoiceProvider } from "@opensend/core/voice-bots"
 
 const descriptions = {
   gemini: "Live conversations and language models.",

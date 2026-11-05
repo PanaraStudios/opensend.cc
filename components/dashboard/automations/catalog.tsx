@@ -4,14 +4,14 @@ import type {
   Automation,
   AutomationStep,
   AutomationStepType,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 import {
   STEP_GROUPS,
   STEP_LABELS,
   stepBranches,
   stepSummary,
   stepTitle,
-} from "@/lib/dashboard/automation"
+} from "@opensend/core/dashboard/automation"
 import type { FlowCatalog } from "../flows/catalog"
 import { STEP_ICONS } from "./shared"
 import { StepBody, StepCard } from "./step-cards"

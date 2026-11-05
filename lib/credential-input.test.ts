@@ -3,7 +3,7 @@ import { test } from "node:test"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { Input } from "../components/ui/input"
-import { credentialInputProps } from "./credential-input"
+import { credentialInputProps } from "@opensend/core/credential-input"
 
 test("credential IDs and secrets discourage browsers and password managers", () => {
   for (const secret of [false, true]) {

@@ -1,6 +1,6 @@
 "use client"
 import { useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { AsyncForm } from "@/components/auth/ui"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -11,7 +11,7 @@ import {
   ItemDescription,
   ItemActions,
 } from "@/components/ui/item"
-import { regionLabel } from "@/lib/dashboard/format"
+import { regionLabel } from "@opensend/core/dashboard/format"
 import type { SesStatus } from "./connection-form"
 
 export function SesRegions({

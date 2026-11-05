@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { DateRange } from "react-day-picker"
-import type { Id } from "@/convex/_generated/dataModel"
+import type { Id } from "@opensend/backend/dataModel"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -71,18 +71,18 @@ import {
   parseUnsubscribed,
   splitEmails,
   suggestCsvMapping,
-} from "@/lib/dashboard/csv"
+} from "@opensend/core/dashboard/csv"
 import {
   RESERVED_PROPERTY_KEYS,
   contactInputError,
   contactIdentity,
   importSummary,
   type ContactInput,
-} from "@/lib/dashboard/contacts"
-import { channelHandle } from "@/lib/meta/account-display"
-import { normalizePhone } from "@/lib/dashboard/phone"
+} from "@opensend/core/dashboard/contacts"
+import { channelHandle } from "@opensend/core/meta/account-display"
+import { normalizePhone } from "@opensend/core/dashboard/phone"
 import { rangeBounds } from "@/lib/dashboard/email-range"
-import { formatDate, pluralize } from "@/lib/dashboard/format"
+import { formatDate, pluralize } from "@opensend/core/dashboard/format"
 import { useExportDialog } from "@/components/dashboard/export-dialog"
 import {
   useAudienceCommands,
@@ -92,7 +92,7 @@ import {
   useSegmentOptions,
   useTopics,
 } from "@/lib/audience/use-audience"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { useClock } from "@/lib/time/use-clock"
 
 function segmentItems(segments: { id: string; name: string; count: number }[]) {

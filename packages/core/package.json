@@ -1,0 +1,33 @@
+{
+  "name": "@opensend/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Opensend's shared logic and types for every app and the backend: channels, Meta/WhatsApp rules, templates, formatting, validators, dashboard helpers. Pure TypeScript, no UI; never imports an app or the backend.",
+  "exports": {
+    "./*.json": "./src/*.json",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@opensendcc/call-gateway": "workspace:*",
+    "@opensendcc/sdk": "workspace:*",
+    "@tiptap/core": "3.31.3",
+    "chrono-node": "^2.10.1",
+    "convex": "^1.46.0",
+    "convex-helpers": "0.1.127",
+    "date-fns": "^4.4.0",
+    "fflate": "^0.8.3",
+    "mammoth": "^1.13.0",
+    "parse5": "8.0.0",
+    "unpdf": "^1.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.23.13",
+    "typescript": "^5"
+  }
+}

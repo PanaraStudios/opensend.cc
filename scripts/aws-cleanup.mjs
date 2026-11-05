@@ -80,7 +80,7 @@ import {
   DeletePolicyCommand,
 } from "@aws-sdk/client-iam"
 
-// convex/ses/contracts.ts `regions`.
+// packages/core/src/validators/ses.ts `regions`.
 const REGIONS = ["us-east-1", "eu-west-1", "sa-east-1", "ap-northeast-1"]
 const NAME = /^opensend-([a-z0-9]{16,64})(?:-|$)/
 const STACK = /^opensend-access-([a-z0-9]{16,64})$/

@@ -16,12 +16,12 @@ import {
   EditorNotFound,
   EmailEditorScreen,
 } from "@/components/dashboard/broadcasts/editor/screen"
-import { isBroadcastDraftLike } from "@/lib/dashboard/broadcast"
+import { isBroadcastDraftLike } from "@opensend/core/dashboard/broadcast"
 import {
   useBroadcast,
   useBroadcastSaver,
 } from "@/lib/broadcasts/use-broadcasts"
-import type { Broadcast } from "@/lib/dashboard/types"
+import type { Broadcast } from "@opensend/core/dashboard/types"
 
 export function BroadcastEditor() {
   const { id } = useParams<{ id: string }>()

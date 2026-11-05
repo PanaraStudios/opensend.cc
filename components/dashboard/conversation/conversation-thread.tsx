@@ -14,10 +14,10 @@ import {
 } from "@/components/ui/tooltip"
 import { EmptyState } from "@/components/dashboard/primitives"
 import { useTeamRole } from "@/components/auth/workspace"
-import { actionError } from "@/lib/action-error"
-import { windowLeft } from "@/lib/dashboard/conversations"
-import { channelLabel } from "@/lib/dashboard/format"
-import { channelHandle } from "@/lib/meta/account-display"
+import { actionError } from "@opensend/core/action-error"
+import { windowLeft } from "@opensend/core/dashboard/conversations"
+import { channelLabel } from "@opensend/core/dashboard/format"
+import { channelHandle } from "@opensend/core/meta/account-display"
 import { useClock } from "@/lib/time/use-clock"
 import {
   useConversation,

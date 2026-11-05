@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { client } from "./ses-fixtures"
 
 type State = { owner: Page; member: Page }

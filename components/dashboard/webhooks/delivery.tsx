@@ -21,9 +21,12 @@ import {
   RelativeTime,
 } from "@/components/dashboard/primitives"
 import { WebhookIcon } from "@/components/dashboard/webhooks/shared"
-import { api } from "@/convex/_generated/api"
-import { actionError } from "@/lib/action-error"
-import { deliveryResult, webhookEventLabel } from "@/lib/dashboard/webhooks"
+import { api } from "@opensend/backend/api"
+import { actionError } from "@opensend/core/action-error"
+import {
+  deliveryResult,
+  webhookEventLabel,
+} from "@opensend/core/dashboard/webhooks"
 import {
   asWebhook,
   asWebhookDelivery,

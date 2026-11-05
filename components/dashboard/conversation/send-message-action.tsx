@@ -29,14 +29,14 @@ import {
   useTeamQuery,
 } from "@/components/auth/workspace"
 import { useContactSearch } from "@/lib/audience/use-audience"
-import { contactIdentity } from "@/lib/dashboard/contacts"
-import { actionError } from "@/lib/action-error"
-import { threadHref } from "@/lib/messages/links"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
-import { defaultSendChannel } from "@/lib/dashboard/send-channels"
-import { CHANNELS, CHANNEL_IDS } from "@/lib/channels"
-import type { Contact, Channel } from "@/lib/dashboard/types"
+import { contactIdentity } from "@opensend/core/dashboard/contacts"
+import { actionError } from "@opensend/core/action-error"
+import { threadHref } from "@opensend/core/messages/links"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
+import { defaultSendChannel } from "@opensend/core/dashboard/send-channels"
+import { CHANNELS, CHANNEL_IDS } from "@opensend/core/channels"
+import type { Contact, Channel } from "@opensend/core/dashboard/types"
 
 const SEND_CHANNELS = CHANNEL_IDS
 const CHANNEL_ITEMS = SEND_CHANNELS.map((value) => ({

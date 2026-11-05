@@ -27,13 +27,13 @@ import {
 } from "@/components/dashboard/emails/shared"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useConversationList } from "@/lib/messages/use-messages"
-import { threadHref } from "@/lib/messages/links"
+import { threadHref } from "@opensend/core/messages/links"
 import { ConversationThread } from "../conversation/conversation-thread"
 
 import { PLAYGROUND_TABS } from "@/lib/dashboard/nav"
 import { useTeamQuery } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
-import { inboxEmptyDescription } from "@/lib/dashboard/inbox-empty"
+import { api } from "@opensend/backend/api"
+import { inboxEmptyDescription } from "@opensend/core/dashboard/inbox-empty"
 import { SendMessageAction } from "../conversation/send-message-action"
 
 const STATE_ITEMS: readonly SelectOption[] = [

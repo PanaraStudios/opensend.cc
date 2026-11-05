@@ -1,7 +1,7 @@
 "use client"
 import { SendMessageAction } from "../conversation/send-message-action"
 
-export { logChannel } from "@/lib/channels"
+export { logChannel } from "@opensend/core/channels"
 import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -26,7 +26,7 @@ import {
   AttachmentTitle,
 } from "@/components/ui/attachment"
 import { toast } from "@/components/ui/toast"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { useMediaDownload, type MediaFile } from "@/lib/messages/use-messages"
 
 import {
@@ -40,13 +40,13 @@ import {
   emailStatusLabel,
   sentenceCase,
   suppressionReasonLabel,
-} from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/format"
 import { EMAIL_TABS } from "@/lib/dashboard/nav"
 import type {
   ChannelMessageStatus,
   EmailStatus,
   SuppressionReason,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 export { defaultEmailRange } from "@/lib/dashboard/email-range"
 

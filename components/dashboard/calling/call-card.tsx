@@ -15,7 +15,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { OptionSelect } from "@/components/dashboard/primitives"
 import { DtmfKeypad } from "./dtmf-keypad"
-import type { CallCardState, CallCardEvent } from "@/lib/meta/call-card"
+import type {
+  CallCardState,
+  CallCardEvent,
+} from "@opensend/core/meta/call-card"
 
 export function FloatingCallCard({
   state,

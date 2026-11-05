@@ -26,9 +26,9 @@ import {
   availableVariables,
   formatVariable,
   type EmailVariable,
-} from "@/lib/dashboard/email-variables"
+} from "@opensend/core/dashboard/email-variables"
 import { useTeamList } from "@/components/dashboard/primitives"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { asProperty } from "@/lib/audience/use-audience"
 import { cn } from "@/lib/utils"
 

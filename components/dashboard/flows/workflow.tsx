@@ -1,5 +1,9 @@
 "use client"
-import { DEFAULT_ZOOM, ZOOM_STEPS, fitZoom } from "@/lib/dashboard/flow-zoom"
+import {
+  DEFAULT_ZOOM,
+  ZOOM_STEPS,
+  fitZoom,
+} from "@opensend/core/dashboard/flow-zoom"
 
 import * as React from "react"
 import { MinusIcon, PlusIcon, type LucideIcon } from "lucide-react"

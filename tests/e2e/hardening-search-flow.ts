@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 import { format, startOfMonth, subMonths } from "date-fns"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { createApiKey, createDraft } from "./broadcast-received-flow"
 import { client, testBackendValue } from "./ses-fixtures"
 

@@ -1,12 +1,12 @@
 "use client"
 import * as React from "react"
 import { useAction } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import {
   useConfirmShortcut,
   useShortcutModifier,
 } from "@/lib/dashboard/use-shortcut"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { Input } from "@/components/ui/input"

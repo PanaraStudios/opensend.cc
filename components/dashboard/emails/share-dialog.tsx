@@ -6,8 +6,8 @@ import {
   useShortcutModifier,
 } from "@/lib/dashboard/use-shortcut"
 import { useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { useWorkspace, useTeamRole } from "@/components/auth/workspace"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
@@ -23,8 +23,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { CopyButton, OptionSelect } from "@/components/dashboard/primitives"
-import { actionError } from "@/lib/action-error"
-import { formatDateTime } from "@/lib/dashboard/format"
+import { actionError } from "@opensend/core/action-error"
+import { formatDateTime } from "@opensend/core/dashboard/format"
 
 /* Resend's choices; links last at most 48 hours. */
 const EXPIRY_ITEMS = [

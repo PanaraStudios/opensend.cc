@@ -1,6 +1,6 @@
 "use client"
-import { emailFailureMessage } from "@/lib/dashboard/email-failure"
-import { contactIdentity } from "@/lib/dashboard/contacts"
+import { emailFailureMessage } from "@opensend/core/dashboard/email-failure"
+import { contactIdentity } from "@opensend/core/dashboard/contacts"
 
 import * as React from "react"
 import Link from "next/link"
@@ -57,15 +57,22 @@ import {
   broadcastAsTemplateInput,
   isBroadcastDraftLike,
   type BroadcastEventTab,
-} from "@/lib/dashboard/broadcast"
-import { parseMailbox, senderDomainOf } from "@/lib/dashboard/email-send"
-import { formatDateTime, percent, sentenceCase } from "@/lib/dashboard/format"
+} from "@opensend/core/dashboard/broadcast"
+import {
+  parseMailbox,
+  senderDomainOf,
+} from "@opensend/core/dashboard/email-send"
+import {
+  formatDateTime,
+  percent,
+  sentenceCase,
+} from "@opensend/core/dashboard/format"
 import { useAction, useQuery, usePaginatedQuery } from "convex/react"
 import { requireTeamId, useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 import { Skeleton } from "@/components/ui/skeleton"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 import {
   useBroadcast,
   useBroadcastCommands,
@@ -73,7 +80,7 @@ import {
 } from "@/lib/broadcasts/use-broadcasts"
 import { useDomainByName } from "@/lib/domains/use-domains"
 import { useSegmentOptions, useTopics } from "@/lib/audience/use-audience"
-import type { Broadcast, BroadcastStats } from "@/lib/dashboard/types"
+import type { Broadcast, BroadcastStats } from "@opensend/core/dashboard/types"
 import { useSaveAsTemplate } from "@/lib/templates/use-templates"
 
 const EVENT_TABS: {

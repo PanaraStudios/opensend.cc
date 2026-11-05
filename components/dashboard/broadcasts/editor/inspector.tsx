@@ -50,7 +50,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useDraftValue } from "@/components/dashboard/primitives"
-import { normalizeHref } from "@/lib/dashboard/format"
+import { normalizeHref } from "@opensend/core/dashboard/format"
 import { CodeEditor } from "@/components/dashboard/broadcasts/editor/code-editor"
 import {
   SegmentedToggle,

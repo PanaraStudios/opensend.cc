@@ -1,14 +1,14 @@
 "use client"
 import { useAction, useMutation } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
-import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import { useWorkspace, requireTeamId } from "@/components/auth/workspace"
 import type {
   Webhook,
   WebhookDelivery,
   WebhookEvent,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 type WebhookRow = FunctionReturnType<typeof api.webhooks.list>["page"][number]
 

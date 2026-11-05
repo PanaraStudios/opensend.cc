@@ -16,8 +16,8 @@ import {
 } from "@/components/dashboard/primitives"
 import { ExportDownload } from "./shared"
 import { useExportList } from "@/lib/exports/use-exports"
-import { exportFileName } from "@/lib/dashboard/exports"
-import { slugify } from "@/lib/dashboard/slug"
+import { exportFileName } from "@opensend/core/dashboard/exports"
+import { slugify } from "@opensend/core/dashboard/slug"
 import { useClock } from "@/lib/time/use-clock"
 
 export function SettingsExports() {

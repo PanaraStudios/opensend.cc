@@ -2,7 +2,7 @@
 
 import { FormattedText } from "@/components/dashboard/conversation/formatted-text"
 import { AttachedButtons } from "@/components/dashboard/conversation/business-card"
-import type { LocalTemplate } from "@/lib/meta/local-templates"
+import type { LocalTemplate } from "@opensend/core/meta/local-templates"
 import { useInstanceChannels } from "@/lib/dashboard/use-instance-channels"
 import * as React from "react"
 import Link from "next/link"
@@ -30,18 +30,18 @@ import {
   type SelectOption,
 } from "@/components/dashboard/primitives"
 import { WhatsAppTemplatePreview } from "@/components/dashboard/templates/whatsapp-preview"
-import { actionError } from "@/lib/action-error"
-import { templateStatusLabel } from "@/lib/dashboard/format"
+import { actionError } from "@opensend/core/action-error"
+import { templateStatusLabel } from "@opensend/core/dashboard/format"
 import {
   templateAliasError,
   templatePublishLabel,
-} from "@/lib/dashboard/template"
-import type { EmailTemplate } from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/template"
+import type { EmailTemplate } from "@opensend/core/dashboard/types"
 import {
   formFromComponents,
   storedComponents,
   renderedTemplateFromForm,
-} from "@/lib/meta/templates"
+} from "@opensend/core/meta/templates"
 import { useTemplateCommands } from "@/lib/templates/use-templates"
 
 /* The email itself, drawn small: a 600px sheet at half size, cut off by the

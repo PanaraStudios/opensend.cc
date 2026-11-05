@@ -5,7 +5,7 @@ import {
   clampMediaTime,
   createAudioCoordinator,
   mediaKeyAction,
-} from "./media-player"
+} from "@opensend/core/media-player"
 
 const audioCoordinator = createAudioCoordinator()
 

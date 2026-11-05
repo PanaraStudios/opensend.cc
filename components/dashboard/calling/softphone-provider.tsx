@@ -13,22 +13,22 @@ import {
 } from "react"
 import { useAction, useMutation } from "convex/react"
 import { useTeamQuery, useWorkspace } from "@/components/auth/workspace"
-import { api } from "@/convex/_generated/api"
-import type { Doc, Id } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc, Id } from "@opensend/backend/dataModel"
 import { FloatingCallCard } from "./call-card"
 import { MicrophonePicker } from "./microphone-picker"
 import {
   callCardTransition,
   emptyCallCard,
   ownsSoftphone,
-} from "@/lib/meta/call-card"
-import { actionError } from "@/lib/action-error"
+} from "@opensend/core/meta/call-card"
+import { actionError } from "@opensend/core/action-error"
 import {
   browserIceServers,
   iceNeedsRefresh,
   usesTurn,
   type IceConfiguration,
-} from "@/lib/calling/ice"
+} from "@opensend/core/calling/ice"
 import {
   BrowserPhone,
   RingSound,
@@ -44,7 +44,7 @@ import {
   renewalNeedsRegister,
   sipLogin,
   type SoftphonePhase,
-} from "@/lib/meta/softphone"
+} from "@opensend/core/meta/softphone"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {

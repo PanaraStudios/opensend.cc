@@ -24,7 +24,7 @@ import {
   UsersIcon,
 } from "lucide-react"
 import { useAction, useMutation, useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import {
   useWorkspace,
   CreateTeamForm,
@@ -49,15 +49,15 @@ import { AwsConnectionForm } from "@/components/ses/connection-form"
 import { SetupDetails } from "@/components/dashboard/primitives"
 import { DeliveryUrlForm } from "@/components/ses/delivery-form"
 import { SesRegions } from "@/components/ses/regions"
-import { actionError } from "@/lib/action-error"
-import { resourcePrefix } from "@/convex/ses/contracts"
+import { actionError } from "@opensend/core/action-error"
+import { resourcePrefix } from "@opensend/backend/ses/contracts"
 import {
   setupSteps,
   nextSetupStep,
   emailSetupRequired,
   inferredSetupStep,
   type SetupStep as Step,
-} from "@/lib/dashboard/installation-setup"
+} from "@opensend/core/dashboard/installation-setup"
 const copy: Record<
   Step,
   { label: string; title: string; description: string }

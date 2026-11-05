@@ -1,10 +1,10 @@
 "use client"
 import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Doc } from "@/convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Doc } from "@opensend/backend/dataModel"
 import { useTeamList } from "@/components/dashboard/primitives"
 import { useTeamQuery } from "@/components/auth/workspace"
-import type { ReceivedEmail } from "@/lib/dashboard/types"
+import type { ReceivedEmail } from "@opensend/core/dashboard/types"
 
 export function asReceived(
   row: Doc<"receivedEmails">,

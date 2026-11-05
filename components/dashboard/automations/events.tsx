@@ -50,19 +50,22 @@ import {
   AutomationsChrome,
   EventIcon,
 } from "@/components/dashboard/automations/shared"
-import { eventNameError, schemaError } from "@/lib/dashboard/automation"
-import { api } from "@/convex/_generated/api"
-import { actionError } from "@/lib/action-error"
+import {
+  eventNameError,
+  schemaError,
+} from "@opensend/core/dashboard/automation"
+import { api } from "@opensend/backend/api"
+import { actionError } from "@opensend/core/action-error"
 import {
   asAutomationEvent,
   useAutomationEventCommands,
 } from "@/lib/automation-events/use-automation-events"
-import { fieldTypeLabel } from "@/lib/dashboard/format"
+import { fieldTypeLabel } from "@opensend/core/dashboard/format"
 import {
   AUTOMATION_EVENT_FIELD_TYPES,
   type AutomationEvent,
   type AutomationEventFieldType,
-} from "@/lib/dashboard/types"
+} from "@opensend/core/dashboard/types"
 
 const FIELD_TYPE_ITEMS = AUTOMATION_EVENT_FIELD_TYPES.map((value) => ({
   value,

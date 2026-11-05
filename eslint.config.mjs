@@ -1,7 +1,7 @@
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
-import { plugin as shadcn } from "@shadcn/lint";
+import { defineConfig, globalIgnores } from "eslint/config"
+import nextVitals from "eslint-config-next/core-web-vitals"
+import nextTs from "eslint-config-next/typescript"
+import { plugin as shadcn } from "@shadcn/lint"
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -29,15 +29,17 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
     // Convex-generated files are not hand-edited.
-    "convex/_generated/**",
-    "convex/betterAuth/_generated/**",
-    // Workspace packages ship their own ESLint config.
-    "packages/**",
+    "packages/backend/convex/_generated/**",
+    "packages/backend/convex/betterAuth/_generated/**",
+    // Published packages ship their own ESLint config.
+    "packages/sdk/**",
+    "packages/mcp/**",
+    "packages/convex/**",
     "services/*/dist/**",
     "services/voice-agent/.venv/**",
     // Agent worktrees are separate checkouts of this repo.
     ".claude/**",
   ]),
-]);
+])
 
-export default eslintConfig;
+export default eslintConfig

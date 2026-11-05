@@ -1,0 +1,580 @@
+import { ownedToolkit } from "../botToolkitAccess"
+import { internal } from "../_generated/api"
+import { v } from "convex/values"
+import { stream } from "convex-helpers/server/stream"
+import {
+  internalMutation,
+  internalQuery,
+  query,
+  action,
+  type MutationCtx,
+  type QueryCtx,
+} from "../_generated/server"
+import type { Doc, Id } from "../_generated/dataModel"
+import {
+  callerValue,
+  requireCaller,
+  invalid,
+  notFound,
+  orNullIfNotFound,
+  apiError,
+  type Caller,
+} from "../api/caller"
+import { listArgs, cursorPage } from "../api/paging"
+import { requireTeam } from "../access"
+import { requireActiveTeam } from "../teamLifecycle"
+import { encryptSecret } from "../secrets"
+import { idempotent } from "../api/idempotency"
+import schema from "../schema"
+import { validateBot } from "@opensend/core/voice-bots"
+import { pickerArgs, pickerRows } from "../pickerOptions"
+import { voiceProvider } from "../tables/voice"
+import { own as ownedIvr } from "../ivr/definitions"
+/** ElevenLabs voice caches (up to 500 voices each) deleted per transaction. */
+const VOICE_CACHE_BATCH = 5
+export const actor = {
+  organizationId: v.string(),
+  caller: v.optional(callerValue),
+}
+export async function authorize(
+  ctx: QueryCtx,
+  args: { organizationId: string; caller?: Caller },
+  write = false,
+  providers = false
+) {
+  if (args.caller) {
+    if (args.caller.organizationId !== args.organizationId)
+      throw notFound("Team")
+    await requireCaller(ctx, args.caller, {
+      resource: providers ? "voice_providers" : "voice_bots",
+      access: write ? "write" : "read",
+    })
+  } else await requireTeam(ctx, args.organizationId, write ? "write" : "read")
+  await requireActiveTeam(ctx, args.organizationId)
+}
+export async function ownedBot(ctx: QueryCtx, team: string, id: string) {
+  const normalized = ctx.db.normalizeId("voiceBots", id),
+    row = normalized ? await ctx.db.get("voiceBots", normalized) : null
+  if (!row || row.organizationId !== team) throw notFound("Voice bot")
+  return row
+}
+const publicBot = (row: Doc<"voiceBots">) => {
+  const { _id, _creationTime, organizationId, ...config } = row
+  void _creationTime
+  void organizationId
+  return {
+    id: _id,
+    ...config,
+    callerContext: row.callerContext !== false,
+  }
+}
+const publicProvider = (row: Doc<"voiceProviders">) => ({
+  id: row._id,
+  provider: row.provider,
+  label: row.label,
+  lastFour: row.lastFour,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+})
+export const get = internalQuery({
+  args: { ...actor, id: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    return publicBot(await ownedBot(ctx, args.organizationId, args.id))
+  },
+})
+const pageArgs = { ...actor, ...listArgs, providers: v.optional(v.boolean()) }
+async function listResources(
+  ctx: QueryCtx,
+  args: {
+    organizationId: string
+    caller?: Caller
+    limit: number
+    after?: string
+    before?: string
+    providers?: boolean
+  }
+) {
+  await authorize(ctx, args, false, !!args.providers)
+  if (
+    !Number.isInteger(args.limit) ||
+    args.limit < 1 ||
+    args.limit > 100 ||
+    (args.after && args.before)
+  )
+    throw invalid("Use limit 1–100 and one cursor")
+  const table = args.providers ? "voiceProviders" : "voiceBots"
+  const page = await cursorPage(
+    args,
+    async (id) => {
+      const normalized = ctx.db.normalizeId(table, id)
+      const row = normalized ? await ctx.db.get(table, normalized) : null
+      return row?.organizationId === args.organizationId ? row : null
+    },
+    (order) =>
+      stream(ctx.db, schema)
+        .query(table)
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId)
+        )
+        .order(order)
+  )
+  return {
+    object: "list",
+    has_more: page.has_more,
+    data: await Promise.all(
+      page.data.map(async (row) => {
+        if (table === "voiceProviders")
+          return publicProvider(row as Doc<"voiceProviders">)
+        const bot = row as Doc<"voiceBots">
+        const lastTest = await ctx.db
+          .query("calls")
+          .withIndex("by_organizationId_and_botId_and_test", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("botId", bot._id)
+              .eq("test", true)
+          )
+          .order("desc")
+          .first()
+        return { ...publicBot(bot), lastTestAt: lastTest?.observedAt ?? null }
+      })
+    ),
+  }
+}
+export const list = internalQuery({
+  args: pageArgs,
+  returns: v.any(),
+  handler: listResources,
+})
+export const dashboardList = query({
+  args: {
+    organizationId: v.string(),
+    ...listArgs,
+    providers: v.optional(v.boolean()),
+  },
+  returns: v.any(),
+  handler: listResources,
+})
+const namedOption = v.object({ id: v.string(), name: v.string() })
+/** Voice bots a picker can search, including one that is already saved. */
+export const botOptions = query({
+  args: pickerArgs,
+  returns: v.array(namedOption),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    const rows = await pickerRows(
+      ctx,
+      "voiceBots",
+      args.organizationId,
+      args.search,
+      args.selectedIds
+    )
+    return rows.map((row) => ({ id: row._id, name: row.name }))
+  },
+})
+/** Provider keys a picker can search. The encrypted key stays on the document. */
+export const providerOptions = query({
+  args: {
+    ...pickerArgs,
+    provider: v.optional(voiceProvider),
+  },
+  returns: v.array(
+    v.object({
+      id: v.id("voiceProviders"),
+      provider: voiceProvider,
+      label: v.string(),
+      lastFour: v.string(),
+    })
+  ),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, false, true)
+    const rows = await pickerRows(
+      ctx,
+      "voiceProviders",
+      args.organizationId,
+      args.search,
+      args.selectedIds,
+      args.provider
+    )
+    return rows.map((row) => ({
+      id: row._id,
+      provider: row.provider,
+      label: row.label,
+      lastFour: row.lastFour,
+    }))
+  },
+})
+export const save = internalMutation({
+  args: {
+    ...actor,
+    id: v.optional(v.string()),
+    input: v.record(v.string(), v.any()),
+  },
+  returns: v.object({ id: v.id("voiceBots") }),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, true)
+    const previous = args.id
+      ? await ownedBot(ctx, args.organizationId, args.id)
+      : null
+    let config
+    try {
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        ...old
+      } = previous ? publicBot(previous) : {}
+      void _id
+      void _createdAt
+      void _updatedAt
+      config = validateBot({ ...old, ...args.input })
+    } catch {
+      throw invalid("Invalid voice bot configuration")
+    }
+    // A handoff to another team's (or a deleted) IVR fails only mid-call.
+    // Only a changed handoff IVR is checked: the dashboard re-sends the
+    // stored one on every save, and a bot whose IVR was deleted before this
+    // check existed must stay editable.
+    if (
+      config.handoff?.ivrId &&
+      config.handoff.ivrId !== previous?.handoff?.ivrId
+    )
+      config.handoff.ivrId = (
+        await ownedIvr(ctx, args.organizationId, config.handoff.ivrId)
+      )._id
+    for (const id of config.knowledgeBaseIds ?? [])
+      await ownedToolkit(ctx, "knowledgeBases", args.organizationId, id)
+    for (const id of config.customToolIds ?? [])
+      await ownedToolkit(ctx, "botTools", args.organizationId, id)
+    for (const field of config.collect ?? []) {
+      if (!field.contactProperty) continue
+      const property = await ctx.db
+        .query("contactProperties")
+        .withIndex("by_organizationId_and_key", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("key", field.contactProperty!)
+        )
+        .unique()
+      if (
+        !property ||
+        property.deleting ||
+        (property.type === "number" && field.type !== "number")
+      )
+        throw invalid("Map fields to an existing compatible contact property")
+    }
+    const credentialId = ctx.db.normalizeId(
+        "voiceProviders",
+        config.credentialId
+      ),
+      credential = credentialId
+        ? await ctx.db.get("voiceProviders", credentialId)
+        : null
+    if (
+      !credential ||
+      credential.organizationId !== args.organizationId ||
+      credential.provider !== config.provider
+    )
+      throw invalid("Credential must belong to this team and provider")
+    for (const name of ["stt", "llm", "tts"] as const) {
+      const stage = config[name]
+      if (!stage) continue
+      const id = ctx.db.normalizeId("voiceProviders", stage.credentialId),
+        key = id ? await ctx.db.get("voiceProviders", id) : null
+      if (
+        !key ||
+        key.organizationId !== args.organizationId ||
+        key.provider !== stage.provider
+      )
+        throw invalid("Stage credential must belong to this team and provider")
+      stage.credentialId = id!
+    }
+    const write = async () => {
+      const now = Date.now(),
+        fields = {
+          ...config,
+          knowledgeBaseIds: config.knowledgeBaseIds as
+            Id<"knowledgeBases">[] | undefined,
+          customToolIds: config.customToolIds as Id<"botTools">[] | undefined,
+          stt: config.stt
+            ? {
+                ...config.stt,
+                credentialId: config.stt.credentialId as Id<"voiceProviders">,
+              }
+            : undefined,
+          llm: config.llm
+            ? {
+                ...config.llm,
+                credentialId: config.llm.credentialId as Id<"voiceProviders">,
+              }
+            : undefined,
+          tts: config.tts
+            ? {
+                ...config.tts,
+                credentialId: config.tts.credentialId as Id<"voiceProviders">,
+              }
+            : undefined,
+          credentialId: credential._id,
+          updatedAt: now,
+        }
+      if (previous) {
+        await ctx.db.patch("voiceBots", previous._id, fields)
+        return previous._id
+      }
+      return ctx.db.insert("voiceBots", {
+        ...fields,
+        organizationId: args.organizationId,
+        createdAt: now,
+      })
+    }
+    const id = args.caller
+      ? await idempotent(ctx, args.caller, write, (id) => ({ body: { id } }))
+      : await write()
+    return { id }
+  },
+})
+export const credential = internalMutation({
+  args: { ...actor, input: v.record(v.string(), v.any()) },
+  returns: v.object({ id: v.id("voiceProviders") }),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, true, true)
+    const { provider, label, key } = args.input
+    if (
+      (provider !== "gemini" &&
+        provider !== "sarvam" &&
+        provider !== "elevenlabs") ||
+      typeof label !== "string" ||
+      !label.trim() ||
+      label.length > 128 ||
+      typeof key !== "string" ||
+      key.length < 8 ||
+      key.length > 4096 ||
+      /[\r\n\0]/.test(key) ||
+      Object.keys(args.input).some(
+        (k) => !["provider", "label", "key"].includes(k)
+      )
+    )
+      throw invalid("Invalid voice provider credential")
+    const write = async () => {
+      const now = Date.now()
+      return ctx.db.insert("voiceProviders", {
+        organizationId: args.organizationId,
+        provider,
+        label,
+        encryptedKey: await encryptSecret(key),
+        lastFour: key.slice(-4),
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+    return {
+      id: args.caller
+        ? await idempotent(ctx, args.caller, write, (id) => ({ body: { id } }))
+        : await write(),
+    }
+  },
+})
+export const remove = internalMutation({
+  args: { ...actor, id: v.string(), providers: v.optional(v.boolean()) },
+  returns: v.object({ id: v.string(), deleted: v.boolean() }),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args, true, !!args.providers)
+    if (args.providers) {
+      const id = ctx.db.normalizeId("voiceProviders", args.id),
+        row = id ? await ctx.db.get("voiceProviders", id) : null
+      if (!row || row.organizationId !== args.organizationId)
+        throw notFound("Voice provider")
+      const references = await Promise.all([
+        ctx.db
+          .query("voiceBots")
+          .withIndex("by_credentialId", (q) => q.eq("credentialId", row._id))
+          .first(),
+        ctx.db
+          .query("voiceBots")
+          .withIndex("by_stt_credentialId", (q) =>
+            q.eq("stt.credentialId", row._id)
+          )
+          .first(),
+        ctx.db
+          .query("voiceBots")
+          .withIndex("by_llm_credentialId", (q) =>
+            q.eq("llm.credentialId", row._id)
+          )
+          .first(),
+        ctx.db
+          .query("voiceBots")
+          .withIndex("by_tts_credentialId", (q) =>
+            q.eq("tts.credentialId", row._id)
+          )
+          .first(),
+      ])
+      const ivr = await ctx.db
+        .query("ivrs")
+        .withIndex("by_promptVoice_credentialId", (q) =>
+          q.eq("promptVoice.credentialId", row._id)
+        )
+        .first()
+      if (references.some(Boolean) || ivr)
+        throw apiError(
+          409,
+          "credential_in_use",
+          "Remove bots or IVR prompt voices using this credential first"
+        )
+      await dropVoiceCaches(ctx, row._id)
+      await ctx.db.delete("voiceProviders", row._id)
+    } else {
+      const row = await ownedBot(ctx, args.organizationId, args.id)
+      const routing = await ctx.db
+        .query("callingSettings")
+        .withIndex("by_routing_botId", (q) => q.eq("routing.botId", row._id))
+        .first()
+      if (routing)
+        throw apiError(
+          409,
+          "bot_in_use",
+          "Remove number routing before deleting this bot"
+        )
+      const ivr = await ctx.db
+        .query("ivrBotReferences")
+        .withIndex("by_botId", (q) => q.eq("botId", row._id))
+        .first()
+      if (ivr)
+        throw apiError(
+          409,
+          "bot_in_use",
+          "Remove IVR actions routing to this bot before deleting it"
+        )
+      await ctx.db.delete("voiceBots", row._id)
+    }
+    return { id: args.id, deleted: true }
+  },
+})
+/** Deletes a removed credential's ElevenLabs voice caches a batch at a time;
+    a full batch schedules the next one so none are left behind. */
+async function dropVoiceCaches(
+  ctx: MutationCtx,
+  credentialId: Id<"voiceProviders">
+) {
+  const caches = await ctx.db
+    .query("elevenLabsVoiceCaches")
+    .withIndex("by_credentialId", (q) => q.eq("credentialId", credentialId))
+    .take(VOICE_CACHE_BATCH)
+  for (const cache of caches)
+    await ctx.db.delete("elevenLabsVoiceCaches", cache._id)
+  if (caches.length === VOICE_CACHE_BATCH)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.voice.resources.dropRemovedVoiceCaches,
+      { credentialId }
+    )
+}
+export const dropRemovedVoiceCaches = internalMutation({
+  args: { credentialId: v.id("voiceProviders") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await dropVoiceCaches(ctx, args.credentialId)
+    return null
+  },
+})
+export const transcript = internalQuery({
+  args: { ...actor, ...listArgs, id: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    // Transcripts require the existing WhatsApp scope, independently of bot CRUD.
+    if (args.caller) {
+      if (args.caller.organizationId !== args.organizationId)
+        throw notFound("Call")
+      await requireCaller(ctx, args.caller, {
+        resource: "calling",
+        access: "read",
+      })
+    } else await requireTeam(ctx, args.organizationId, "read")
+    await requireActiveTeam(ctx, args.organizationId)
+    const id = ctx.db.normalizeId("calls", args.id),
+      call = id ? await ctx.db.get("calls", id) : null
+    if (!call || call.organizationId !== args.organizationId)
+      throw notFound("Call")
+    if (
+      !Number.isInteger(args.limit) ||
+      args.limit < 1 ||
+      args.limit > 100 ||
+      (args.after && args.before)
+    )
+      throw invalid("Use limit 1–100 and one cursor")
+    const page = await cursorPage(
+      args,
+      async (cursor) => {
+        const id = ctx.db.normalizeId("callTranscripts", cursor),
+          row = id ? await ctx.db.get("callTranscripts", id) : null
+        return row?.callId === call._id ? row : null
+      },
+      (order) =>
+        stream(ctx.db, schema)
+          .query("callTranscripts")
+          .withIndex("by_callId", (q) => q.eq("callId", call._id))
+          .order(order)
+    )
+    return {
+      object: "list",
+      has_more: page.has_more,
+      data: page.data.map(({ _id, _creationTime, organizationId, ...line }) => {
+        void organizationId
+        return { id: _id, createdAt: _creationTime, ...line }
+      }),
+    }
+  },
+})
+
+export const dashboardGet = query({
+  args: { organizationId: v.string(), id: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    await authorize(ctx, args)
+    const row = await orNullIfNotFound(
+      ownedBot(ctx, args.organizationId, args.id)
+    )
+    return row && publicBot(row)
+  },
+})
+export const dashboardWrite = action({
+  args: {
+    organizationId: v.string(),
+    kind: v.union(
+      v.literal("bot"),
+      v.literal("provider"),
+      v.literal("removeBot"),
+      v.literal("removeProvider")
+    ),
+    id: v.optional(v.string()),
+    body: v.string(),
+  },
+  returns: v.any(),
+  handler: (ctx, args): Promise<{ id: string; deleted?: boolean }> =>
+    args.kind === "bot"
+      ? ctx.runMutation(internal.voice.resources.save, {
+          organizationId: args.organizationId,
+          id: args.id,
+          input: JSON.parse(args.body),
+        })
+      : args.kind === "provider"
+        ? ctx.runMutation(internal.voice.resources.credential, {
+            organizationId: args.organizationId,
+            input: JSON.parse(args.body),
+          })
+        : ctx.runMutation(internal.voice.resources.remove, {
+            organizationId: args.organizationId,
+            id: args.id!,
+            providers: args.kind === "removeProvider",
+          }),
+})
+export const dashboardTranscript = query({
+  args: { organizationId: v.string(), id: v.string(), ...listArgs },
+  returns: v.any(),
+  handler: (
+    ctx,
+    args
+  ): Promise<{ object: string; has_more: boolean; data: unknown[] }> =>
+    ctx.runQuery(internal.voice.resources.transcript, args),
+})

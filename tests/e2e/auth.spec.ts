@@ -38,8 +38,8 @@ import { readFileSync } from "node:fs"
 import { createHmac } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { ConvexHttpClient } from "convex/browser"
-import { api } from "../../convex/_generated/api"
-import type { Id } from "../../convex/_generated/dataModel"
+import { api } from "@opensend/backend/api"
+import type { Id } from "@opensend/backend/dataModel"
 // DOM trace snapshots inject a script into sandboxed email previews, producing
 // console errors even for benign HTML. Keep action/network traces and screenshots.
 test.use({ trace: { mode: "retain-on-failure", snapshots: false } })

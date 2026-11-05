@@ -19,7 +19,7 @@ import {
   buildAwsIamPolicy,
   IAM_USERS_URL,
 } from "@/lib/aws/setup"
-import type { Region } from "@/lib/dashboard/types"
+import type { Region } from "@opensend/core/dashboard/types"
 
 const canDownloadPolicy = (accountId: string) => /^\d{12}$/.test(accountId)
 

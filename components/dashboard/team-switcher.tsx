@@ -41,7 +41,7 @@ import {
   InviteMemberDialog,
   TeamGlyph,
 } from "@/components/dashboard/team-dialogs"
-import { slugify } from "@/lib/dashboard/slug"
+import { slugify } from "@opensend/core/dashboard/slug"
 import { teamSafePath } from "@/lib/dashboard/nav"
 import {
   useActiveTeam,
@@ -50,7 +50,7 @@ import {
   useWorkspace,
 } from "@/components/auth/workspace"
 import { cn } from "@/lib/utils"
-import { actionError } from "@/lib/action-error"
+import { actionError } from "@opensend/core/action-error"
 
 function CreateTeamDialog({
   open,

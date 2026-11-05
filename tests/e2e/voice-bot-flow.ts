@@ -2,7 +2,7 @@ import { playgroundShots } from "./playground-shots"
 import { expect, test, type Page } from "@playwright/test"
 import { connectWhatsApp } from "./meta-fixtures"
 import { client } from "./ses-fixtures"
-import { api } from "../../convex/_generated/api"
+import { api } from "@opensend/backend/api"
 import { createApiKey } from "./broadcast-received-flow"
 export function voiceBotTests(
   state: () => { owner: Page; organizationId: string }

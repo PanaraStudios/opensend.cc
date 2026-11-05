@@ -6,7 +6,7 @@ import { normalizeWhatsAppMessage } from "../../packages/sdk/src/whatsapp/normal
 import {
   whatsappInboundExamples,
   whatsappSendExamples,
-} from "../meta/whatsapp-fixtures"
+} from "@opensend/core/meta/whatsapp-fixtures"
 import { ThreadBubble } from "../../components/dashboard/conversation/thread-messages"
 import type { ThreadMessage } from "../messages/use-messages"
 
